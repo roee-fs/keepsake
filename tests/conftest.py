@@ -15,6 +15,8 @@ from alembic.config import Config
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
+from keepsake.store.pool import Store
+
 OWNER_ROLE = "okf_owner"
 OWNER_PASSWORD = "owner"
 APP_ROLE = "okf_app"
@@ -102,3 +104,11 @@ def migrated(owner_dsn: str) -> bool:
     cfg.set_main_option("sqlalchemy.url", owner_dsn)
     command.upgrade(cfg, "head")
     return True
+
+
+@pytest.fixture
+def store(migrated: bool, pg_dsn: str) -> Iterator[Store]:
+    """A store on the unprivileged role. Its pool is closed, not leaked per test."""
+    store = Store(pg_dsn)
+    yield store
+    store.close()
