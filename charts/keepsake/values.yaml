@@ -10,7 +10,7 @@ service:
   nodePort: null # only honoured when type is NodePort or LoadBalancer
 
 auth:
-  mode: none # none | proxy | token
+  mode: none # the only mode implemented; proxy and token are not built yet
   fixedTenantId: "00000000-0000-0000-0000-000000000001"
 
 postgres:
@@ -20,12 +20,12 @@ postgres:
   # existing mode. `dsn` is the server's, and it MUST NOT own the schema or the
   # tables: the server verifies that at startup and refuses to serve otherwise.
   dsn: "" # required when mode = existing
-  # The migration's DSN, which must own the schema. Left empty the migration runs
-  # as `dsn` and creates the schema and tables OWNED BY THAT ROLE, which the server
-  # then refuses to connect as, for good: setting ownerDsn afterwards does not
-  # repair it, because the owner role holds nothing on a schema it does not own.
+  # The migration's DSN, which must own the schema. Required, because running the
+  # migration as `dsn` creates the schema and tables OWNED BY THAT ROLE, which the
+  # server then refuses to connect as, for good: setting ownerDsn afterwards does
+  # not repair it, because the owner role holds nothing on a schema it does not own.
   # Recovering means ALTER ... OWNER surgery or recreating the database.
-  ownerDsn: ""
+  ownerDsn: "" # required when mode = existing
 
   # managed mode. CloudNativePG bootstraps the database owned by okf_owner and
   # creates okf_app, the unprivileged role the server connects as.

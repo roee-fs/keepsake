@@ -23,7 +23,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 MANAGED = {"postgres.mode": "managed"}
-EXISTING = {"postgres.mode": "existing", "postgres.dsn": "postgres://app@db/keepsake"}
+EXISTING = {
+    "postgres.mode": "existing",
+    "postgres.dsn": "postgres://app@db/keepsake",
+    "postgres.ownerDsn": "postgres://owner@db/keepsake",
+}
 
 
 def _render(values: dict[str, str], release: str = "keepsake") -> list[dict[str, Any]]:
@@ -73,15 +77,19 @@ def test_existing_mode_renders_no_cluster() -> None:
     assert [d for d in _render(EXISTING) if d["kind"] == "Cluster"] == []
 
 
-def test_existing_mode_without_a_dsn_is_rejected_by_the_schema() -> None:
-    result = subprocess.run(
-        ["helm", "template", "keepsake", str(CHART), "--set", "postgres.mode=existing"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+@pytest.mark.parametrize("omitted", ["postgres.dsn", "postgres.ownerDsn"])
+def test_existing_mode_without_both_dsns_is_rejected_by_the_schema(
+    omitted: str,
+) -> None:
+    """Omitting ownerDsn ran the migration as the app role, which owns the schema it
+    creates and which `verify` then refuses to serve as, unrecoverably."""
+    args = ["helm", "template", "keepsake", str(CHART)]
+    for key, value in EXISTING.items():
+        if key != omitted:
+            args += ["--set", f"{key}={value}"]
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
     assert result.returncode != 0
-    assert "dsn" in result.stderr
+    assert omitted.removeprefix("postgres.") in result.stderr
 
 
 def test_migration_job_is_a_pre_install_hook() -> None:
@@ -123,15 +131,10 @@ def test_managed_mode_creates_the_app_role_during_bootstrap() -> None:
     assert any(s.startswith("CREATE ROLE okf_app ") for s in sql)
 
 
-def test_existing_mode_runs_the_migration_as_the_dsn_it_was_given() -> None:
-    both = dict(EXISTING, **{"postgres.ownerDsn": "postgres://owner@db/keepsake"})
-    dsns = _named(_render(both), "Secret", "keepsake-dsn")["stringData"]
+def test_existing_mode_runs_the_migration_as_the_owner_dsn() -> None:
+    dsns = _named(_render(EXISTING), "Secret", "keepsake-dsn")["stringData"]
     assert dsns["owner-dsn"] == "postgres://owner@db/keepsake"
     assert dsns["app-dsn"] == "postgres://app@db/keepsake"
-    # With no owner DSN the migration runs as the app role and `verify` then refuses
-    # to start, loudly. The chart does not paper over that.
-    default = _named(_render(EXISTING), "Secret", "keepsake-dsn")["stringData"]
-    assert default["owner-dsn"] == default["app-dsn"]
 
 
 def test_the_server_reads_the_variables_the_cli_reads() -> None:
