@@ -9,8 +9,11 @@ metadata:
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
-  # Managed mode creates the cluster in the hook before this one, which may not be
-  # accepting connections yet. Retrying beats failing the install.
+  # Managed mode creates the cluster in the hook before this one, and Helm has no
+  # readiness handler for it, so this Job really does race the database accepting
+  # connections. Retrying beats failing the install. The OnFailure backoff doubles
+  # past Helm's default 5m hook timeout around retry 6, so a managed install wants
+  # a longer --timeout for the later retries to happen at all.
   backoffLimit: 10
   template:
     metadata:
