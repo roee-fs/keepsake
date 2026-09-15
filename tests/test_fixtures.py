@@ -14,9 +14,7 @@ _WHO_AM_I = (
 )
 
 
-def test_pg_dsn_is_the_unprivileged_role(
-    pg_dsn: str, assert_not_privileged: None
-) -> None:
+def test_pg_dsn_is_the_unprivileged_role(pg_dsn: str) -> None:
     with psycopg.connect(pg_dsn) as conn:
         row = conn.execute(_WHO_AM_I).fetchone()
     assert row == ("okf_app", False)
@@ -31,3 +29,9 @@ def test_owner_dsn_can_create(owner_dsn: str) -> None:
 def test_guard_rejects_a_superuser(admin_dsn: str) -> None:
     with pytest.raises(AssertionError):
         assert_role_unprivileged(admin_dsn)
+
+
+def test_guard_rejects_bypassrls(bypassrls_dsn: str) -> None:
+    """BYPASSRLS is the other role-level RLS exemption, and it is not superuser."""
+    with pytest.raises(AssertionError):
+        assert_role_unprivileged(bypassrls_dsn)
