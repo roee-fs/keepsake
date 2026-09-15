@@ -6,7 +6,7 @@ Revises:
 
 from alembic import op
 
-from keepsake.store import SCHEMA
+from keepsake.store import SCHEMA, TENANT_GUC
 
 revision = "0001"
 down_revision = None
@@ -64,8 +64,8 @@ def upgrade() -> None:
         op.execute(f"ALTER TABLE {SCHEMA}.{table} FORCE ROW LEVEL SECURITY")
         op.execute(f"""
             CREATE POLICY tenant_isolation ON {SCHEMA}.{table}
-              USING      (tenant_id = current_setting('okf.current_tenant')::uuid)
-              WITH CHECK (tenant_id = current_setting('okf.current_tenant')::uuid)
+              USING      (tenant_id = current_setting('{TENANT_GUC}')::uuid)
+              WITH CHECK (tenant_id = current_setting('{TENANT_GUC}')::uuid)
         """)
 
     # The function is subject to the policy like every other caller, so it can only
@@ -75,7 +75,7 @@ def upgrade() -> None:
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
     DECLARE n bigint;
     BEGIN
-      IF t <> current_setting('okf.current_tenant')::uuid THEN
+      IF t <> current_setting('{TENANT_GUC}')::uuid THEN
         RAISE EXCEPTION 'purge_tenant(%) requires the session scoped to that tenant', t;
       END IF;
       DELETE FROM {SCHEMA}.concept_revision WHERE tenant_id = t;
