@@ -1,3 +1,4 @@
+{{- $port := 8000 -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,9 +32,13 @@ spec:
               value: {{ .Values.auth.fixedTenantId | quote }}
             - name: KEEPSAKE_SCHEMA
               value: {{ .Values.postgres.schema | quote }}
+            # Set, not left to the CLI's default: the port below and the readiness
+            # probe would otherwise depend on that default never moving.
+            - name: KEEPSAKE_PORT
+              value: {{ $port | quote }}
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: {{ $port }}
           # The port binds only once the startup check has passed, so a bound port
           # is the readiness signal. No liveness probe: a pod refusing to start is
           # already crash-looping, and restarting it would only bury the reason.

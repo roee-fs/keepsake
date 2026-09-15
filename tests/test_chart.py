@@ -119,7 +119,8 @@ def test_managed_mode_creates_the_app_role_during_bootstrap() -> None:
     """The migration's grant is guarded by a pg_roles check: no role, no grant."""
     initdb = _only(_render(MANAGED), "Cluster")["spec"]["bootstrap"]["initdb"]
     assert initdb["owner"] == "okf_owner"
-    assert any("okf_app" in sql for sql in initdb["postInitApplicationSQL"])
+    sql = initdb["postInitApplicationSQL"]
+    assert any(s.startswith("CREATE ROLE okf_app ") for s in sql)
 
 
 def test_existing_mode_runs_the_migration_as_the_dsn_it_was_given() -> None:
@@ -179,6 +180,19 @@ def test_readiness_waits_for_the_bound_port_and_nothing_restarts_it() -> None:
     No liveness probe: a pod that is correctly refusing to start would be restarted
     by one, which turns a legible crash into restart noise.
     """
-    container = _container(_only(_render(MANAGED), "Deployment"))
+    deployment = _only(_render(MANAGED), "Deployment")
+    container = _container(deployment)
     assert container["readinessProbe"]["tcpSocket"]["port"] == "http"
     assert "livenessProbe" not in container
+    # The probe watches the port the server was told to bind, not the CLI's default.
+    port = container["ports"][0]
+    assert port["name"] == "http"
+    assert _env(deployment)["KEEPSAKE_PORT"]["value"] == str(port["containerPort"])
+
+
+def test_the_bootstrap_password_is_escaped_into_the_sql() -> None:
+    values = dict(MANAGED, **{"postgres.cluster.appPassword": "it's"})
+    initdb = _only(_render(values), "Cluster")["spec"]["bootstrap"]["initdb"]
+    assert initdb["postInitApplicationSQL"] == [
+        "CREATE ROLE okf_app LOGIN PASSWORD 'it''s'"
+    ]
