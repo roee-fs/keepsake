@@ -49,21 +49,19 @@ exists; what remains needs either a decision or repository-admin rights.
 ### Needs a human
 
 - **`CODE_OF_CONDUCT.md` has no enforcement address.** It points at the
-  organization's owners and at GitHub's own abuse reporting, which works today
-  and needs no inbox, but a real address is better: it gives a reporter somewhere
-  to go that is not the platform the conduct happened on. Add one when a mailbox
-  exists — and only then, because a harassment report that bounces is worse than
-  no policy at all.
-- **The `main` ruleset is disabled and targets no branches.** It exists, it is
-  named `main`, and it enforces nothing: `enforcement: disabled`, and
-  `conditions.ref_name` has empty `include` and `exclude`, so even enabled it
-  would apply to no ref. Its rules are the right ones — `deletion`,
-  `non_fast_forward`, `pull_request` — but the pull-request rule asks for
-  **0 approving reviews**, and there is no `required_status_checks` rule, so none
-  of `check`, `kind`, `codeql` or `osv` gates a merge. To make it real: set
-  enforcement to active, include `~DEFAULT_BRANCH`, raise the review count to 1,
-  and add the four status checks. Scorecard's highest-weighted check, and not
-  settable from a commit.
+  repository's maintainers and at GitHub's own abuse reporting, which works today
+  and needs no inbox — but a real mailbox is better, because it gives a reporter
+  somewhere to go that is not the platform the conduct happened on. Add one when
+  one exists, and only then: a harassment report that bounces is worse than no
+  policy at all.
+- **The repository lives at `roee-fs/keepsake`, under a user account.**
+  `roee-fs/keepsake` still resolves, but only as a redirect, and the
+  `roee-fs` organization owns nothing here. That matters beyond
+  cosmetics: a GHCR namespace follows the repository owner, so the release now
+  derives `ghcr.io/<owner>/keepsake` rather than naming one, and refuses to
+  publish when the chart's default image disagrees with it. If the repo moves to
+  the organization, `charts/keepsake/values.yaml` is the one value to change and
+  the release will say so.
 - **Enable GitHub private vulnerability reporting** in Settings → Security.
   `SECURITY.md` and the issue-template chooser both link to the advisory form;
   until the setting is on, those links 404.
@@ -106,6 +104,14 @@ exists; what remains needs either a decision or repository-admin rights.
 
 ### Done
 
+- **The `main` ruleset now enforces something.** It existed but was
+  `enforcement: disabled` with an empty `ref_name.include`, so even switched on
+  it would have matched no branch — and its pull-request rule asked for zero
+  approving reviews. It is now active on `~DEFAULT_BRANCH`, requires one approving
+  review with stale reviews dismissed on push, and gates merges on `check`,
+  `kind`, `codeql` and `osv` under a strict up-to-date policy. No bypass actors,
+  which is what Scorecard wants and which also means a solo maintainer needs a
+  second reviewer; set enforcement to `evaluate` if that ever has to give.
 - `LICENSE` (MIT) at the top level, `license` and `license-files` in
   `pyproject.toml` so the wheel carries the terms, and a test holding all three
   in agreement. Verified: the built wheel contains

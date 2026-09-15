@@ -60,8 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by contacting the
-owners of the [roee-fs](https://github.com/roee-fs)
-organization directly.
+maintainers of this repository directly.
 
 If the behavior took place on GitHub, you can also report it to GitHub through
 [their abuse reporting](https://github.com/contact/report-abuse), which does not
