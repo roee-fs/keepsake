@@ -39,6 +39,19 @@ _MIGRATIONS = Path(__file__).resolve().parent.parent / "store" / "migrations"
 
 _TOP_LEVEL = "(top level)"
 
+_DEFAULT_PORT = 8000
+
+
+def _env_port() -> int:
+    """The port $KEEPSAKE_PORT names, or 8000 when it names nothing usable.
+
+    kubelet injects `tcp://10.96.0.1:8000` as KEEPSAKE_PORT into every pod in a
+    namespace holding a Service named keepsake. Read lazily, and never by a
+    subcommand that binds no port.
+    """
+    value = os.environ.get("KEEPSAKE_PORT", "")
+    return int(value) if value.isdigit() else _DEFAULT_PORT
+
 
 class CliError(RuntimeError):
     """An operator-facing failure. `main` prints it instead of a traceback."""
@@ -245,7 +258,8 @@ def _run_serve(args: argparse.Namespace) -> int:
         tenant_id=_tenant(args),
         schema=SCHEMA,
     )
-    uvicorn.run(build_app(config), host=args.host, port=args.port)
+    port = _env_port() if args.port is None else args.port
+    uvicorn.run(build_app(config), host=args.host, port=port)
     return 0
 
 
@@ -305,7 +319,7 @@ def _parser() -> argparse.ArgumentParser:
     server.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("KEEPSAKE_PORT", "8000")),
+        default=None,
         help="The port to bind. Defaults to $KEEPSAKE_PORT, then 8000.",
     )
     server.set_defaults(run=_run_serve)
