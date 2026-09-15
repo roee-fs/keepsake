@@ -136,7 +136,16 @@ reads nothing rather than everything.
 ### Indexes
 
 - GIN on `search` — ranked discovery.
-- GIN on `links` — backlink resolution via `:path = ANY(links)`.
+- GIN on `links` — **does not serve backlinks, and cannot.** Only
+  `links @> ARRAY[:path]` has GIN operator-class support (`:path = ANY(links)`
+  has none), and `arraycontains` is not leakproof, so under `FORCE ROW LEVEL
+  SECURITY` Postgres refuses to push it below the policy's security qual and no
+  index condition is available in either form. Backlinks therefore scan the
+  tenant's own rows. Measured on postgres 17 at 50k rows: the same index on the
+  same data without RLS plans a Bitmap Index Scan (0.04ms); with RLS both forms
+  plan a Seq Scan, `= ANY` at 2.5ms and `@>` at 10.1ms. The query uses `= ANY`
+  for that reason. Fixing this needs a leakproof predicate, not a different
+  index.
 - The primary key serves prefix scans on `path`.
 
 ### Revision retention
@@ -341,6 +350,19 @@ ordinary shell tools.
 The conformance gate is a round-trip test: import, export, byte-compare, modulo
 the generated index and log. `ruamel.yaml` is used specifically because it
 preserves key order and formatting across the round trip.
+
+### Fidelity ceilings
+
+Four inputs are known not to survive byte-identically. Each is pinned by a test
+rather than kept out of the fixtures:
+
+- **CRLF line endings** are normalised to LF.
+- **Comments in frontmatter** are dropped.
+- **Unquoted YAML dates** (`2026-01-01`) come back as strings, because `jsonb`
+  has no date scalar.
+- **Block-style leaf collections** written by hand come back flow-style: a
+  hand-written multi-line `tags:` list re-emits as `tags: [a, b]`, because
+  frontmatter read from `jsonb` carries no style metadata.
 
 ## Install modes
 

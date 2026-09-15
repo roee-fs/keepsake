@@ -1,0 +1,64 @@
+# A plain Postgres for the e2e. The assertions need *a* database with the two roles
+# the chart's existing mode expects, not CloudNativePG, which is covered elsewhere.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  # The migration grants okf_app behind an existence check, so a role missing here
+  # would leave the app role silently ungranted rather than fail the install.
+  init.sql: |
+    CREATE ROLE okf_owner LOGIN PASSWORD 'owner';
+    CREATE ROLE okf_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD 'app';
+    GRANT CREATE ON DATABASE keepsake TO okf_owner;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          env:
+            - name: POSTGRES_PASSWORD
+              value: postgres
+            - name: POSTGRES_DB
+              value: keepsake
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          # Without this the Deployment reports available before the database accepts
+          # connections, and the migration Job races the init script. Over TCP, not the
+          # socket: the entrypoint runs the init scripts against a server that listens
+          # on the socket alone, so a socket probe passes before the roles exist.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "keepsake"]
+            periodSeconds: 2
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init

@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels:
+    app: {{ .Release.Name }}-migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  # Managed mode creates the cluster in the hook before this one, and Helm has no
+  # readiness handler for it, so this Job really does race the database accepting
+  # connections. Retrying beats failing the install. The OnFailure backoff doubles
+  # past Helm's default 5m hook timeout around retry 6, so a managed install wants
+  # a longer --timeout for the later retries to happen at all.
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-migrate
+    spec:
+      restartPolicy: OnFailure
+      # This Job sets no KEEPSAKE_PORT to shadow the injected one, so without this
+      # every upgrade's hook crash-loops. See keepsake.cli._env_port.
+      enableServiceLinks: false
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["keepsake", "migrate"]
+          env:
+            # The owner DSN. It creates the schema and grants okf_app the DML on it.
+            - name: KEEPSAKE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-dsn
+                  key: owner-dsn
+            - name: KEEPSAKE_SCHEMA
+              value: {{ .Values.postgres.schema | quote }}
