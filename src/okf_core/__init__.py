@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from okf_core.frontmatter import join, split
+from okf_core.links import extract_links
+from okf_core.validate import validate
+
+__all__ = ["Concept", "extract_links", "parse", "serialize", "validate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +41,7 @@ def parse(text: str, path: str) -> Concept:
         description=_promote(meta, "description"),
         body=body,
         frontmatter=meta,
+        links=extract_links(body),
     )
 
 
