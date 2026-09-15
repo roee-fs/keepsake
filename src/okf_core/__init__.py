@@ -41,7 +41,7 @@ def parse(text: str, path: str) -> Concept:
         description=_promote(meta, "description"),
         body=body,
         frontmatter=meta,
-        links=extract_links(body),
+        links=extract_links(body, path),
     )
 
 
