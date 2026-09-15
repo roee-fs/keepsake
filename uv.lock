@@ -493,6 +493,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "jsonschema" },
     { name = "mcp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "ruamel-yaml" },
@@ -514,6 +515,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
     { name = "mcp", specifier = ">=2.2.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.5" },
     { name = "ruamel-yaml", specifier = ">=0.19.1" },

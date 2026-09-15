@@ -27,7 +27,18 @@ round-trip guarantees.
   hard template-time requirement in `existing` mode.
 - **`_env_port` uses `str.isdigit()`**, which admits non-decimal digits that
   `int()` then rejects — in the function whose job is to not raise.
-  `isdecimal()` is the fix.
+  `isdecimal()` is the fix. `POOL_SIZE` parses the same way and shares the flaw,
+  though crashing at startup on a garbage pool size is the right outcome anyway.
+- **Revisions outlive their concept.** Deleting a row from `concept` leaves its
+  `concept_revision` rows behind, and re-creating that path then fails on
+  `(tenant_id, path, version)` — the version restarts at 1. No tool deletes, so
+  an agent cannot reach this today; a delete tool has to deal with it, either by
+  cascading or by continuing the version sequence.
+- **A failed store call is a protocol error, not a tool error.** When the
+  database is genuinely unreachable the agent sees `couldn't get a connection
+  after 30.00 sec` as a transport failure rather than something it can act on.
+  Readiness now takes the replica out of the Service first, so the window is
+  small, but a retryable tool error would be better still.
 
 ## Tests
 
@@ -71,7 +82,9 @@ These are documented where they bite and are not bugs to fix:
 - The four round-trip fidelity ceilings — see **Fidelity** in the README.
 - `grep` is a case-insensitive POSIX regex, not a literal match, bounded by a
   5s `statement_timeout`.
-- Store calls block the event loop; `anyio.to_thread` is the upgrade path.
+- Text sizes are capped so a write cannot fail inside Postgres: 256KiB of body,
+  4KiB of title or description, 1024 characters of path. `okf_search` and
+  `okf_grep` cap `limit` at 200, advertised in the schema.
 - `auth.mode` accepts only `none`. The `proxy` and `token` modes are on the
   roadmap and the schema refuses them until they exist.
 - One tenant per deployment, via `auth.fixedTenantId`.

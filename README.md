@@ -75,6 +75,10 @@ Byte-for-byte has four known exceptions, each pinned by a test:
 - [x] CLI: import, export, validate, migrate, serve
 - [x] Helm chart with managed and existing Postgres modes
 - [x] kind end-to-end suite
+- [x] Tool arguments validated against their advertised schemas, so a bad one is
+      something the agent can correct rather than a transport failure
+- [x] Concurrent writes served in parallel, with readiness that follows the
+      database rather than the bound port
 
 **Next**
 

@@ -96,15 +96,13 @@ def served(migrated: bool, pg_dsn: str) -> Iterator[str]:
 
 
 async def _seed(tools: Tools, path: str, **kw: Any) -> None:
-    await tools.create(path=path, type=kw.pop("type", "Concept"), **kw)
+    tools.create(path=path, type=kw.pop("type", "Concept"), **kw)
 
 
 @pytest.mark.asyncio
 async def test_create_rejects_a_concept_without_type(tools: Tools) -> None:
     with pytest.raises(ToolError, match="type is required"):
-        await tools.create(
-            path="a/b", type="", title="x", description="", body="", links=[]
-        )
+        tools.create(path="a/b", type="", title="x", description="", body="", links=[])
 
 
 @pytest.mark.asyncio
@@ -128,18 +126,18 @@ async def test_create_rejects_a_path_that_is_taken(tools: Tools) -> None:
 @pytest.mark.asyncio
 async def test_links_come_from_the_body_not_from_the_argument(tools: Tools) -> None:
     await _seed(tools, "a/b", body="see [y](/a/y.md)", links=["forged/edge"])
-    concept = await tools.read(path="a/b")
+    concept = tools.read(path="a/b")
     assert concept is not None
     assert concept["links"] == ["a/y"]
 
 
 @pytest.mark.asyncio
 async def test_update_conflict_returns_current_content(tools: Tools) -> None:
-    await tools.create(
+    tools.create(
         path="a/c", type="Concept", title="t", description="", body="v1", links=[]
     )
-    await tools.update(path="a/c", body="v2", expected_version=1)
-    result = await tools.update(path="a/c", body="v3", expected_version=1)
+    tools.update(path="a/c", body="v2", expected_version=1)
+    result = tools.update(path="a/c", body="v3", expected_version=1)
     assert result["conflict"] is True
     assert result["current_version"] == 2
     assert result["current_body"] == "v2"
@@ -155,8 +153,8 @@ async def test_update_keeps_the_fields_it_was_not_given(tools: Tools) -> None:
         body="v1",
         frontmatter={"owner": "sec"},
     )
-    await tools.update(path="a/b", body="v2")
-    concept = await tools.read(path="a/b")
+    tools.update(path="a/b", body="v2")
+    concept = tools.read(path="a/b")
     assert concept is not None
     assert (
         concept["title"],
@@ -177,8 +175,8 @@ async def test_a_null_frontmatter_is_refused_rather_than_erasing(tools: Tools) -
     """`null` is the likeliest way an agent says "leave it alone"; it must not wipe."""
     await _seed(tools, "a/b", body="v1", frontmatter={"owner": "sec"})
     with pytest.raises(ToolError, match="frontmatter must be an object"):
-        await tools.update(path="a/b", body="v2", frontmatter=None)
-    concept = await tools.read(path="a/b")
+        tools.update(path="a/b", body="v2", frontmatter=None)
+    concept = tools.read(path="a/b")
     assert concept is not None
     assert concept["frontmatter"] == {"owner": "sec"}
 
@@ -191,8 +189,8 @@ async def test_a_null_text_field_is_refused_rather_than_erasing(
     """`str(None)` stored the four characters `None` over what was there, and passed."""
     await _seed(tools, "a/b", title="T", description="D", body="v1")
     with pytest.raises(ToolError, match=f"{field} must be a string"):
-        await tools.update(path="a/b", **{field: None})
-    concept = await tools.read(path="a/b")
+        tools.update(path="a/b", **{field: None})
+    concept = tools.read(path="a/b")
     assert concept is not None
     assert (
         concept["body"],
@@ -215,9 +213,9 @@ async def test_update_of_another_tenants_path_is_indistinguishable_from_absent(
         uuid.uuid4(), Concept(path="a/b", type="Concept", body=SECRET), "seed"
     )
     with pytest.raises(ToolError) as taken:
-        await tools.update(path="a/b", body="mine")
+        tools.update(path="a/b", body="mine")
     with pytest.raises(ToolError) as absent:
-        await tools.update(path="nowhere/at/all", body="mine")
+        tools.update(path="nowhere/at/all", body="mine")
     assert SECRET not in str(taken.value)
     assert str(taken.value).replace("a/b", "X") == str(absent.value).replace(
         "nowhere/at/all", "X"
@@ -233,13 +231,13 @@ async def test_update_of_a_row_that_vanished_mid_write_is_not_found(
         concepts, "read", lambda t, path: Concept(path=path, type="Concept")
     )
     with pytest.raises(ToolError, match="^no concept at ghost/path$"):
-        await tools.update(path="ghost/path", body="x")
+        tools.update(path="ghost/path", body="x")
 
 
 @pytest.mark.asyncio
 async def test_search_returns_cards_and_never_a_body(tools: Tools) -> None:
     await _seed(tools, "detect/dormant", title="Dormant Rule", body=SECRET)
-    hits = await tools.search(query="dormant", limit=5)
+    hits = tools.search(query="dormant", limit=5)
     assert [h["path"] for h in hits] == ["detect/dormant"]
     assert SECRET not in json.dumps(hits)
 
@@ -248,14 +246,14 @@ async def test_search_returns_cards_and_never_a_body(tools: Tools) -> None:
 async def test_search_terms_are_ored_so_extra_terms_broaden(tools: Tools) -> None:
     await _seed(tools, "a/one", title="Dormant Rule")
     await _seed(tools, "a/two", title="Splunk Cursor")
-    hits = await tools.search(query="dormant splunk", limit=5)
+    hits = tools.search(query="dormant splunk", limit=5)
     assert {h["path"] for h in hits} == {"a/one", "a/two"}
 
 
 @pytest.mark.asyncio
 async def test_grep_returns_a_snippet_for_every_match(tools: Tools) -> None:
     await _seed(tools, "a/b", body=f"alpha {SECRET} omega")
-    assert await tools.grep(pattern="al.ha", limit=5) == [
+    assert tools.grep(pattern="al.ha", limit=5) == [
         {"path": "a/b", "snippet": f"alpha {SECRET} omega"}
     ]
 
@@ -264,22 +262,22 @@ async def test_grep_returns_a_snippet_for_every_match(tools: Tools) -> None:
 async def test_grep_reports_an_unusable_pattern_without_a_body(tools: Tools) -> None:
     await _seed(tools, "a/b", body=SECRET)
     with pytest.raises(ToolError) as exc:
-        await tools.grep(pattern="alpha(", limit=5)
+        tools.grep(pattern="alpha(", limit=5)
     assert SECRET not in str(exc.value)
 
 
 @pytest.mark.asyncio
 async def test_read_of_a_missing_path_is_none(tools: Tools) -> None:
-    assert await tools.read(path="nothing/here") is None
+    assert tools.read(path="nothing/here") is None
 
 
 @pytest.mark.asyncio
 async def test_relate_records_an_edge_both_ways(tools: Tools) -> None:
     await _seed(tools, "a/x", body="start")
     await _seed(tools, "b/y", body="target")
-    await tools.relate(from_path="a/x", to_path="b/y")
-    source = await tools.read(path="a/x")
-    target = await tools.read(path="b/y")
+    tools.relate(from_path="a/x", to_path="b/y")
+    source = tools.read(path="a/x")
+    target = tools.read(path="b/y")
     assert source is not None and target is not None
     assert source["links"] == ["b/y"]
     assert target["backlinks"] == ["a/x"]
@@ -289,7 +287,7 @@ async def test_relate_records_an_edge_both_ways(tools: Tools) -> None:
 async def test_relate_rejects_a_missing_source(tools: Tools) -> None:
     await _seed(tools, "b/y")
     with pytest.raises(ToolError, match="no concept at a/x"):
-        await tools.relate(from_path="a/x", to_path="b/y")
+        tools.relate(from_path="a/x", to_path="b/y")
 
 
 @pytest.mark.asyncio
@@ -297,7 +295,7 @@ async def test_list_returns_paths_and_counts_by_type(tools: Tools) -> None:
     await _seed(tools, "a/one")
     await _seed(tools, "a/two", type="Runbook")
     await _seed(tools, "b/three")
-    assert await tools.list_(prefix="a/") == {
+    assert tools.list_(prefix="a/") == {
         "paths": ["a/one", "a/two"],
         "counts": {"Concept": 1, "Runbook": 1},
     }
@@ -412,7 +410,11 @@ async def test_an_argument_of_the_wrong_shape_is_an_error_result(tools: Tools) -
             {"path": "a/b", "type": "Concept", "frontmatter": "owner: sec"},
         )
     assert result.is_error is True
-    assert "frontmatter must be an object" in result.content[0].text  # ty: ignore[unresolved-attribute]
+    # The advertised schema's own words, refused before dispatch. The message names the
+    # field and the type it wanted, which is what the agent has to act on.
+    message = result.content[0].text  # ty: ignore[unresolved-attribute]
+    assert "frontmatter" in message
+    assert "is not of type 'object'" in message
 
 
 def test_the_endpoint_answers_a_plain_json_post(served: str) -> None:
@@ -425,6 +427,17 @@ def test_the_endpoint_answers_a_plain_json_post(served: str) -> None:
     with urllib.request.urlopen(request, timeout=10) as response:
         advertised = json.loads(response.read())["result"]["tools"]
     assert {t["name"] for t in advertised} == TOOL_NAMES
+
+
+def test_readyz_reports_ready_while_the_pool_can_reach_the_database(
+    served: str,
+) -> None:
+    """The kubelet's readiness signal. It answers from the pool, not from the fact that
+    the port is bound, which is the whole reason it exists."""
+    readyz = served.removesuffix("/mcp") + "/readyz"
+    with urllib.request.urlopen(readyz, timeout=10) as response:
+        assert response.status == 200
+        assert json.loads(response.read()) == {"ready": True}
 
 
 @pytest.mark.usefixtures("migrated")
