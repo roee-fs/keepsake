@@ -1,0 +1,20 @@
+name: e2e
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  kind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # install_only: run.sh creates the cluster itself, from e2e/kind.yaml.
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - run: uv sync --locked
+      - run: bash e2e/run.sh
