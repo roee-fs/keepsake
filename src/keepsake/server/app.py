@@ -49,7 +49,8 @@ def build_app(config: Config) -> Starlette:
         # A session would pin an agent to one replica; several sit behind one Service.
         stateless_http=True,
         # The Host header is a cluster Service name, and no browser can reach the pod,
-        # so the localhost-only default would reject every real request.
+        # so the localhost-only default would reject every real request. Restore it when
+        # auth stops being `none`: this is a setting that outlives its justification.
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=False
         ),
