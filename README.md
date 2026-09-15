@@ -98,7 +98,19 @@ Pre-release. Nothing here is stable yet.
 
 - [`docs/design.md`](docs/design.md) — the specification
 - [`docs/plans/`](docs/plans/) — implementation plans
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, newest first
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the checks CI runs, and what
+a good change looks like. `uv sync && uv run pytest` is the whole loop; the tests
+bring up PostgreSQL in a container themselves.
+
+Found something touching tenant isolation? [`SECURITY.md`](SECURITY.md) — report
+it privately, not as an issue.
+
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).
