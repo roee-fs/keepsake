@@ -11,6 +11,16 @@ round-trip guarantees.
   SECURITY` no query the app role runs can reach the index. It costs write
   amplification and buys nothing. Needs a migration. Measured evidence and the
   reason `= ANY` beats `@>` here are in `docs/design.md`.
+- **Drop the GIN index on `search` too** — same root cause. `ts_match_vq` is not
+  leakproof, so under `FORCE ROW LEVEL SECURITY` the planner never promotes it to
+  an index condition and `okf_search` is always a sequential scan. Measured on
+  postgres 17 at 10,000 rows: Seq Scan, 1,250 buffers, 3.25ms as the app role,
+  against Bitmap Index Scan, 23 buffers, 0.16ms with `row_security = off`. A
+  composite `gin (tenant_id, search)` with `btree_gin` does **not** help: the
+  planner's security-level check is independent of index coverage. Keeping it
+  costs ~11% on writes (2000 inserts: 266ms with, 238ms without) plus disk.
+  Both indexes only return if the isolation model changes, so this is a
+  schema-and-spec decision, not a migration to write today.
 - **Revision retention.** Unimplemented, and `docs/design.md` notes the policy
   must be decided while `concept_revision` is still empty. It only gets harder.
 - **`docs/design.md`'s install-modes block omits `ownerDsn`**, which is now a
@@ -39,7 +49,6 @@ round-trip guarantees.
 
 - `_render_log` renders the *oldest* revisions, so `log.md` shows nothing recent
   on an active corpus.
-- `export_bundle` opens one transaction per concept.
 - No lifespan hook closes `app.state.store`; process exit covers it in a pod.
 - The chart sets no `resources`, `securityContext`, or PodDisruptionBudget
   despite `replicaCount: 2`.
