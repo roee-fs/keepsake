@@ -9,7 +9,9 @@ import uuid
 import psycopg
 import pytest
 
+from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
+from okf_core import Concept
 
 A, B = uuid.uuid4(), uuid.uuid4()
 
@@ -81,6 +83,35 @@ def test_scope_does_not_leak_across_pooled_connections(store: Store) -> None:
             assert c.execute("SELECT count(*) FROM okf.concept").fetchone() == (0,)
             scoped.add(id(c))
     _probe_until_a_scoped_connection_returns(store, scoped)
+
+
+def test_isolation_holds_for_every_read_shape(concepts: ConceptStore) -> None:
+    """A policy can be right for one query shape and wrong for another."""
+    concepts.create(
+        A,
+        Concept(
+            path="x/y",
+            type="Concept",
+            title="secret",
+            body="tenant a only",
+            links=("x/z",),
+        ),
+        "seed",
+    )
+    # The positive control: every B assertion below also holds if nothing was written.
+    assert concepts.read(A, "x/y") is not None
+    assert concepts.list_(A, "x/") == [("x/y", "Concept")]
+    assert [h.path for h in concepts.search(A, "secret", limit=10, prefix=None)] == [
+        "x/y"
+    ]
+    assert [p for p, _ in concepts.grep(A, "tenant a only", limit=10)] == ["x/y"]
+    assert concepts.backlinks(A, "x/z") == ["x/y"]
+
+    assert concepts.read(B, "x/y") is None
+    assert concepts.list_(B, "x/") == []
+    assert concepts.search(B, "secret", limit=10, prefix=None) == []
+    assert concepts.grep(B, "tenant a only", limit=10) == []
+    assert concepts.backlinks(B, "x/z") == []
 
 
 def test_unset_scope_raises_rather_than_returning_everything(store: Store) -> None:
