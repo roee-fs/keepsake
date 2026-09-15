@@ -68,6 +68,13 @@ def test_non_string_known_field_is_coerced():
     assert parse("---\ntype: 42\n---\nb\n", "p").type == "42"
 
 
+def test_a_known_field_left_empty_is_empty_not_the_word_none():
+    """`title:` with nothing after it is how a hand-written document says blank, and
+    YAML loads it as None."""
+    c = parse("---\ntype: Concept\ntitle:\ndescription:\n---\nb\n", "p")
+    assert (c.title, c.description) == ("", "")
+
+
 def test_empty_frontmatter_parses_to_an_empty_mapping():
     c = parse("---\n---\nThe spec sits beneath the convention.\n", "p")
     assert c.frontmatter == {}

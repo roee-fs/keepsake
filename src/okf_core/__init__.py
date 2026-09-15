@@ -33,9 +33,13 @@ class Concept:
 
 def _promote(meta: dict[str, Any], key: str) -> str:
     """Pop a known field. ruamel carries scalar style on str subclasses and str() on
-    a subclass returns a plain str, so only a non-string may be coerced."""
+    a subclass returns a plain str, so only a non-string may be coerced.
+
+    A key written with no value parses as None, which str() would store as the four
+    characters `None`.
+    """
     value = meta.pop(key, "")
-    return value if isinstance(value, str) else str(value)
+    return "" if value is None else value if isinstance(value, str) else str(value)
 
 
 def parse(text: str, path: str) -> Concept:
