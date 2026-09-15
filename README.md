@@ -11,7 +11,7 @@ exportable as a plain [Open Knowledge Format](https://github.com/GoogleCloudPlat
 ```
 agent ──MCP──> keepsake ──> Postgres (RLS)
                    │
-                   └── okf import / okf export ──> markdown bundle
+                   └── keepsake import / export ──> markdown bundle
 ```
 
 ## What it is
@@ -26,7 +26,7 @@ agent ──MCP──> keepsake ──> Postgres (RLS)
 - **A Helm chart.** Install with a managed CloudNativePG cluster, or point it at
   a Postgres you already run and it installs into its own schema.
 - **An OKF bundle on the way in and out.** The format is the interchange layer,
-  not the storage layer. `okf export` regenerates `index.md` and `log.md` at
+  not the storage layer. `keepsake export` regenerates `index.md` and `log.md` at
   export time; they are never stored, so nothing derived can drift.
 
 ## How it differs
@@ -49,7 +49,7 @@ connected as a superuser or as the schema owner, because both silently bypass
 RLS.
 
 **No lock-in.** MIT, no hosted tier, no registry, no required runtime. Your
-knowledge is markdown; `okf export` hands it back byte-for-byte.
+knowledge is markdown; `keepsake export` hands it back byte-for-byte.
 
 ## Roadmap
 
