@@ -7,3 +7,4 @@ tests/
 charts/
 **/__pycache__/
 .*_cache/
+harness/

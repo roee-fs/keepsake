@@ -1,0 +1,155 @@
+name: release
+
+# Tag-driven: `git tag v0.2.0 && git push --tags`. The tag is the only input, so
+# there is no way to publish something that is not in the history.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # The version in the tag has to be the version in the tree, or the chart ships an
+  # appVersion pointing at an image tag that was never built. Checked before
+  # anything is published, because a release is hard to take back.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+      - id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          tree=$(uv run python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$tag" != "$tree" ]; then
+            echo "tag $GITHUB_REF_NAME says $tag, pyproject says $tree" >&2
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+      - run: uv sync --locked
+      # Holds Chart.yaml's version and appVersion to pyproject's, and the community
+      # health files to their locations.
+      - run: uv run pytest tests/test_release_metadata.py -v
+      # A release with no changelog entry is a release nobody can read.
+      - run: |
+          set -euo pipefail
+          grep -q "^## ${GITHUB_REF_NAME#v}\b\|^## \[${GITHUB_REF_NAME#v}\]" CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## ${GITHUB_REF_NAME#v}' section" >&2
+            exit 1
+          }
+
+  image:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      # Provenance is an attestation: signed, and stored as one.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # arm64 as well as amd64. Graviton and Apple silicon are where a good share
+      # of clusters and every local `kind` on a Mac actually run, and a
+      # single-arch image leaves them with no image at all.
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/frontier-security/keepsake
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      # SLSA provenance for the image an operator runs in their cluster. Scorecard
+      # scores a bare signature at 8/10 and provenance at 10/10, and the reason is
+      # that a signature says who pushed it while provenance says what built it.
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ghcr.io/frontier-security/keepsake
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  chart:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: helm package charts/keepsake --version "${{ needs.check.outputs.version }}"
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GITHUB_TOKEN" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" --password-stdin
+          helm push "keepsake-${{ needs.check.outputs.version }}.tgz" \
+            oci://ghcr.io/frontier-security/charts
+
+  # Last, and only once the artefacts it points at exist. A GitHub Release that
+  # names an image nobody pushed is worse than no release.
+  release:
+    needs: [check, image, chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # From the source tree rather than the image: uv.lock is the exact resolved
+      # dependency set, which is what a consumer wants to diff.
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: keepsake-${{ needs.check.outputs.version }}.cdx.json
+          upload-artifact: false
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Install"
+            echo
+            echo '```bash'
+            echo "helm install keepsake oci://ghcr.io/frontier-security/charts/keepsake --version $VERSION"
+            echo '```'
+            echo
+            echo "Image: \`ghcr.io/frontier-security/keepsake:$VERSION\` (linux/amd64, linux/arm64),"
+            echo "with SLSA provenance attached. Verify it with:"
+            echo
+            echo '```bash'
+            echo "gh attestation verify oci://ghcr.io/frontier-security/keepsake:$VERSION --owner ${{ github.repository_owner }}"
+            echo '```'
+            echo
+            echo "See [CHANGELOG.md](CHANGELOG.md) for what changed."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            "keepsake-$VERSION.cdx.json"

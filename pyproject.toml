@@ -4,6 +4,13 @@ version = "0.1.0"
 description = "MCP server storing OKF concepts in Postgres with row-level tenant isolation"
 readme = "README.md"
 requires-python = ">=3.14"
+# license-files as well as license: without it the wheel carries the SPDX string but
+# not the terms, and a redistributor has to go back to the repository for them.
+license = "MIT"
+license-files = ["LICENSE"]
+urls.Homepage = "https://github.com/Frontier-Security/keepsake"
+urls.Source = "https://github.com/Frontier-Security/keepsake"
+urls.Issues = "https://github.com/Frontier-Security/keepsake/issues"
 dependencies = [
     "alembic>=1.20.0",
     "mcp>=2.2.0",

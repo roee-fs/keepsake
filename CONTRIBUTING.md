@@ -1,0 +1,109 @@
+# Contributing to keepsake
+
+Thanks for looking. This is a young project and the surface is small, so a
+change that fits is usually easy to land.
+
+## Getting set up
+
+You need [uv](https://docs.astral.sh/uv/) and Docker. Python 3.14 is a hard
+floor and uv will fetch it for you.
+
+```bash
+uv sync                 # the venv, including dev dependencies
+uv run pytest           # the whole suite
+```
+
+The tests bring up PostgreSQL in a container through
+[testcontainers](https://testcontainers.com/), so Docker has to be running.
+There is nothing to configure and no database to create by hand.
+
+## Before you open a pull request
+
+Run what CI runs:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check src tests e2e
+uv run lint-imports
+uv run pytest
+```
+
+`lint-imports` is not optional decoration. It enforces two contracts that the
+design depends on: `okf_core` never imports `keepsake`, because it is meant to
+be publishable on its own; and `keepsake.store` never imports the server or the
+CLI. If your change breaks one of those, the layering is usually the thing to
+reconsider rather than the contract.
+
+## The end-to-end suite
+
+`e2e/` stands up a kind cluster, installs the Helm chart against a real
+PostgreSQL and drives the deployed MCP server. CI runs it on every pull request;
+you can run it yourself with `bash e2e/run.sh`, which needs `kind`, `kubectl`
+and `helm`. It creates and deletes its own cluster and never touches your
+current kubectl context.
+
+`harness/` is a much wider version of the same idea — two install modes,
+concurrency, resilience, a real agent — and is deliberately **not** checked in.
+If you need it, ask; it is kept out of the repository because it is a working
+tool rather than a gate.
+
+## What a good change looks like
+
+- **`docs/design.md` is the authority.** It is the specification the code argues
+  from. If your change contradicts it, change the document in the same pull
+  request and say why — do not leave the two disagreeing.
+- **Tests assert behaviour, not structure.** A test that would pass against a
+  stub is not a test. If you are asserting that something is absent, assert on
+  the value rather than on the shape: `assert not hasattr(hit, "body")` passes
+  for free on a `slots=True` dataclass and proves nothing about the query.
+- **Comments explain why.** The code says what it does. A comment earns its line
+  by recording a constraint, a measurement, or the reason an obvious alternative
+  is wrong. There are a lot of those in this codebase and they are the most
+  expensive thing in it.
+- **Schema changes are migrations.** Never edit a migration that has shipped.
+  Add a new one, and remember that `helm upgrade` re-runs the hook against a
+  database already at head.
+- **Anything touching isolation needs a test that fails without it.** The tenant
+  boundary is the product. `tests/test_isolation.py` and `tests/test_verify.py`
+  are where those live.
+
+## Commits and pull requests
+
+Commit subjects are imperative and lower case — "add a readiness probe", not
+"Added readiness probe". Write a body when there is a fact the diff cannot show:
+a measurement, a rejected alternative, the reason a workaround exists.
+
+Keep a pull request to one change. A refactor and a fix in the same branch are
+two pull requests.
+
+## Cutting a release
+
+For maintainers. Everything is driven by the tag, so there is nothing to click.
+
+1. Set the version in **three** places, which must agree: `pyproject.toml`
+   `version`, and `Chart.yaml`'s `version` and `appVersion`.
+   `tests/test_release_metadata.py` enforces this and the release refuses
+   otherwise — `appVersion` is the image tag the chart pulls by default, so a
+   drift there is an install that fails on a tag nobody built.
+2. Rename `## Unreleased` in `CHANGELOG.md` to `## X.Y.Z`. The release checks for
+   that heading and stops without it.
+3. Merge, then `git tag vX.Y.Z && git push --tags`.
+
+The tag publishes, in order: the image to `ghcr.io/frontier-security/keepsake`
+for `linux/amd64` and `linux/arm64` with SLSA provenance, the chart to
+`oci://ghcr.io/frontier-security/charts`, and a GitHub Release carrying a
+CycloneDX SBOM. The release is created last, so it can never name an artefact
+that was not pushed.
+
+There is no rollback. To withdraw a release, publish a new patch version —
+deleting a tag leaves anyone who already pulled the image holding it.
+
+## Reporting bugs
+
+Open an issue with the template. For anything touching tenant isolation, read
+[SECURITY.md](SECURITY.md) first and report it privately instead.
+
+## Code of conduct
+
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
