@@ -54,14 +54,13 @@ exists; what remains needs either a decision or repository-admin rights.
   somewhere to go that is not the platform the conduct happened on. Add one when
   one exists, and only then: a harassment report that bounces is worse than no
   policy at all.
-- **The repository lives at `roee-fs/keepsake`, under a user account.**
-  `Frontier-Security/keepsake` still resolves, but only as a redirect, and the
-  `Frontier-Security` organization owns nothing here. That matters beyond
-  cosmetics: a GHCR namespace follows the repository owner, so the release now
-  derives `ghcr.io/<owner>/keepsake` rather than naming one, and refuses to
-  publish when the chart's default image disagrees with it. If the repo moves to
-  the organization, `charts/keepsake/values.yaml` is the one value to change and
-  the release will say so.
+- **Moving the repository is a release-breaking change.** A GHCR namespace
+  follows the repository owner, so a transfer silently makes a hardcoded one a
+  namespace the workflow's token cannot push to. The release derives
+  `ghcr.io/<owner>/keepsake` rather than naming it, and refuses to publish when
+  the chart's default image disagrees — so after a move,
+  `charts/keepsake/values.yaml` is the one value to change and a failed check
+  names it. This bit once already.
 - **Enable GitHub private vulnerability reporting** in Settings → Security.
   `SECURITY.md` and the issue-template chooser both link to the advisory form;
   until the setting is on, those links 404.
