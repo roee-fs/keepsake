@@ -190,6 +190,17 @@ def test_readiness_waits_for_the_bound_port_and_nothing_restarts_it() -> None:
     assert _env(deployment)["KEEPSAKE_PORT"]["value"] == str(port["containerPort"])
 
 
+def test_no_workload_takes_the_service_link_variables() -> None:
+    """The Service is named for the release, so kubelet injects KEEPSAKE_PORT as
+    `tcp://10.96.0.1:8000` into every pod in the namespace. The migration Job sets no
+    KEEPSAKE_PORT of its own to shadow it, so on upgrade — when the Service already
+    exists — its hook crash-loops on an unparseable port."""
+    docs = _render(MANAGED)
+    for kind in ("Deployment", "Job"):
+        spec = _only(docs, kind)["spec"]["template"]["spec"]
+        assert spec["enableServiceLinks"] is False, kind
+
+
 def test_the_bootstrap_password_is_escaped_into_the_sql() -> None:
     values = dict(MANAGED, **{"postgres.cluster.appPassword": "it's"})
     initdb = _only(_render(values), "Cluster")["spec"]["bootstrap"]["initdb"]

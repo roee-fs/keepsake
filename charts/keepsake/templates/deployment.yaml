@@ -15,6 +15,10 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      # The Service is named for the release, so kubelet injects KEEPSAKE_PORT as
+      # `tcp://10.96.0.1:8000` into every pod in the namespace. Nothing here reads a
+      # link variable, and the CLI cannot parse that one.
+      enableServiceLinks: false
       containers:
         - name: keepsake
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
