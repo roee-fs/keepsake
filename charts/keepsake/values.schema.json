@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "postgres": {
+      "type": "object",
+      "properties": {
+        "mode": {"enum": ["managed", "existing"]},
+        "schema": {"type": "string", "minLength": 1},
+        "dsn": {"type": "string"},
+        "ownerDsn": {"type": "string"}
+      },
+      "required": ["mode", "schema"],
+      "allOf": [{
+        "if": {"properties": {"mode": {"const": "existing"}}},
+        "then": {"properties": {"dsn": {"minLength": 1}}, "required": ["dsn"]}
+      }]
+    },
+    "auth": {
+      "type": "object",
+      "properties": {"mode": {"enum": ["none", "proxy", "token"]}},
+      "required": ["mode"]
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
+        "port": {"type": "integer"},
+        "nodePort": {"type": ["integer", "null"]}
+      },
+      "required": ["type", "port"]
+    }
+  },
+  "required": ["postgres", "auth", "service"]
+}

@@ -1,0 +1,36 @@
+image:
+  repository: ghcr.io/roee-fs/keepsake
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+replicaCount: 2
+
+service:
+  type: ClusterIP
+  port: 8000
+  nodePort: null # only honoured when type is NodePort or LoadBalancer
+
+auth:
+  mode: none # none | proxy | token
+  fixedTenantId: "00000000-0000-0000-0000-000000000001"
+
+postgres:
+  mode: managed # managed | existing
+  schema: okf
+
+  # existing mode. `dsn` is the server's, and it MUST NOT own the schema or the
+  # tables: the server verifies that at startup and refuses to serve otherwise.
+  dsn: "" # required when mode = existing
+  # The migration's DSN, which must own the schema. Left empty the migration runs
+  # as `dsn`, and the server then refuses to start. That failure is loud by design.
+  ownerDsn: ""
+
+  # managed mode. CloudNativePG bootstraps the database owned by okf_owner and
+  # creates okf_app, the unprivileged role the server connects as.
+  cluster:
+    instances: 1
+    storage: 1Gi
+    database: keepsake
+    # Development defaults. Both end up in the release, so override them for any
+    # install that matters, and keep them alphanumeric: they go into a URL.
+    ownerPassword: owner
+    appPassword: app
