@@ -221,6 +221,12 @@ class Tools:
         existing = self._c.read(self._t, path)
         if existing is None:
             raise ToolError(f"no concept at {path}")
+        return self._write(existing, path, expected_version, **kw)
+
+    def _write(
+        self, existing: Concept, path: str, expected_version: int | None, **kw: Any
+    ) -> dict[str, Any]:
+        """Write `kw` over the concept the caller already read."""
         # Off the advertised schema: a sixth field hand-listed here would be accepted
         # by the tool and then dropped on every partial write.
         merged = {f: getattr(existing, f) for f in _CONCEPT_FIELDS} | kw
@@ -269,9 +275,10 @@ class Tools:
         return {"paths": [p for p, _ in rows], "counts": counts}
 
     async def read(self, path: str) -> dict[str, Any] | None:
-        c = self._c.read(self._t, path)
-        if c is None:
+        found = self._c.read_with_backlinks(self._t, path)
+        if found is None:
             return None
+        c, backlinks = found
         return {
             "path": c.path,
             "type": c.type,
@@ -281,7 +288,7 @@ class Tools:
             "frontmatter": c.frontmatter,
             "version": c.version,
             "links": list(c.links),
-            "backlinks": self._c.backlinks(self._t, path),
+            "backlinks": backlinks,
         }
 
     async def relate(self, from_path: str, to_path: str) -> dict[str, Any]:
@@ -291,7 +298,7 @@ class Tools:
         # Rooted, not relative: a bare `to_path` would resolve against the source's
         # own directory and name a concept that does not exist.
         body = f"{source.body}\n\n[{to_path}](/{to_path}.md)\n"
-        return await self.update(from_path, expected_version=source.version, body=body)
+        return self._write(source, from_path, source.version, body=body)
 
 
 def _failed(message: str) -> types.CallToolResult:

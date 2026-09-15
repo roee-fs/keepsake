@@ -85,20 +85,17 @@ def _documents(root: Path, *, strict: bool = True) -> list[Concept]:
 
 
 def import_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
-    """Store every concept in the bundle. Returns how many were written."""
-    count = 0
-    for concept in _documents(root):
-        if concepts.create(tenant_id, concept, _ACTOR) is None:
-            # Last-write-wins: the bundle is the authority the operator is replaying,
-            # so there is no version to compare and no conflict to resolve.
-            try:
-                concepts.update(tenant_id, concept, _ACTOR, None)
-            except KeyError:
-                raise CliError(
-                    f"{concept.path} was removed while the bundle was importing"
-                ) from None
-        count += 1
-    return count
+    """Store every concept in the bundle. Returns how many were written.
+
+    One transaction, so the all-or-nothing `_documents` promises across parsing holds
+    across writing too.
+    """
+    try:
+        return concepts.import_many(tenant_id, _documents(root), _ACTOR)
+    except KeyError as exc:
+        raise CliError(
+            f"{exc.args[0]} was removed while the bundle was importing"
+        ) from None
 
 
 def _target(root: Path, path: str) -> Path:
@@ -120,22 +117,16 @@ def export_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
     """Write the corpus out as a bundle, index and log included."""
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    # Every path is checked before the first file is written: a bundle that is half
-    # written looks exactly like a complete one.
-    targets = [(p, _target(root, p)) for p, _ in concepts.list_(tenant_id, "")]
-    written: list[str] = []
-    for path, target in targets:
-        concept = concepts.read(tenant_id, path)
-        if concept is None:
-            continue
+    # One read for the whole corpus, not one per concept. Every path is checked before
+    # the first file is written: a bundle that is half written looks like a complete one.
+    targets = [(c, _target(root, c.path)) for c in concepts.read_all(tenant_id)]
+    for concept, target in targets:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(serialize(concept), encoding="utf-8")
-        written.append(path)
-    # From what reached the disk, not from the listing: the index MUST NOT link to a
-    # file that was never written.
-    (root / "index.md").write_text(_render_index(written), encoding="utf-8")
+    paths = [c.path for c, _ in targets]
+    (root / "index.md").write_text(_render_index(paths), encoding="utf-8")
     (root / "log.md").write_text(_render_log(concepts, tenant_id), encoding="utf-8")
-    return len(written)
+    return len(paths)
 
 
 def validate_bundle(root: Path) -> list[str]:
