@@ -202,7 +202,12 @@ class ConceptStore:
         """The paths whose outbound links name `path`."""
         with self._store.scope(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path FROM concept WHERE %s = ANY(links) ORDER BY path", (path,)
+                # Sequential within the tenant, and the GIN index on `links` cannot
+                # help: `links @> ARRAY[path]` is the only form the index serves, and
+                # arraycontains is not leakproof, so FORCE ROW LEVEL SECURITY keeps it
+                # out of the index condition. `= ANY` is the cheaper of two filters.
+                "SELECT path FROM concept WHERE %s = ANY(links) ORDER BY path",
+                (path,),
             ).fetchall()
         return [str(r[0]) for r in rows]
 
