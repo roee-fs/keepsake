@@ -236,6 +236,21 @@ def test_a_malformed_document_is_named_and_refuses_the_whole_import(
     assert concepts.read(tenant, "architecture/layers") is None
 
 
+def test_an_invalid_document_is_named_and_refuses_the_whole_import(
+    concepts: ConceptStore, tenant: uuid.UUID, tmp_path: Path
+) -> None:
+    """A typeless concept stored as type="" makes a later okf_update fail on a field
+    the agent never touched. `import` MUST NOT be the lenient path."""
+    src = _bundle(tmp_path)
+    (src / "architecture" / "zz-typeless.md").write_text(
+        "---\ntitle: No type\n---\nx\n"
+    )
+
+    with pytest.raises(CliError, match="zz-typeless.md: type is required"):
+        import_bundle(concepts, tenant, src)
+    assert concepts.read(tenant, "architecture/layers") is None
+
+
 def test_validate_reports_a_malformed_document_by_name(tmp_path: Path) -> None:
     src = _bundle(tmp_path)
     (src / "architecture" / "broken.md").write_text("---\ntype: [unclosed\n---\nx\n")

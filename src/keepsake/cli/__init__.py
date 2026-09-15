@@ -44,11 +44,12 @@ class CliError(RuntimeError):
     """An operator-facing failure. `main` prints it instead of a traceback."""
 
 
-def _documents(root: Path) -> list[Concept]:
+def _documents(root: Path, *, strict: bool = True) -> list[Concept]:
     """Every concept in the bundle, the generated files excluded.
 
     Parses the whole bundle before returning, so a malformed file refuses the
-    command rather than aborting it half-applied.
+    command rather than aborting it half-applied. `strict=False` returns invalid
+    concepts instead, for `validate` to report them all at once.
     """
     concepts = []
     for file in sorted(root.rglob("*.md")):
@@ -58,10 +59,15 @@ def _documents(root: Path) -> list[Concept]:
         try:
             # OKF is UTF-8. The default encoding is the locale's, and a container
             # with no LANG set reads ASCII.
-            concepts.append(parse(file.read_text(encoding="utf-8"), path))
+            concept = parse(file.read_text(encoding="utf-8"), path)
         except YAMLError as exc:
             # ruamel names the frontmatter it was handed, never the file it came from.
             raise CliError(f"{file}: {exc}") from None
+        # Storing an invalid concept is worse than refusing it: a later okf_update
+        # merges the stored empty type back in and fails on a field nobody touched.
+        if strict and (errors := validate(concept)):
+            raise CliError(f"{file}: {'; '.join(errors)}")
+        concepts.append(concept)
     return concepts
 
 
@@ -121,7 +127,7 @@ def export_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
 
 def validate_bundle(root: Path) -> list[str]:
     """Every rule the bundle breaks: per-concept errors plus links to nothing."""
-    concepts = _documents(root)
+    concepts = _documents(root, strict=False)
     known = {c.path for c in concepts}
     errors: list[str] = []
     for concept in concepts:
