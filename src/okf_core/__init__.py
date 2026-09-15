@@ -20,14 +20,21 @@ class Concept:
     version: int = 1
 
 
+def _promote(meta: dict[str, Any], key: str) -> str:
+    """Pop a known field. ruamel carries scalar style on str subclasses and str() on
+    a subclass returns a plain str, so only a non-string may be coerced."""
+    value = meta.pop(key, "")
+    return value if isinstance(value, str) else str(value)
+
+
 def parse(text: str, path: str) -> Concept:
     """Parse an OKF document. `frontmatter` keeps only the unknown fields."""
     meta, body = split(text)
     return Concept(
         path=path,
-        type=str(meta.pop("type", "")),
-        title=str(meta.pop("title", "")),
-        description=str(meta.pop("description", "")),
+        type=_promote(meta, "type"),
+        title=_promote(meta, "title"),
+        description=_promote(meta, "description"),
         body=body,
         frontmatter=meta,
     )
