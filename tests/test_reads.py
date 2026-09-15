@@ -1,0 +1,228 @@
+"""The four read paths an agent uses to find knowledge.
+
+`search` returns cards, never bodies: that is what keeps agent context small.
+"""
+
+import uuid
+
+import pytest
+
+from keepsake.store.concepts import ConceptStore
+from okf_core import Concept, extract_links
+
+_SEED = [
+    (
+        "detect/dormant",
+        "Dormant Rule Identification",
+        "Detection rules that have not fired in 90 days.",
+    ),
+    (
+        "auth/flow",
+        "OAuth2 Authorization Flow",
+        "Standardised on PKCE for client authentication.",
+    ),
+    (
+        "splunk/cursor",
+        "Splunk Position Cursor",
+        "The poller advances an index-time cursor. See [dormant](../detect/dormant.md).",
+    ),
+]
+
+
+@pytest.fixture
+def t() -> uuid.UUID:
+    """A tenant of its own per test: the database outlives the function-scoped store."""
+    return uuid.uuid4()
+
+
+def _seed(concepts: ConceptStore, t: uuid.UUID) -> None:
+    for path, title, body in _SEED:
+        concepts.create(
+            t,
+            Concept(
+                path=path,
+                type="Concept",
+                title=title,
+                body=body,
+                links=extract_links(body, path),
+            ),
+            "seed",
+        )
+
+
+def test_read_round_trips_a_created_concept(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    c = Concept(
+        path="a/b",
+        type="Concept",
+        title="T",
+        description="D",
+        body="B [x](../detect/dormant.md)",
+        frontmatter={"owner": "sec"},
+        links=("detect/dormant",),
+    )
+    concepts.create(t, c, "seed")
+    assert concepts.read(t, "a/b") == c
+
+
+def test_read_returns_none_for_an_unknown_path(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    assert concepts.read(t, "detect/nothing") is None
+
+
+def test_search_ors_terms_rather_than_anding(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    """AND semantics returned nothing for realistic queries. OR plus rank recovers them."""
+    _seed(concepts, t)
+    hits = concepts.search(t, "cursors stalling", limit=10, prefix=None)
+    assert [h.path for h in hits][:1] == ["splunk/cursor"]
+
+
+def test_search_ranks_more_matching_terms_higher(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    hits = concepts.search(t, "dormant detection rules", limit=10, prefix=None)
+    assert hits[0].path == "detect/dormant"
+
+
+def test_search_never_returns_a_body(concepts: ConceptStore, t: uuid.UUID) -> None:
+    _seed(concepts, t)
+    hit = concepts.search(t, "dormant", limit=1, prefix=None)[0]
+    assert not hasattr(hit, "body")
+    assert (hit.path, hit.type, hit.title) == (
+        "detect/dormant",
+        "Concept",
+        "Dormant Rule Identification",
+    )
+
+
+def test_search_respects_limit(concepts: ConceptStore, t: uuid.UUID) -> None:
+    _seed(concepts, t)
+    q = "cursor detection authentication"
+    assert len(concepts.search(t, q, limit=10, prefix=None)) == len(_SEED)
+    assert len(concepts.search(t, q, limit=2, prefix=None)) == 2
+    assert concepts.search(t, q, limit=0, prefix=None) == []
+
+
+def test_search_confines_hits_to_the_prefix(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    hits = concepts.search(
+        t, "cursor detection authentication", limit=10, prefix="detect/"
+    )
+    assert [h.path for h in hits] == ["detect/dormant"]
+
+
+# Both concepts mention "dormant"; the one carrying it in its title outranks the other.
+_DORMANT_HITS = ["detect/dormant", "splunk/cursor"]
+
+
+def test_search_is_case_insensitive(concepts: ConceptStore, t: uuid.UUID) -> None:
+    """A tokeniser restricted to lowercase would drop the query entirely."""
+    _seed(concepts, t)
+    hits = concepts.search(t, "DORMANT", limit=10, prefix=None)
+    assert [h.path for h in hits] == _DORMANT_HITS
+
+
+def test_search_treats_tsquery_syntax_as_text(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    """Untokenised caller text reaches to_tsquery as syntax and raises."""
+    assert concepts.search(t, "dormant | ) & !(", limit=10, prefix=None) == []
+    _seed(concepts, t)
+    hits = concepts.search(t, "dormant | ) & !(", limit=10, prefix=None)
+    assert [h.path for h in hits] == _DORMANT_HITS
+
+
+def test_search_of_a_termless_query_is_empty_not_invalid(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    assert concepts.search(t, "  !!!  ", limit=10, prefix=None) == []
+
+
+def test_grep_matches_a_regex_and_is_limited(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    assert [p for p, _ in concepts.grep(t, "index-time", limit=10)] == ["splunk/cursor"]
+    assert [p for p, _ in concepts.grep(t, "inde.-tim[ez]", limit=10)] == [
+        "splunk/cursor"
+    ]
+    assert len(concepts.grep(t, "[a-z]", limit=10)) == len(_SEED)
+    assert len(concepts.grep(t, "[a-z]", limit=2)) == 2
+    assert concepts.grep(t, "index-time", limit=0) == []
+
+
+def test_grep_matches_titles_as_well_as_bodies(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    assert [p for p, _ in concepts.grep(t, "OAuth2", limit=10)] == ["auth/flow"]
+    assert [p for p, _ in concepts.grep(t, "oauth2", limit=10)] == ["auth/flow"]
+
+
+def test_grep_snippet_carries_surrounding_context(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    """The match alone tells an agent nothing about relevance."""
+    _seed(concepts, t)
+    [(_, snippet)] = concepts.grep(t, "index-time", limit=10)
+    assert "poller advances an index-time cursor" in snippet
+
+
+def test_grep_snippet_is_bounded_and_single_line(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    """A snippet is a card, not a body. The match is early, so the tail must be cut."""
+    body = "needle here\n" + "\n".join(f"filler line {i}" for i in range(400))
+    concepts.create(
+        t, Concept(path="big/one", type="Concept", title="Big", body=body), "seed"
+    )
+    [(_, snippet)] = concepts.grep(t, "needle", limit=10)
+    assert "needle" in snippet
+    assert len(snippet) <= 200
+    assert "\n" not in snippet
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "index-time(",
+        # Postgres refuses to compile this one rather than scanning with it.
+        "((((((((((a{1,10}){1,10}){1,10}){1,10}){1,10}){1,10}){1,10}){1,10}){1,10}){1,10}",
+    ],
+)
+def test_grep_rejects_an_uncompilable_pattern(
+    concepts: ConceptStore, t: uuid.UUID, pattern: str
+) -> None:
+    _seed(concepts, t)
+    with pytest.raises(ValueError, match="regular expression"):
+        concepts.grep(t, pattern, limit=10)
+
+
+def test_backlinks_are_computed_not_stored(
+    concepts: ConceptStore, t: uuid.UUID
+) -> None:
+    _seed(concepts, t)
+    assert concepts.backlinks(t, "detect/dormant") == ["splunk/cursor"]
+    assert concepts.backlinks(t, "auth/flow") == []
+
+
+def test_list_returns_children_of_prefix(concepts: ConceptStore, t: uuid.UUID) -> None:
+    _seed(concepts, t)
+    assert concepts.list_(t, "detect/") == [("detect/dormant", "Concept")]
+    assert len(concepts.list_(t, "")) == len(_SEED)
+
+
+def test_list_treats_the_prefix_literally(concepts: ConceptStore, t: uuid.UUID) -> None:
+    """LIKE would read the underscore as a wildcard."""
+    for path in ("a_b/one", "axb/two"):
+        concepts.create(t, Concept(path=path, type="Concept"), "seed")
+    assert [p for p, _ in concepts.list_(t, "a_b/")] == ["a_b/one"]
