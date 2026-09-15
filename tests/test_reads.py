@@ -7,7 +7,9 @@ import uuid
 
 import pytest
 
+from keepsake.store import concepts as concepts_module
 from keepsake.store.concepts import ConceptStore
+from keepsake.store.pool import Store
 from okf_core import Concept, extract_links
 
 _SEED = [
@@ -207,6 +209,24 @@ def test_grep_rejects_an_uncompilable_pattern(
     _seed(concepts, t)
     with pytest.raises(ValueError, match="regular expression"):
         concepts.grep(t, pattern, limit=10)
+
+
+def test_grep_is_cancelled_rather_than_holding_the_pod(
+    store: Store, concepts: ConceptStore, t: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every store call blocks the pod's event loop, so an expensive pattern must be
+    the caller's problem and not every sibling agent's."""
+    with store.scope(t) as conn:
+        conn.execute(
+            "INSERT INTO concept (tenant_id, path, type, body) "
+            "SELECT %s, 'p/' || g, 'Concept', repeat('lorem ipsum dolor ', 100) "
+            "FROM generate_series(1, 2000) g",
+            (t,),
+        )
+    # The scan costs ~10ms, so 1ms cancels with an order of magnitude to spare.
+    monkeypatch.setattr(concepts_module, "_GREP_TIMEOUT_MS", 1)
+    with pytest.raises(ValueError, match="took longer than 1ms"):
+        concepts.grep(t, "(lorem|ipsum|dolor)+ z", limit=10)
 
 
 def test_backlinks_are_computed_not_stored(
