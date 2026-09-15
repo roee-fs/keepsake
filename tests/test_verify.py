@@ -16,6 +16,16 @@ from keepsake.store.verify import MisconfiguredDatabase, verify
 TABLE_OWNER_ROLE = "okf_tableowner"
 TABLE_OWNER_PASSWORD = "owns"
 OWNED_TABLE = "owned_elsewhere"
+MASKED_ROLE = "okf_masked"
+NOINHERIT_ROLE = "okf_noinherit"
+NOINHERIT_PASSWORD = "noinherit"
+
+# The migration's policy, restated so the tests that drop or rewrite it restore it.
+TENANT_QUAL = "tenant_id = current_setting('okf.current_tenant')::uuid"
+RESTORE_POLICY = (
+    f"CREATE POLICY tenant_isolation ON okf.concept "
+    f"USING ({TENANT_QUAL}) WITH CHECK ({TENANT_QUAL})"
+)
 
 
 def _verify(dsn: str, schema: str = "okf") -> None:
@@ -34,11 +44,54 @@ def _execute(dsn: str, *statements: str) -> None:
             conn.execute(statement)  # ty: ignore[no-matching-overload]
 
 
-@pytest.fixture
-def table_owner_dsn(migrated: bool, pg_dsn: str, admin_dsn: str) -> Iterator[str]:
-    """A role owning one table in the schema, but not the schema itself.
+def _decoy(name: str, columns: str, values: str) -> tuple[str, ...]:
+    """DDL for a table shadowing the catalog table `name`, itself passing every check."""
+    return (
+        f"CREATE TABLE okf.{name} ({columns}, tenant_id uuid)",
+        f"INSERT INTO okf.{name} VALUES ({values}, gen_random_uuid())",
+        f"ALTER TABLE okf.{name} ENABLE ROW LEVEL SECURITY",
+        f"ALTER TABLE okf.{name} FORCE ROW LEVEL SECURITY",
+        f"CREATE POLICY tenant_isolation ON okf.{name} USING ({TENANT_QUAL})",
+        f"GRANT SELECT ON okf.{name} TO okf_app",
+    )
 
-    Its table has RLS enabled and forced, so only the ownership branch can reject it.
+
+# One per catalog table the check reads: a superuser role, an okf schema the app role
+# owns, and an unprotected table in okf.
+DECOYS = (
+    (
+        "pg_roles",
+        "rolname name, rolsuper bool, rolbypassrls bool",
+        "'okf_app', true, true",
+    ),
+    ("pg_namespace", "nspname name, nspowner oid", "'okf', 'okf_app'::regrole::oid"),
+    (
+        "pg_class",
+        (
+            "oid oid, relname name, relrowsecurity bool, relforcerowsecurity bool, "
+            'relowner oid, relnamespace oid, relkind "char"'
+        ),
+        (
+            "0, 'evil', false, false, 'okf_app'::regrole::oid, "
+            "(SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'okf'), 'r'"
+        ),
+    ),
+)
+
+
+def _as_role(pg_dsn: str, role: str, password: str) -> str:
+    """Swap the app credentials in `pg_dsn` for another role's."""
+    return pg_dsn.replace("okf_app:app@", f"{role}:{password}@")
+
+
+@pytest.fixture(params=("the owner itself", "a NOINHERIT member of the owner"))
+def table_owner_dsn(
+    request: pytest.FixtureRequest, migrated: bool, pg_dsn: str, admin_dsn: str
+) -> Iterator[str]:
+    """A role that owns one table in the schema, but does not own the schema.
+
+    The table has RLS enabled and forced, so only the ownership branch can reject it.
+    The second case inherits nothing until it runs SET ROLE, which it may do at will.
     """
     _execute(
         admin_dsn,
@@ -50,7 +103,21 @@ def table_owner_dsn(migrated: bool, pg_dsn: str, admin_dsn: str) -> Iterator[str
         f"ALTER TABLE okf.{OWNED_TABLE} ENABLE ROW LEVEL SECURITY",
         f"ALTER TABLE okf.{OWNED_TABLE} FORCE ROW LEVEL SECURITY",
     )
-    yield pg_dsn.replace("okf_app:app@", f"{TABLE_OWNER_ROLE}:{TABLE_OWNER_PASSWORD}@")
+    if request.param == "the owner itself":
+        yield _as_role(pg_dsn, TABLE_OWNER_ROLE, TABLE_OWNER_PASSWORD)
+    else:
+        _execute(
+            admin_dsn,
+            f"CREATE ROLE {NOINHERIT_ROLE} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "
+            f"PASSWORD '{NOINHERIT_PASSWORD}'",
+            f"GRANT {TABLE_OWNER_ROLE} TO {NOINHERIT_ROLE}",
+        )
+        yield _as_role(pg_dsn, NOINHERIT_ROLE, NOINHERIT_PASSWORD)
+        _execute(
+            admin_dsn,
+            f"REVOKE {TABLE_OWNER_ROLE} FROM {NOINHERIT_ROLE}",
+            f"DROP ROLE {NOINHERIT_ROLE}",
+        )
     _execute(
         admin_dsn,
         f"DROP TABLE okf.{OWNED_TABLE}",
@@ -97,6 +164,105 @@ def test_rejects_a_table_owner(table_owner_dsn: str) -> None:
     """Owning a table in someone else's schema is its own way out of RLS."""
     with pytest.raises(MisconfiguredDatabase, match="owns okf.owned_elsewhere"):
         _verify(table_owner_dsn)
+
+
+def test_rejects_a_noinherit_member_of_the_schema_owner(
+    migrated: bool, pg_dsn: str, admin_dsn: str
+) -> None:
+    """A NOINHERIT member inherits nothing until it runs SET ROLE, and then it owns."""
+    _execute(
+        admin_dsn,
+        f"CREATE ROLE {NOINHERIT_ROLE} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "
+        f"PASSWORD '{NOINHERIT_PASSWORD}'",
+        f"GRANT okf_owner TO {NOINHERIT_ROLE}",
+    )
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="owns the schema"):
+            _verify(_as_role(pg_dsn, NOINHERIT_ROLE, NOINHERIT_PASSWORD))
+    finally:
+        _execute(
+            admin_dsn,
+            f"REVOKE okf_owner FROM {NOINHERIT_ROLE}",
+            f"DROP ROLE {NOINHERIT_ROLE}",
+        )
+
+
+def test_rejects_a_partitioned_table_without_rls(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """A partitioned parent is relkind 'p', and holds the policy for its partitions."""
+    _execute(
+        owner_dsn,
+        "CREATE TABLE okf.parted (tenant_id uuid NOT NULL) PARTITION BY RANGE (tenant_id)",
+    )
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="okf.parted has row-level"):
+            _verify(pg_dsn)
+    finally:
+        _execute(owner_dsn, "DROP TABLE okf.parted")
+
+
+def test_shadowing_tables_do_not_change_the_verdict(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """search_path lists pg_catalog after okf, so okf.pg_class wins an unqualified read.
+
+    Each decoy lies in the direction that would reject a correct database, and carries
+    RLS and a policy of its own so nothing but the shadowing can fail the check.
+    """
+    _execute(owner_dsn, *[s for decoy in DECOYS for s in _decoy(*decoy)])
+    try:
+        _verify(pg_dsn)
+    finally:
+        _execute(owner_dsn, *[f"DROP TABLE okf.{name}" for name, _, _ in DECOYS])
+
+
+def test_rejects_a_superuser_reached_by_set_role(
+    migrated: bool, pg_dsn: str, admin_dsn: str
+) -> None:
+    """pg_user omits NOLOGIN roles, so this one reads as absent there, not as super."""
+    _execute(
+        admin_dsn,
+        f"CREATE ROLE {MASKED_ROLE} SUPERUSER NOLOGIN",
+        f"GRANT {MASKED_ROLE} TO okf_app",
+    )
+    try:
+        with pytest.raises(
+            MisconfiguredDatabase, match="must not connect as a superuser"
+        ):
+            _verify(f"{pg_dsn}?options=-c%20role%3D{MASKED_ROLE}")
+    finally:
+        _execute(
+            admin_dsn,
+            f"REVOKE {MASKED_ROLE} FROM okf_app",
+            f"DROP ROLE {MASKED_ROLE}",
+        )
+
+
+def test_rejects_a_permissive_policy(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """USING (true) leaves RLS enabled and forced while serving every tenant's rows."""
+    _execute(owner_dsn, "ALTER POLICY tenant_isolation ON okf.concept USING (true)")
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="does not read okf.current"):
+            _verify(pg_dsn)
+    finally:
+        _execute(
+            owner_dsn,
+            f"ALTER POLICY tenant_isolation ON okf.concept USING ({TENANT_QUAL})",
+        )
+
+
+def test_rejects_a_table_with_no_policy(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    _execute(owner_dsn, "DROP POLICY tenant_isolation ON okf.concept")
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="no row-level security policy"):
+            _verify(pg_dsn)
+    finally:
+        _execute(owner_dsn, RESTORE_POLICY)
 
 
 def test_rejects_a_missing_schema(migrated: bool, pg_dsn: str) -> None:
