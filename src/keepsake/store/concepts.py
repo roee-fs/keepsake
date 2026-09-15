@@ -33,6 +33,10 @@ _WORD = re.compile(r"\w+")
 _SNIPPET_LEAD = 60
 _SNIPPET_LEN = 200
 
+# A caller-supplied regex drives an unindexed sequential scan on a thread the whole
+# pod shares, so one pathological pattern would otherwise stall every sibling agent.
+_GREP_TIMEOUT_MS = 5000
+
 # YAML loads an unquoted 2026-01-01 as a date, which json rejects. It survives as a
 # string, so a document with one no longer round-trips byte-identically.
 _dumps = partial(json.dumps, default=str)
@@ -238,16 +242,24 @@ class ConceptStore:
     def grep(self, tenant_id: UUID, pattern: str, limit: int) -> list[tuple[str, str]]:
         """`(path, snippet)` for every concept matching the POSIX regex `pattern`.
 
-        Raises ValueError if Postgres cannot compile the pattern.
+        Raises ValueError if Postgres cannot compile the pattern, or if matching it
+        exceeds the statement timeout.
         """
         if limit <= 0:
             return []
         try:
             with self._store.scope(tenant_id) as conn:
+                # SET LOCAL takes no parameter; the value is an int literal in this file.
+                conn.execute(f"SET LOCAL statement_timeout = {_GREP_TIMEOUT_MS}")
                 rows = conn.execute(_GREP, (pattern, limit)).fetchall()
         except psycopg.errors.InvalidRegularExpression as exc:
             # Postgres would otherwise surface a bare SQLSTATE to the agent.
             raise ValueError(f"unusable regular expression: {pattern!r}") from exc
+        except psycopg.errors.QueryCanceled as exc:
+            raise ValueError(
+                f"the regular expression took longer than {_GREP_TIMEOUT_MS}ms: "
+                f"{pattern!r}"
+            ) from exc
         return [(str(r[0]), str(r[1])) for r in rows]
 
     @staticmethod
