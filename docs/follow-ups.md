@@ -25,10 +25,9 @@ round-trip guarantees.
   must be decided while `concept_revision` is still empty. It only gets harder.
 - **`docs/design.md`'s install-modes block omits `ownerDsn`**, which is now a
   hard template-time requirement in `existing` mode.
-- **`_env_port` uses `str.isdigit()`**, which admits non-decimal digits that
-  `int()` then rejects — in the function whose job is to not raise.
-  `isdecimal()` is the fix. `POOL_SIZE` parses the same way and shares the flaw,
-  though crashing at startup on a garbage pool size is the right outcome anyway.
+- **`POOL_SIZE` parses with a bare `int()`**, so a garbage value is a traceback at
+  import rather than a message. Failing loudly on a bad pool size is the right
+  outcome; failing legibly would be better.
 - **Revisions outlive their concept.** Deleting a row from `concept` leaves its
   `concept_revision` rows behind, and re-creating that path then fails on
   `(tenant_id, path, version)` — the version restarts at 1. No tool deletes, so

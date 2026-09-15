@@ -52,7 +52,9 @@ def _env_port() -> int:
     by a subcommand that binds no port.
     """
     value = os.environ.get("KEEPSAKE_PORT", "")
-    return int(value) if value.isdigit() else _DEFAULT_PORT
+    # isdecimal, not isdigit: the latter admits superscripts and other non-decimal
+    # digits that int() then rejects — in the function whose job is to not raise.
+    return int(value) if value.isdecimal() else _DEFAULT_PORT
 
 
 class CliError(RuntimeError):
