@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -74,4 +76,23 @@ def build_app(config: Config) -> Starlette:
     # The pool outlives any one request, so the app owns it.
     app.state.store = store
     app.router.add_route("/readyz", _readyz, methods=["GET"])
+    # Process exit covers this in a pod, but not in a test or an embedding host, where
+    # a pool left open holds its connections until the interpreter goes.
+    # Wrapped rather than passed in: the MCP app builds its own lifespan, which runs
+    # the session manager, and replacing it would stop the server serving. Starlette
+    # 1.x dropped add_event_handler, so this is the seam.
+    inner = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def _lifespan(scope: Starlette) -> AsyncIterator[None]:
+        try:
+            async with inner(scope):
+                yield
+        finally:
+            # Process exit covers this in a pod, but not in a test or an embedding
+            # host, where a pool left open holds its connections until the
+            # interpreter goes.
+            store.close()
+
+    app.router.lifespan_context = _lifespan
     return app

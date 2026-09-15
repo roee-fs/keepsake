@@ -17,11 +17,26 @@ spec:
     spec:
       # Nothing here reads a Service link variable. See keepsake.cli._env_port.
       enableServiceLinks: false
+      # Spread across nodes where there is more than one: two replicas on one node
+      # share its fate, which is most of what the second replica was bought for.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: {{ .Release.Name }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: keepsake
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["keepsake", "serve"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
           env:
             # The app DSN. It MUST NOT be the owner DSN the migration Job runs with:
             # the server verifies its own privileges and refuses to serve otherwise.

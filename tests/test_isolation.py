@@ -121,3 +121,16 @@ def test_unset_scope_raises_rather_than_returning_everything(store: Store) -> No
         store.raw() as c,
     ):
         c.execute("SELECT count(*) FROM okf.concept").fetchone()
+
+
+def test_raw_is_read_only_and_not_merely_documented(store: Store) -> None:
+    """`raw()` is the one unscoped connection in the codebase, so a write through it
+    would reach every tenant's rows at once.
+
+    `SET TRANSACTION READ ONLY` outside a transaction block is a Postgres *warning*,
+    not an error — so a refactor that moved it could silently downgrade enforcement to
+    advisory with every other test still green. The statement is DDL, because a write
+    to `concept` is refused by the policy first and would fail either way.
+    """
+    with pytest.raises(psycopg.errors.ReadOnlySqlTransaction), store.raw() as c:
+        c.execute("CREATE TABLE okf.should_never_exist (x int)")

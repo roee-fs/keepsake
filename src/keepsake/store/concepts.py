@@ -194,15 +194,24 @@ class ConceptStore:
         return [_concept(row) for row in rows]
 
     def revisions(self, tenant_id: UUID, limit: int) -> list[Revision]:
-        """The revision log, oldest first. Bounded like every other read here."""
+        """The most recent `limit` revisions, returned oldest first.
+
+        The newest window, not the oldest: bounded at the wrong end, the log a bundle
+        carries showed the first entries ever written and nothing that had happened
+        since. Ordered ascending on the way out because that is how it renders.
+        """
         if limit <= 0:
             return []
         with self._store.scope(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
-                # A bulk import shares one clock reading, so created_at alone is not
-                # a total order.
-                "FROM concept_revision ORDER BY created_at, path, version LIMIT %s",
+                # A bulk import shares one clock reading, so created_at alone is not a
+                # total order; path and version break the tie the same way both ways.
+                "SELECT path, version, op, updated_by, created_at FROM ("
+                "  SELECT path, version, op, coalesce(updated_by, '') AS updated_by,"
+                "         created_at"
+                "  FROM concept_revision"
+                "  ORDER BY created_at DESC, path DESC, version DESC LIMIT %s"
+                ") recent ORDER BY created_at, path, version",
                 (limit,),
             ).fetchall()
         return [
