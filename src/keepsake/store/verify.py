@@ -36,9 +36,12 @@ _TABLES = """
     WHERE n.nspname = %s AND c.relkind IN ('r', 'p') AND c.relname <> %s
 """
 
+# Both expressions: USING alone leaves WITH CHECK (true) free to admit another
+# tenant's inserts, and an INSERT-only policy carries no USING at all.
 _POLICIES = """
     SELECT c.relname, p.polname,
-           coalesce(pg_catalog.pg_get_expr(p.polqual, p.polrelid), '')
+           pg_catalog.pg_get_expr(p.polqual, p.polrelid),
+           pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
     FROM pg_catalog.pg_policy p
     JOIN pg_catalog.pg_class c ON c.oid = p.polrelid
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -77,9 +80,12 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 "an owner bypasses row-level security"
             )
 
-        policies: defaultdict[str, list[tuple[str, str]]] = defaultdict(list)
-        for table, policy, qual in conn.execute(_POLICIES, (schema,)).fetchall():
-            policies[table].append((policy, qual))
+        policies: defaultdict[str, list[tuple[str, list[str]]]] = defaultdict(list)
+        for table, policy, qual, check in conn.execute(_POLICIES, (schema,)).fetchall():
+            # A null expression is one Postgres does not apply, not an empty one.
+            policies[table].append(
+                (policy, [e for e in (qual, check) if e is not None])
+            )
 
         for name, enabled, forced, owned in conn.execute(
             _TABLES, (schema, _EXEMPT)
@@ -102,9 +108,10 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                     f"{schema}.{name} has no row-level security policy"
                 )
             # Permissive policies are ORed, so one that ignores the GUC opens the table
-            # however strict its siblings are.
-            for policy, qual in policies[name]:
-                if _GUC not in qual:
+            # however strict its siblings are. Every expression it does apply must
+            # read the GUC: reads and writes are gated by different ones.
+            for policy, expressions in policies[name]:
+                if not expressions or any(_GUC not in e for e in expressions):
                     raise MisconfiguredDatabase(
                         f"{schema}.{name} policy {policy} does not read {_GUC}: "
                         "it does not restrict rows to one tenant"
