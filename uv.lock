@@ -496,6 +496,7 @@ dependencies = [
     { name = "mcp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "ruamel-yaml" },
+    { name = "sqlalchemy" },
     { name = "starlette" },
     { name = "uvicorn" },
 ]
@@ -516,6 +517,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.2.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.3.5" },
     { name = "ruamel-yaml", specifier = ">=0.19.1" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "starlette", specifier = ">=1.6.0" },
     { name = "uvicorn", specifier = ">=0.53.0" },
 ]

@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
 
-SCHEMA = "okf"
+from keepsake.store import SCHEMA
 
 
 def _url() -> str:

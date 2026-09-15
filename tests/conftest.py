@@ -97,16 +97,8 @@ def bypassrls_dsn(_pg: PostgresContainer, admin_dsn: str) -> str:
 
 @pytest.fixture(scope="session")
 def migrated(owner_dsn: str) -> bool:
-    """Runs the migration as the owner, then grants the app role DML and nothing else."""
+    """Runs the migration as the owner. The migration grants the app role itself."""
     cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
     cfg.set_main_option("sqlalchemy.url", owner_dsn)
     command.upgrade(cfg, "head")
-    with psycopg.connect(owner_dsn, autocommit=True) as conn:
-        conn.execute(f"GRANT USAGE ON SCHEMA okf TO {APP_ROLE}")
-        conn.execute(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA okf "
-            f"TO {APP_ROLE}"
-        )
-        # Alembic's bookkeeping is the owner's, not the application's.
-        conn.execute(f"REVOKE ALL ON okf.alembic_version FROM {APP_ROLE}")
     return True
