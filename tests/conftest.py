@@ -15,6 +15,7 @@ from alembic.config import Config
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
+from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
 
 OWNER_ROLE = "okf_owner"
@@ -112,3 +113,8 @@ def store(migrated: bool, pg_dsn: str) -> Iterator[Store]:
     store = Store(pg_dsn)
     yield store
     store.close()
+
+
+@pytest.fixture
+def concepts(store: Store) -> ConceptStore:
+    return ConceptStore(store)
