@@ -8,6 +8,7 @@ container, annotation or field it belongs to.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -177,15 +178,19 @@ def test_labels_derive_from_the_release_name() -> None:
     assert _dsn_secret_key(deployment, release="other") == "app-dsn"
 
 
-def test_readiness_waits_for_the_bound_port_and_nothing_restarts_it() -> None:
-    """`verify` runs before the port binds, so a bound port is the readiness signal.
+def test_readiness_asks_the_server_and_nothing_restarts_it() -> None:
+    """A bound port says the process started; /readyz says it can still serve. After a
+    database failover those differ for as long as the pool takes to rebuild, and a
+    replica that keeps its place in the Service meanwhile fails every request routed
+    to it.
 
     No liveness probe: a pod that is correctly refusing to start would be restarted
     by one, which turns a legible crash into restart noise.
     """
     deployment = _only(_render(MANAGED), "Deployment")
     container = _container(deployment)
-    assert container["readinessProbe"]["tcpSocket"]["port"] == "http"
+    probe = container["readinessProbe"]["httpGet"]
+    assert (probe["path"], probe["port"]) == ("/readyz", "http")
     assert "livenessProbe" not in container
     # The probe watches the port the server was told to bind, not the CLI's default.
     port = container["ports"][0]
@@ -207,3 +212,107 @@ def test_the_bootstrap_password_is_escaped_into_the_sql() -> None:
     assert initdb["postInitApplicationSQL"] == [
         "CREATE ROLE okf_app LOGIN PASSWORD 'it''s'"
     ]
+
+
+def test_both_workloads_run_unprivileged_with_a_stated_cost() -> None:
+    """A pod with no requests is BestEffort and is evicted first under node pressure;
+    one with no securityContext can write its own filesystem and escalate. Asserted for
+    the migration Job too, which runs with the *owner* DSN and is the one workload that
+    could change the schema.
+    """
+    docs = _render(MANAGED)
+    for kind in ("Deployment", "Job"):
+        container = _container(_only(docs, kind))
+        assert container["resources"]["requests"]["cpu"]
+        assert container["resources"]["requests"]["memory"]
+        assert container["securityContext"] == {
+            "allowPrivilegeEscalation": False,
+            "readOnlyRootFilesystem": True,
+            "capabilities": {"drop": ["ALL"]},
+        }
+        pod = _only(docs, kind)["spec"]["template"]["spec"]
+        assert pod["securityContext"]["runAsNonRoot"] is True
+
+
+def test_a_cpu_limit_is_not_set() -> None:
+    """Deliberate. A CPU limit throttles rather than kills, so a busy pod becomes a
+    slow one and its readiness probe starts flapping — which takes it out of the
+    Service for being busy."""
+    limits = _container(_only(_render(MANAGED), "Deployment"))["resources"]["limits"]
+    assert "cpu" not in limits
+    assert limits["memory"]
+
+
+def test_a_disruption_budget_guards_the_second_replica() -> None:
+    """A node drain can otherwise take both replicas at once, and the server is the
+    only way into the store."""
+    pdb = _only(_render(MANAGED), "PodDisruptionBudget")
+    assert pdb["spec"]["minAvailable"] == 1
+    assert pdb["spec"]["selector"]["matchLabels"] == {"app": "keepsake"}
+
+
+def test_no_disruption_budget_is_rendered_for_a_single_replica() -> None:
+    """minAvailable: 1 over one replica blocks the drain outright rather than
+    protecting anything."""
+    docs = _render(MANAGED | {"replicaCount": "1"})
+    assert not [d for d in docs if d["kind"] == "PodDisruptionBudget"]
+
+
+def test_the_replicas_are_spread_across_nodes_where_there_are_any() -> None:
+    """Two replicas on one node share its fate, which is most of what the second was
+    bought for. ScheduleAnyway, not DoNotSchedule: a single-node cluster must still be
+    able to run both."""
+    spread = _only(_render(MANAGED), "Deployment")["spec"]["template"]["spec"][
+        "topologySpreadConstraints"
+    ]
+    assert spread[0]["topologyKey"] == "kubernetes.io/hostname"
+    assert spread[0]["whenUnsatisfiable"] == "ScheduleAnyway"
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("auth.fixedTenantId", "not-a-uuid"),
+        ("postgres.schema", "okf; DROP TABLE concept"),
+        ("postgres.poolSize", "0"),
+        ("replicaCount", "0"),
+    ],
+)
+def test_an_unusable_value_is_refused_at_template_time(key: str, value: str) -> None:
+    """Each of these otherwise renders happily and fails at container start, after the
+    pods have already rolled — or, for the schema name, reaches DDL."""
+    result = subprocess.run(
+        ["helm", "template", "keepsake", str(CHART), "--set", f"{key}={value}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0, f"{key}={value} rendered without complaint"
+    assert key.split(".")[-1] in result.stderr
+
+
+def test_no_defaulted_value_is_required_by_the_schema() -> None:
+    """`helm upgrade --reuse-values` renders against the PREVIOUS release's computed
+    values, which cannot contain a key this chart version introduced. So a newly
+    required key fails every in-place upgrade, on the exact release that adds it —
+    which is how `resources` broke the harness the first time it shipped.
+
+    Requiring a defaulted key buys nothing anyway: the default always supplies it.
+    `dsn` and `ownerDsn` are the exception and are required conditionally, because
+    they have no usable default.
+    """
+    schema = json.loads((CHART / "values.schema.json").read_text())
+    defaults = YAML(typ="safe").load((CHART / "values.yaml").read_text())
+
+    assert not set(schema.get("required", [])) & set(defaults), (
+        "a top-level key with a default is marked required"
+    )
+    for name, block in schema["properties"].items():
+        section = defaults.get(name)
+        if not isinstance(section, dict):
+            continue
+        clash = set(block.get("required", [])) & set(section)
+        assert not clash, (
+            f"{name}: {sorted(clash)} have defaults and are required, which breaks "
+            f"--reuse-values on the release that adds them"
+        )

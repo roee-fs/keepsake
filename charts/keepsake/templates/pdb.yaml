@@ -1,0 +1,16 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+# Without this a node drain can take both replicas at once, and the server is the
+# only way into the store. Only rendered above one replica: a PDB with
+# minAvailable: 1 over a single replica blocks the drain outright.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+{{- end }}

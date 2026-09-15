@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from okf_core import Concept, parse, serialize
 
 DOC = """---
@@ -89,6 +91,16 @@ def test_crlf_document_normalises_to_lf():
     """LF is OKF's canonical line ending. Asserting the whole document, not just
     the frontmatter, is what catches a body that kept its CRLF endings."""
     assert serialize(parse(CRLF, "p")) == CRLF_AS_LF
+
+
+def test_concurrent_round_trips_do_not_share_emitter_state():
+    """A ruamel instance reuses its parser and emitter across calls, so one shared
+    between threads interleaves mid-document. The store's blocking calls are headed
+    for a thread pool, which is what makes this reachable."""
+    expected = serialize(parse(DOC, "architecture/layers"))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rendered = list(pool.map(lambda _: serialize(parse(DOC, "a/b")), range(400)))
+    assert rendered == [expected] * 400
 
 
 def test_plain_python_frontmatter_emits_leaf_lists_in_flow_style():

@@ -1,20 +1,39 @@
 name: CI
 
+# `pull_request` alone for branches: `push` as well ran every branch twice, once
+# per event, for the same commit. Pushes to main still run, because that is the
+# only place the branch check happens after a merge.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A public repo: the default token is read-write unless it is narrowed here, and a
+# workflow that only reads its own source needs nothing else.
+permissions:
+  contents: read
+
+# Supersede an in-flight run when the same branch is pushed again. Never for main —
+# cancelling there loses the only run that gates a merged commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      # Pinned to SHAs, not tags: a tag is mutable, and these actions run with the
+      # repository checked out. The comment carries the human-readable version.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run ty check src tests
+      # e2e/ too: it is Python that ships in this repo and CI runs it.
+      - run: uv run ty check src tests e2e
       - run: uv run lint-imports
       - run: uv run pytest -v

@@ -18,3 +18,18 @@ SCHEMA = validated_schema(os.environ.get("KEEPSAKE_SCHEMA", "okf"))
 # The one GUC a policy may key on. The policy, the connection that sets it and the
 # startup check that asserts the policy reads it must all name the same one.
 TENANT_GUC = "okf.current_tenant"
+
+
+def _pool_size() -> int:
+    """Refuse a bad value with a sentence rather than a traceback out of int()."""
+    value = os.environ.get("KEEPSAKE_POOL_SIZE") or "10"
+    if not value.isdecimal() or int(value) < 1:
+        raise ValueError(f"KEEPSAKE_POOL_SIZE must be a positive integer: {value!r}")
+    return int(value)
+
+
+# Connections per pod, and so the server's concurrency: the tool bodies block on
+# psycopg, and the worker threads running them are bounded by this same number, so a
+# thread never waits on a connection that cannot exist. Multiply by replicaCount
+# before raising it — the budget being spent is the database's backends.
+POOL_SIZE = _pool_size()

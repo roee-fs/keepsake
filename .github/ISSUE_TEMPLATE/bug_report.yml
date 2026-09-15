@@ -1,0 +1,70 @@
+name: Bug report
+description: Something keepsake does that it should not, or does not do that it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If this touches tenant isolation, stop and read
+        [SECURITY.md](https://github.com/roee-fs/keepsake/blob/main/SECURITY.md)**
+        — report it privately instead.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - An MCP tool (okf_read, okf_create, …)
+        - The CLI (import, export, validate, migrate, serve)
+        - The Helm chart or the install
+        - Something else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Install mode
+      description: Which database the chart is pointed at.
+      options:
+        - "postgres.mode=managed (CloudNativePG)"
+        - "postgres.mode=existing (a database I already run)"
+        - Not installed through the chart
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: keepsake, PostgreSQL, and Kubernetes if the chart is involved.
+      placeholder: "keepsake 0.1.0, PostgreSQL 17.5, Kubernetes 1.31"
+    validations:
+      required: true
+
+  - type: textarea
+    id: values
+    attributes:
+      label: Chart values
+      description: >
+        The values you installed with, secrets removed. Skip if you are not using
+        the chart.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        `kubectl logs` from the server pod, or the CLI's output. **Redact concept
+        bodies** — they are your knowledge, not ours.
+      render: shell

@@ -1,0 +1,49 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, because a dependency becomes vulnerable without anyone touching
+    # this repository — a pull-request trigger alone would never notice.
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      # The one write scope here, and only on this job: CodeQL uploads its
+      # findings to the Security tab rather than printing them.
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+        with:
+          languages: python
+          # The default suite skips checks it considers noisy. This is a
+          # multi-tenant isolation boundary; we would rather triage the noise.
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca # v3
+
+  osv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # uv.lock is committed, so this reads the exact resolved tree rather than
+      # the ranges in pyproject.toml. Clean as of this commit, so failing the job
+      # on a finding costs nothing today and is the point of having it.
+      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        with:
+          scan-args: |-
+            --lockfile=uv.lock
