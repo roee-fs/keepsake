@@ -9,6 +9,7 @@ non-default KEEPSAKE_SCHEMA.
 import json
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -47,6 +48,17 @@ class Conflict:
 
     current_version: int
     current_body: str
+
+
+@dataclass(frozen=True, slots=True)
+class Revision:
+    """One entry in the revision log. Carries no snapshot: that holds the body."""
+
+    path: str
+    version: int
+    op: str
+    updated_by: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +177,22 @@ class ConceptStore:
             links=tuple(row[6]),
             version=int(row[7]),
         )
+
+    def revisions(self, tenant_id: UUID, limit: int) -> list[Revision]:
+        """The revision log, oldest first. Bounded like every other read here."""
+        if limit <= 0:
+            return []
+        with self._store.scope(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
+                # A bulk import shares one clock reading, so created_at alone is not
+                # a total order.
+                "FROM concept_revision ORDER BY created_at, path, version LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return [
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+        ]
 
     def backlinks(self, tenant_id: UUID, path: str) -> list[str]:
         """The paths whose outbound links name `path`."""
