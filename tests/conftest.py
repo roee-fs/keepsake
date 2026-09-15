@@ -1,7 +1,8 @@
 """Database fixtures. The point of them is that `pg_dsn` is not privileged.
 
-Postgres exempts superusers and table owners from row-level security, so tests
-that connect as either would prove nothing about tenant isolation.
+Postgres exempts superusers, BYPASSRLS roles and table owners from row-level
+security, so tests connecting as any of those would prove nothing about tenant
+isolation. `pg_dsn` checks itself, so the check cannot be skipped.
 """
 
 from collections.abc import Iterator
@@ -15,17 +16,21 @@ OWNER_ROLE = "okf_owner"
 OWNER_PASSWORD = "owner"
 APP_ROLE = "okf_app"
 APP_PASSWORD = "app"
+BYPASSRLS_ROLE = "okf_bypassrls"
+BYPASSRLS_PASSWORD = "bypassrls"
 
 
 def assert_role_unprivileged(dsn: str) -> None:
-    """Raise AssertionError if `dsn` logs in as a superuser."""
+    """Raise AssertionError if `dsn` logs in as a role exempt from RLS."""
     with psycopg.connect(dsn) as conn:
         row = conn.execute(
-            "SELECT usename, usesuper FROM pg_user WHERE usename = current_user"
+            "SELECT usename, usesuper, usebypassrls "
+            "FROM pg_user WHERE usename = current_user"
         ).fetchone()
     assert row is not None, "connected role is missing from pg_user"
     # The DSN carries a password, so name the role instead.
     assert row[1] is False, f"role {row[0]!r} is a superuser; RLS would not apply"
+    assert row[2] is False, f"role {row[0]!r} has BYPASSRLS; RLS would not apply"
 
 
 def _dsn(pg: PostgresContainer, user: str, password: str) -> str:
@@ -69,10 +74,19 @@ def owner_dsn(_pg: PostgresContainer, admin_dsn: str) -> str:
 def pg_dsn(_pg: PostgresContainer, owner_dsn: str) -> str:
     """The unprivileged role the application uses. RLS only applies to this one."""
     _ = owner_dsn  # Creates both roles.
-    return _dsn(_pg, APP_ROLE, APP_PASSWORD)
+    dsn = _dsn(_pg, APP_ROLE, APP_PASSWORD)
+    # Enforced here so no test can take the DSN without the check.
+    assert_role_unprivileged(dsn)
+    return dsn
 
 
-@pytest.fixture
-def assert_not_privileged(pg_dsn: str) -> None:
-    """Guards the guard: a fixture regression must fail loudly, not silently."""
-    assert_role_unprivileged(pg_dsn)
+@pytest.fixture(scope="session")
+def bypassrls_dsn(_pg: PostgresContainer, admin_dsn: str) -> str:
+    """A non-superuser that is still exempt from RLS. Only the guard test uses it."""
+    with psycopg.connect(admin_dsn, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER BYPASSRLS PASSWORD {}").format(
+                sql.Identifier(BYPASSRLS_ROLE), sql.Literal(BYPASSRLS_PASSWORD)
+            )
+        )
+    return _dsn(_pg, BYPASSRLS_ROLE, BYPASSRLS_PASSWORD)
