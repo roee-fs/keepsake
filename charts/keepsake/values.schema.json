@@ -13,12 +13,15 @@
       "required": ["mode", "schema"],
       "allOf": [{
         "if": {"properties": {"mode": {"const": "existing"}}},
-        "then": {"properties": {"dsn": {"minLength": 1}}, "required": ["dsn"]}
+        "then": {
+          "properties": {"dsn": {"minLength": 1}, "ownerDsn": {"minLength": 1}},
+          "required": ["dsn", "ownerDsn"]
+        }
       }]
     },
     "auth": {
       "type": "object",
-      "properties": {"mode": {"enum": ["none", "proxy", "token"]}},
+      "properties": {"mode": {"enum": ["none"]}},
       "required": ["mode"]
     },
     "service": {

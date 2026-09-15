@@ -39,6 +39,9 @@ TOOL_NAMES = {
 # schema, so it cannot touch the schema the good release serves from.
 BAD = "keepsake-bad"
 BAD_SCHEMA = "okf_bad"
+# Named for both roles, deliberately the same superuser: the chart requires an owner
+# DSN in existing mode, and giving it the app's is what makes the server privileged.
+BAD_DSN = "postgres://postgres:postgres@postgres:5432/keepsake"
 
 
 def _run(args: Sequence[str], timeout: float = 300) -> str:
@@ -208,7 +211,9 @@ def test_a_privileged_app_role_crash_loops_the_pod() -> None:
             "--set",
             "postgres.mode=existing",
             "--set",
-            "postgres.dsn=postgres://postgres:postgres@postgres:5432/keepsake",
+            f"postgres.dsn={BAD_DSN}",
+            "--set",
+            f"postgres.ownerDsn={BAD_DSN}",
             "--set",
             f"postgres.schema={BAD_SCHEMA}",
             # One pod to read logs from, and no claim on the good release's nodePort.
