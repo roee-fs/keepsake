@@ -74,10 +74,14 @@ def test_empty_frontmatter_parses_to_an_empty_mapping():
     assert c.body == "The spec sits beneath the convention.\n"
 
 
-def test_crlf_document_is_fenced_not_treated_as_bare_body():
-    c = parse("---\r\ntype: Concept\r\ntitle: T\r\n---\r\nBody.\r\n", "p")
-    assert c.type == "Concept"
-    assert c.body == "Body.\r\n"
+CRLF = "---\r\ntype: Concept\r\ntitle: T\r\n---\r\nBody.\r\n"
+CRLF_AS_LF = "---\ntype: Concept\ntitle: T\n---\nBody.\n"
+
+
+def test_crlf_document_normalises_to_lf():
+    """LF is OKF's canonical line ending. Asserting the whole document, not just
+    the frontmatter, is what catches a body that kept its CRLF endings."""
+    assert serialize(parse(CRLF, "p")) == CRLF_AS_LF
 
 
 def test_plain_python_frontmatter_emits_leaf_lists_in_flow_style():
