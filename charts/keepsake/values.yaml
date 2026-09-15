@@ -1,0 +1,40 @@
+image:
+  repository: ghcr.io/frontier-security/keepsake
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+replicaCount: 2
+
+service:
+  type: ClusterIP
+  port: 8000
+  nodePort: null # only honoured when type is NodePort or LoadBalancer
+
+auth:
+  mode: none # the only mode implemented; proxy and token are not built yet
+  fixedTenantId: "00000000-0000-0000-0000-000000000001"
+
+postgres:
+  mode: managed # managed | existing
+  schema: okf
+
+  # existing mode. `dsn` is the server's, and it MUST NOT own the schema or the
+  # tables: the server verifies that at startup and refuses to serve otherwise.
+  dsn: "" # required when mode = existing
+  # The migration's DSN, which must own the schema. Required, because running the
+  # migration as `dsn` creates the schema and tables OWNED BY THAT ROLE, which the
+  # server then refuses to connect as, for good: setting ownerDsn afterwards does
+  # not repair it, because the owner role holds nothing on a schema it does not own.
+  # Recovering means ALTER ... OWNER surgery or recreating the database.
+  ownerDsn: "" # required when mode = existing
+
+  # managed mode. CloudNativePG bootstraps the database owned by okf_owner and
+  # creates okf_app, the unprivileged role the server connects as.
+  cluster:
+    instances: 1
+    storage: 1Gi
+    database: keepsake
+    # Development defaults. Both end up in the release, and appPassword also lands
+    # in the Cluster spec. Override them for any install that matters, and keep
+    # them alphanumeric: they are interpolated into a URL, which does not escape.
+    ownerPassword: owner
+    appPassword: app

@@ -1,0 +1,49 @@
+{{- $port := 8000 -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      # Nothing here reads a Service link variable. See keepsake.cli._env_port.
+      enableServiceLinks: false
+      containers:
+        - name: keepsake
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["keepsake", "serve"]
+          env:
+            # The app DSN. It MUST NOT be the owner DSN the migration Job runs with:
+            # the server verifies its own privileges and refuses to serve otherwise.
+            - name: KEEPSAKE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-dsn
+                  key: app-dsn
+            - name: KEEPSAKE_TENANT_ID
+              value: {{ .Values.auth.fixedTenantId | quote }}
+            - name: KEEPSAKE_SCHEMA
+              value: {{ .Values.postgres.schema | quote }}
+            # Set, not left to the CLI's default: the port below and the readiness
+            # probe would otherwise depend on that default never moving.
+            - name: KEEPSAKE_PORT
+              value: {{ $port | quote }}
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+          # The port binds only once the startup check has passed, so a bound port
+          # is the readiness signal. No liveness probe: a pod refusing to start is
+          # already crash-looping, and restarting it would only bury the reason.
+          readinessProbe:
+            tcpSocket:
+              port: http

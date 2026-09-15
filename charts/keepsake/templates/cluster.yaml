@@ -1,0 +1,34 @@
+{{- if eq .Values.postgres.mode "managed" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Release.Name }}-db
+  labels:
+    app: {{ .Release.Name }}-db
+  annotations:
+    # A hook, so the database exists before the migration hook (weight -5) runs.
+    # Install only, so that an upgrade leaves the cluster alone. The delete policy
+    # covers the other case: reinstalling a release name whose cluster outlived it
+    # (hooks are not tracked in the release, so uninstall leaves this one behind)
+    # replaces it, and the data in it is gone.
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  instances: {{ .Values.postgres.cluster.instances }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.cluster.database }}
+      owner: okf_owner
+      secret:
+        name: {{ .Release.Name }}-db-owner
+      # At bootstrap rather than through managed roles, which reconcile after the
+      # cluster reports ready: the migration's grant to okf_app is guarded by a
+      # pg_roles check, so a role created too late means no grant and no failure.
+      # The cost is that the password sits here in plaintext as well as in the
+      # Secret; a managed role with a passwordSecret is the fix when that matters.
+      postInitApplicationSQL:
+        - CREATE ROLE okf_app LOGIN PASSWORD '{{ .Values.postgres.cluster.appPassword | replace "'" "''" }}'
+  storage:
+    size: {{ .Values.postgres.cluster.storage }}
+{{- end }}
