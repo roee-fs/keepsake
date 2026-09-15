@@ -1,0 +1,29 @@
+{{- if eq .Values.postgres.mode "managed" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Release.Name }}-db
+  labels:
+    app: {{ .Release.Name }}-db
+  annotations:
+    # A hook, so the database exists before the migration hook (weight -5) runs.
+    # Install only: on upgrade the cluster is left alone rather than recreated.
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  instances: {{ .Values.postgres.cluster.instances }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.cluster.database }}
+      owner: okf_owner
+      secret:
+        name: {{ .Release.Name }}-db-owner
+      # At bootstrap rather than through managed roles, which reconcile after the
+      # cluster reports ready: the migration's grant to okf_app is guarded by a
+      # pg_roles check, so a role created too late means no grant and no failure.
+      postInitApplicationSQL:
+        - CREATE ROLE okf_app LOGIN PASSWORD '{{ .Values.postgres.cluster.appPassword }}'
+  storage:
+    size: {{ .Values.postgres.cluster.storage }}
+{{- end }}

@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels:
+    app: {{ .Release.Name }}-migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  # Managed mode creates the cluster in the hook before this one, which may not be
+  # accepting connections yet. Retrying beats failing the install.
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-migrate
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["keepsake", "migrate"]
+          env:
+            # The owner DSN. It creates the schema and grants okf_app the DML on it.
+            - name: KEEPSAKE_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-dsn
+                  key: owner-dsn
+            - name: KEEPSAKE_SCHEMA
+              value: {{ .Values.postgres.schema | quote }}
