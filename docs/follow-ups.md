@@ -1,84 +1,49 @@
 # Follow-ups
 
-Known debt carried out of the v1 build, triaged by the whole-branch review as
-acceptable to ship. Nothing here is a correctness defect in the isolation or
-round-trip guarantees.
+Known debt carried out of the v1 build. Nothing here is a correctness defect in
+the isolation or round-trip guarantees.
 
-## Worth doing first
+## Open
 
-- **Drop the GIN index on `links`.** `backlinks` is the only predicate on the
-  column, and `arraycontains` is not leakproof — so under `FORCE ROW LEVEL
-  SECURITY` no query the app role runs can reach the index. It costs write
-  amplification and buys nothing. Needs a migration. Measured evidence and the
-  reason `= ANY` beats `@>` here are in `docs/design.md`.
-- **Drop the GIN index on `search` too** — same root cause. `ts_match_vq` is not
-  leakproof, so under `FORCE ROW LEVEL SECURITY` the planner never promotes it to
-  an index condition and `okf_search` is always a sequential scan. Measured on
-  postgres 17 at 10,000 rows: Seq Scan, 1,250 buffers, 3.25ms as the app role,
-  against Bitmap Index Scan, 23 buffers, 0.16ms with `row_security = off`. A
-  composite `gin (tenant_id, search)` with `btree_gin` does **not** help: the
-  planner's security-level check is independent of index coverage. Keeping it
-  costs ~11% on writes (2000 inserts: 266ms with, 238ms without) plus disk.
-  Both indexes only return if the isolation model changes, so this is a
-  schema-and-spec decision, not a migration to write today.
-- **Revision retention.** Unimplemented, and `docs/design.md` notes the policy
-  must be decided while `concept_revision` is still empty. It only gets harder.
-- **`docs/design.md`'s install-modes block omits `ownerDsn`**, which is now a
-  hard template-time requirement in `existing` mode.
-- **`POOL_SIZE` parses with a bare `int()`**, so a garbage value is a traceback at
-  import rather than a message. Failing loudly on a bad pool size is the right
-  outcome; failing legibly would be better.
+- **Revision retention.** Still unimplemented, and still the item that only gets
+  harder: `docs/design.md` notes the policy must be decided while
+  `concept_revision` is nearly empty. Migration 0002 added the index that a
+  pruning pass would need, but the policy — how long, pruned by what, and whether
+  an export has to happen first — is a decision, not a patch.
 - **Revisions outlive their concept.** Deleting a row from `concept` leaves its
   `concept_revision` rows behind, and re-creating that path then fails on
   `(tenant_id, path, version)` — the version restarts at 1. No tool deletes, so
   an agent cannot reach this today; a delete tool has to deal with it, either by
   cascading or by continuing the version sequence.
-- **A failed store call is a protocol error, not a tool error.** When the
-  database is genuinely unreachable the agent sees `couldn't get a connection
-  after 30.00 sec` as a transport failure rather than something it can act on.
-  Readiness now takes the replica out of the Service first, so the window is
-  small, but a retryable tool error would be better still.
-
-## Tests
-
-- No test exercises a non-default `KEEPSAKE_SCHEMA`; `test_isolation.py`,
-  `test_concurrency.py` and `test_migration.py` hardcode `okf.`, so that path
-  fails with a misleading "relation does not exist".
-- Nothing asserts `Store.raw()` is actually read-only. `SET TRANSACTION READ
-  ONLY` outside a transaction block is a Postgres *warning*, so a refactor could
-  silently revert enforcement to advisory with every test still green.
-- `test_search_never_returns_a_body`'s `hasattr` assertion is structurally
-  guaranteed by `Hit` being `slots=True`; the real invariant is proved
-  elsewhere, over the wire.
-- `test_verify.py`'s catalog-shadowing decoys detect via an exception rather
+- **`test_verify.py`'s catalog-shadowing decoys detect via an exception** rather
   than the planted value. Real today; vacuous if `raw()` ever sets the GUC.
-- `"0001"` is hardcoded in two e2e assertions, so every future migration edits
-  the e2e.
+- **`POOL_SIZE` and `KEEPSAKE_PORT` are read at import.** Both now refuse a bad
+  value legibly, but a config error still surfaces as a crash at startup rather
+  than as a validated setting. The chart's `values.schema.json` catches the same
+  mistakes earlier, so this only bites a deployment that is not the chart.
 
 ## Operability
 
-- `_render_log` renders the *oldest* revisions, so `log.md` shows nothing recent
-  on an active corpus.
-- No lifespan hook closes `app.state.store`; process exit covers it in a pod.
-- The chart sets no `resources`, `securityContext`, or PodDisruptionBudget
-  despite `replicaCount: 2`.
-- `values.schema.json` does not pattern-match `auth.fixedTenantId` as a UUID or
-  `postgres.schema` as an identifier; both fail at container start instead.
-- `concept_revision` has no `CHECK (op IN (...))` and no index serving
-  `revisions()`' ordering.
+- The chart sets no `nodeSelector`, `tolerations` or `affinity` passthrough. A
+  `topologySpreadConstraint` covers the case that mattered; the rest is
+  boilerplate until someone needs it.
+- `docs/design.md` describes the store but not the operational surface the
+  harness established — `/readyz`, the pool's reconnect bound, the worker-thread
+  model. Worth one pass when the design doc is next touched.
 
 ## CI
 
-- No `permissions:` or `concurrency:` blocks, action refs unpinned,
-  `push` + `pull_request` double-runs branches, `ty check` excludes `e2e/`, and
-  `e2e.yaml` has no `timeout-minutes`. Worth one hardening pass on a public repo.
-- `e2e/run.sh` traps `EXIT` but not `INT TERM`, so Ctrl-C leaks a kind cluster.
+- `e2e.yaml` runs on every pull request and takes several minutes. Worth a path
+  filter once the repo has traffic.
 
 ## Known ceilings, deliberately accepted
 
 These are documented where they bite and are not bugs to fix:
 
-- The four round-trip fidelity ceilings — see **Fidelity** in the README.
+- The four round-trip fidelity ceilings — see **Fidelity** in the README. All
+  four come from the `jsonb` round trip. Storing the serialized document as the
+  source of truth and treating the columns as a derived index would remove them,
+  which is a design change rather than a fix.
 - `grep` is a case-insensitive POSIX regex, not a literal match, bounded by a
   5s `statement_timeout`.
 - Text sizes are capped so a write cannot fail inside Postgres: 256KiB of body,
@@ -87,3 +52,62 @@ These are documented where they bite and are not bugs to fix:
 - `auth.mode` accepts only `none`. The `proxy` and `token` modes are on the
   roadmap and the schema refuses them until they exist.
 - One tenant per deployment, via `auth.fixedTenantId`.
+- **Nothing with a chart default is `required` in `values.schema.json`.**
+  `helm upgrade --reuse-values` renders against the previous release's computed
+  values, so a newly required key fails every in-place upgrade on the release
+  that adds it. A test pins this.
+
+## Done
+
+Kept for the reasoning, which is the part that was expensive.
+
+- **Both GIN indexes dropped** (migration 0002). `ts_match_vq` and
+  `arraycontains` are not leakproof, so under `FORCE ROW LEVEL SECURITY` the
+  planner never promotes either to an index condition: measured on postgres 17
+  at 10,000 rows, the app role got a sequential scan (1,250 buffers, 3.25ms)
+  where `row_security = off` got a bitmap index scan (23 buffers, 0.16ms). A
+  composite `gin (tenant_id, search)` with `btree_gin` does not help — the
+  planner's security-level check is independent of index coverage. They cost
+  ~11% on writes and bought nothing. They come back only if the isolation model
+  changes.
+- **`concept_revision` gained `CHECK (op IN ('create','update'))` and the index
+  serving `revisions()`' ordering** (migration 0002).
+- **`_render_log` rendered the oldest revisions**, so `log.md` showed nothing
+  recent on an active corpus. `revisions()` now takes the newest window and
+  returns it oldest-first.
+- **A failed store call was a protocol error.** Connection-level failures —
+  `psycopg.OperationalError`, which covers `PoolTimeout`, `PoolClosed` and the
+  "terminating connection due to administrator command" a restart produces — are
+  now a tool error the agent can retry. Its siblings under `DatabaseError`
+  (integrity, programming, data) still surface as protocol errors, because those
+  are defects here and a polite retry would bury them.
+- **The chart set no `resources`, `securityContext` or PodDisruptionBudget.**
+  All three now ship, plus a topology spread. The memory limit is set and the CPU
+  limit deliberately is not: a CPU limit throttles rather than kills, which turns
+  a busy pod into a slow one and makes the readiness probe flap.
+- **The image ran as `nobody`**, a name the kubelet cannot resolve, so
+  `runAsNonRoot` would have refused to start the pod. It is `USER 65534` now.
+- **`values.schema.json` did not pattern-match `auth.fixedTenantId` or
+  `postgres.schema`.** Both are checked at template time now, the schema name
+  because it is formatted into DDL rather than bound.
+- **No lifespan hook closed `app.state.store`.** One wraps the MCP app's own
+  lifespan now; Starlette 1.x dropped `add_event_handler`.
+- **`_env_port` used `isdigit()`**, which admits non-decimal digits that `int()`
+  then rejects, in the function whose contract is never to raise.
+- **Nothing asserted `Store.raw()` is read-only.** `SET TRANSACTION READ ONLY`
+  outside a transaction block is a Postgres *warning*, so enforcement could have
+  degraded to advisory silently. The test asserts `ReadOnlySqlTransaction`
+  specifically — without the setting the error is `InsufficientPrivilege`, so the
+  exception type is what discriminates.
+- **No test exercised a non-default `KEEPSAKE_SCHEMA`.** One now migrates into
+  `okf_elsewhere` through the real command and round-trips a concept through it.
+- **`test_search_never_returns_a_body` asserted `hasattr`**, which `Hit` being
+  `slots=True` guarantees regardless of the query. It checks the values now.
+- **`"0001"` was hardcoded in five assertions.** `keepsake.cli.head()` reads it
+  from the packaged scripts.
+- **`docs/design.md`'s install-modes block omitted `ownerDsn`**, which is a hard
+  template-time requirement in `existing` mode.
+- **CI had no `permissions:` or `concurrency:`, unpinned action refs, double
+  runs on every branch, and no `timeout-minutes`.** All fixed; `ty` covers `e2e/`
+  now too.
+- **`e2e/run.sh` trapped `EXIT` but not `INT TERM`**, so Ctrl-C leaked a cluster.

@@ -19,6 +19,7 @@ from uuid import UUID
 import uvicorn
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 from ruamel.yaml import YAMLError
 
 from keepsake.server.app import Config as ServerConfig
@@ -148,20 +149,36 @@ def validate_bundle(root: Path) -> list[str]:
     return errors
 
 
-def migrate(dsn: str) -> None:
-    """Bring the schema to head. Run as the owner role, never as the app role."""
+def _alembic(dsn: str = "") -> AlembicConfig:
     config = AlembicConfig()
     config.set_main_option("script_location", str(_MIGRATIONS))
     config.set_main_option("sqlalchemy.url", dsn)
-    command.upgrade(config, "head")
+    return config
+
+
+def migrate(dsn: str) -> None:
+    """Bring the schema to head. Run as the owner role, never as the app role."""
+    command.upgrade(_alembic(dsn), "head")
+
+
+def head() -> str:
+    """The revision `migrate` brings a database to.
+
+    Read from the scripts rather than written down, so a test asserting a migrated
+    database is at head does not have to be edited by every future migration.
+    """
+    revision = ScriptDirectory.from_config(_alembic()).get_current_head()
+    if revision is None:
+        raise CliError("no migrations are packaged")
+    return revision
 
 
 def _render_index(paths: Sequence[str]) -> str:
     """Group the corpus by its first path segment."""
     groups: defaultdict[str, list[str]] = defaultdict(list)
     for path in paths:
-        head, separator, _ = path.partition("/")
-        groups[head if separator else _TOP_LEVEL].append(path)
+        first, separator, _ = path.partition("/")
+        groups[first if separator else _TOP_LEVEL].append(path)
     lines = ["# Index", ""]
     for group in sorted(groups):
         lines += [f"## {group}", ""]
@@ -173,7 +190,7 @@ def _render_index(paths: Sequence[str]) -> str:
 def _render_log(
     concepts: ConceptStore, tenant_id: UUID, limit: int = _LOG_LIMIT
 ) -> str:
-    """Render the revision log oldest-first under date headings."""
+    """Render the most recent `limit` revisions, oldest-first, under date headings."""
     revisions = concepts.revisions(tenant_id, limit)
     lines = ["# Log", ""]
     day = ""

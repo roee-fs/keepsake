@@ -10,5 +10,7 @@ FROM python:3.14-slim-bookworm
 # psycopg ships a binary wheel, so the runtime needs no libpq.
 COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH
-USER nobody
+# Numeric, not the name `nobody`: the kubelet cannot resolve a name to a UID, so a
+# pod asking for runAsNonRoot refuses to start rather than running unprivileged.
+USER 65534
 CMD ["keepsake", "serve"]

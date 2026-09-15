@@ -17,6 +17,7 @@ from uuid import UUID
 
 import jsonschema
 import mcp_types as types
+import psycopg
 from anyio import CapacityLimiter, to_thread
 from mcp.server.context import ServerRequestContext
 from mcp.server.lowlevel import Server
@@ -38,6 +39,13 @@ _VERSION: dict[str, Any] = {"type": "integer", "minimum": 1}
 # has exactly one winner, so this is the number of agents that may relate one source at
 # once before the slowest is told to try again.
 _RELATE_ATTEMPTS = 20
+
+# The database is unreachable, failing over, or the pool timed out waiting for it —
+# psycopg_pool's PoolTimeout and PoolClosed both derive from OperationalError, as does
+# the "terminating connection due to administrator command" a restart produces. Its
+# siblings under DatabaseError — integrity, programming, data — are defects here and
+# MUST keep surfacing as such.
+_UNAVAILABLE = psycopg.OperationalError
 
 _CONCEPT_FIELDS: dict[str, Any] = {
     "type": _STRING,
@@ -401,6 +409,15 @@ def register(server: Server[Any], tools: Tools) -> None:
             )
         except ToolError as exc:
             return _failed(str(exc))
+        except _UNAVAILABLE:
+            # Connection-level failures only — the database is down, failing over, or
+            # the pool could not reach it in time. The agent can act on that by waiting
+            # and asking again, which it cannot do with a transport failure. Deliberately
+            # not psycopg.Error: a constraint violation or a bad statement is a defect
+            # here, and turning those into a polite retry would bury them.
+            return _failed(
+                "the knowledge store is temporarily unavailable; try again shortly"
+            )
         # Structured content is object-only through protocol 2025-11-25, so the tools
         # that answer with a list hand it back under one key.
         structured = {"results": result} if isinstance(result, list) else result

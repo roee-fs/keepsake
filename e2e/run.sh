@@ -27,7 +27,9 @@ teardown() {
     rm -f "$KUBECONFIG"
   fi
 }
-trap teardown EXIT
+# INT and TERM as well as EXIT: bash runs an EXIT trap after a signal handler, but
+# only if one is installed — without these, Ctrl-C leaks the cluster and its containers.
+trap teardown EXIT INT TERM
 
 kind create cluster --name "$CLUSTER" --config e2e/kind.yaml --kubeconfig "$KUBECONFIG"
 # The cluster is only ever addressed through $KUBECONFIG, but assert it anyway: every
