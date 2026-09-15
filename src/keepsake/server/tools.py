@@ -7,6 +7,7 @@ was not already entitled to read.
 
 from __future__ import annotations
 
+import inspect
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -40,6 +41,11 @@ def _schema(properties: dict[str, Any], *required: str) -> dict[str, Any]:
     return {"type": "object", "properties": properties, "required": list(required)}
 
 
+def _results(item: dict[str, Any]) -> dict[str, Any]:
+    """The envelope a list answer travels in, declared so the wrapper is discoverable."""
+    return _schema({"results": {"type": "array", "items": item}}, "results")
+
+
 # Written for an agent reading them cold, with no other documentation.
 _TOOLS: tuple[types.Tool, ...] = (
     types.Tool(
@@ -69,6 +75,22 @@ _TOOLS: tuple[types.Tool, ...] = (
         input_schema=_schema(
             {"query": _STRING, "limit": _INTEGER, "prefix": _STRING}, "query", "limit"
         ),
+        output_schema=_results(
+            _schema(
+                {
+                    "path": _STRING,
+                    "type": _STRING,
+                    "title": _STRING,
+                    "description": _STRING,
+                    "score": {"type": "number"},
+                },
+                "path",
+                "type",
+                "title",
+                "description",
+                "score",
+            )
+        ),
     ),
     types.Tool(
         name="okf_grep",
@@ -81,6 +103,9 @@ _TOOLS: tuple[types.Tool, ...] = (
         ),
         input_schema=_schema(
             {"pattern": _STRING, "limit": _INTEGER}, "pattern", "limit"
+        ),
+        output_schema=_results(
+            _schema({"path": _STRING, "snippet": _STRING}, "path", "snippet")
         ),
     ),
     types.Tool(
@@ -133,8 +158,9 @@ _TOOLS: tuple[types.Tool, ...] = (
 
 
 class Tools:
-    # ponytail: every call blocks the event loop on psycopg. Move the store calls to
-    # anyio.to_thread if one pod has to serve concurrent agents.
+    # ponytail: every call blocks the event loop on psycopg, and under stateless HTTP
+    # that stalls the session manager's own tasks, not just sibling tool calls. Move the
+    # store calls to anyio.to_thread once one pod has to serve concurrent agents.
     def __init__(self, concepts: ConceptStore, tenant_id: UUID, actor: str) -> None:
         self._c = concepts
         self._t = tenant_id
@@ -142,13 +168,17 @@ class Tools:
 
     def _concept(self, path: str, **kw: Any) -> Concept:
         body = str(kw.get("body", ""))
+        frontmatter = kw.get("frontmatter") or {}
+        if not isinstance(frontmatter, dict):
+            # An agent that sends YAML text here can fix that; dict() would raise.
+            raise ToolError("frontmatter must be an object")
         c = Concept(
             path=path,
             type=str(kw.get("type", "")),
             title=str(kw.get("title", "")),
             description=str(kw.get("description", "")),
             body=body,
-            frontmatter=dict(kw.get("frontmatter") or {}),
+            frontmatter=dict(frontmatter),
             # Derived, never taken from the caller: an edge exists only where a reader
             # of the document would see one. A `links` argument is deliberately ignored.
             links=extract_links(body, path),
@@ -275,14 +305,20 @@ def register(server: Server[Any], tools: Tools) -> None:
     ) -> types.CallToolResult:
         call = dispatch.get(params.name)
         if call is None:
+            # An error result, not a protocol error: an agent can correct itself from a
+            # tool result and cannot from a transport failure.
             return _failed(f"no such tool: {params.name}")
+        arguments = params.arguments or {}
         try:
-            result = await call(**(params.arguments or {}))
+            inspect.signature(call).bind(**arguments)
+        except TypeError as exc:
+            # Bound before the call so only an argument mistake reports as one; a
+            # TypeError from inside a tool is a defect here and must surface as one.
+            return _failed(f"{params.name}: {exc}")
+        try:
+            result = await call(**arguments)
         except ToolError as exc:
             return _failed(str(exc))
-        except TypeError as exc:
-            # A required argument is missing or misspelled; the agent can fix that.
-            return _failed(f"{params.name}: {exc}")
         # Structured content is object-only through protocol 2025-11-25, so the tools
         # that answer with a list hand it back under one key.
         structured = {"results": result} if isinstance(result, list) else result

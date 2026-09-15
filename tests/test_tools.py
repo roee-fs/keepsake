@@ -130,15 +130,29 @@ async def test_update_conflict_returns_current_content(tools: Tools) -> None:
 
 @pytest.mark.asyncio
 async def test_update_keeps_the_fields_it_was_not_given(tools: Tools) -> None:
-    await _seed(tools, "a/b", title="Original", description="D", body="v1")
+    await _seed(
+        tools,
+        "a/b",
+        title="Original",
+        description="D",
+        body="v1",
+        frontmatter={"owner": "sec"},
+    )
     await tools.update(path="a/b", body="v2")
     concept = await tools.read(path="a/b")
     assert concept is not None
-    assert (concept["title"], concept["description"], concept["body"]) == (
-        "Original",
-        "D",
-        "v2",
-    )
+    assert (
+        concept["title"],
+        concept["description"],
+        concept["body"],
+        concept["frontmatter"],
+    ) == ("Original", "D", "v2", {"owner": "sec"})
+
+
+@pytest.mark.asyncio
+async def test_frontmatter_that_is_not_an_object_is_correctable(tools: Tools) -> None:
+    with pytest.raises(ToolError, match="frontmatter must be an object"):
+        await _seed(tools, "a/b", frontmatter="owner: sec")
 
 
 @pytest.mark.asyncio
@@ -254,6 +268,19 @@ async def test_search_and_grep_advertise_limit_as_required(tools: Tools) -> None
 
 
 @pytest.mark.asyncio
+async def test_search_and_grep_advertise_the_envelope_they_answer_in(
+    tools: Tools,
+) -> None:
+    async with _session(tools) as session:
+        listing = await session.list_tools()
+    advertised = {t.name: t.output_schema for t in listing.tools}
+    for name in ("okf_search", "okf_grep"):
+        schema = advertised[name]
+        assert schema is not None
+        assert schema["properties"]["results"]["type"] == "array"
+
+
+@pytest.mark.asyncio
 async def test_every_tool_is_described_and_search_explains_its_matching(
     tools: Tools,
 ) -> None:
@@ -263,18 +290,28 @@ async def test_every_tool_is_described_and_search_explains_its_matching(
     assert all(described.values())
     assert "lexical" in described["okf_search"]
     assert "or-ed" in described["okf_search"]
+    assert "distinctive" in described["okf_search"]
 
 
 @pytest.mark.asyncio
 async def test_a_tool_call_round_trips_over_the_protocol(tools: Tools) -> None:
     async with _session(tools) as session:
+        # Listing first arms the client's output-schema validation of the result below.
+        await session.list_tools()
         await session.call_tool(
             "okf_create",
-            {"path": "e2e/smoke", "type": "Concept", "title": "Smoke", "body": "x"},
+            {
+                "path": "e2e/smoke",
+                "type": "Concept",
+                "title": "Smoke",
+                "body": SECRET,
+            },
         )
         result = await session.call_tool("okf_search", {"query": "smoke", "limit": 5})
     assert result.is_error is False
     assert [h["path"] for h in result.structured_content["results"]] == ["e2e/smoke"]
+    assert SECRET not in json.dumps(result.structured_content)
+    assert SECRET not in json.dumps([c.model_dump() for c in result.content])
 
 
 @pytest.mark.asyncio
@@ -294,6 +331,18 @@ async def test_a_call_missing_a_required_argument_is_an_error_result(
     async with _session(tools) as session:
         result = await session.call_tool("okf_search", {"query": "smoke"})
     assert result.is_error is True
+
+
+@pytest.mark.asyncio
+async def test_an_argument_of_the_wrong_shape_is_an_error_result(tools: Tools) -> None:
+    """Plausible from an LLM, and a protocol error would give it nothing to act on."""
+    async with _session(tools) as session:
+        result = await session.call_tool(
+            "okf_create",
+            {"path": "a/b", "type": "Concept", "frontmatter": "owner: sec"},
+        )
+    assert result.is_error is True
+    assert "frontmatter must be an object" in result.content[0].text  # ty: ignore[unresolved-attribute]
 
 
 def test_the_endpoint_answers_a_plain_json_post(served: str) -> None:
