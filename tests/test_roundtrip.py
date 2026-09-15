@@ -14,6 +14,7 @@ from starlette.applications import Starlette
 
 from keepsake.cli import (
     CliError,
+    _env_port,
     _render_log,
     export_bundle,
     import_bundle,
@@ -391,3 +392,31 @@ def test_main_reports_a_missing_dsn_without_a_traceback(
     monkeypatch.delenv("KEEPSAKE_DSN", raising=False)
     assert main(["export", str(tmp_path), "--tenant", str(uuid.uuid4())]) == 1
     assert "--dsn" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("8080", 8080),
+        ("1", 1),
+        ("65535", 65535),
+        # Decimal, and not a port. Parsing alone let these through, and the failure
+        # then landed at bind time as an OSError out of uvicorn.
+        ("0", 8000),
+        ("65536", 8000),
+        ("70000", 8000),
+        ("999999999999", 8000),
+        # Never a port number to begin with.
+        ("tcp://10.96.0.1:8000", 8000),
+        ("", 8000),
+        # isdigit admits this and int() then rejects it.
+        ("²", 8000),
+    ],
+)
+def test_the_port_variable_is_read_as_a_port_or_not_at_all(
+    value: str, expected: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_env_port`'s contract is that it never raises and never returns something
+    that cannot be bound."""
+    monkeypatch.setenv("KEEPSAKE_PORT", value)
+    assert _env_port() == expected

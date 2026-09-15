@@ -1,0 +1,32 @@
+# Pinning without an updater just produces stale pins, which is why Scorecard
+# checks for both. The action refs in .github/workflows are pinned to SHAs and
+# would otherwise never move.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request rather than a dozen. Security updates stay ungrouped so
+      # they are not held up behind a routine bump that fails CI.
+      dev:
+        dependency-type: development
+        patterns: ["*"]
+      runtime:
+        dependency-type: production
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

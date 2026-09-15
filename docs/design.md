@@ -370,8 +370,17 @@ rather than kept out of the fixtures:
 postgres:
   mode: managed        # managed | existing
   schema: okf
-  dsn: ""              # required when mode = existing
+  poolSize: 10         # connections per replica, and so its write concurrency
+  dsn: ""              # required when mode = existing — the server's, unprivileged
+  ownerDsn: ""         # required when mode = existing — the migration's, owns the schema
 ```
+
+Both DSNs are required in `existing` mode, and the template refuses the install
+without them. Running the migration as `dsn` creates the schema and tables *owned
+by that role*, which the server then refuses to connect as — and setting
+`ownerDsn` afterwards does not repair it, because the owner holds nothing on a
+schema it does not own. Recovering means `ALTER ... OWNER` surgery or a new
+database.
 
 - **`managed`** — the chart provisions a CloudNativePG `Cluster`, creates roles,
   runs migrations.

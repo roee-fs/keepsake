@@ -1,0 +1,9 @@
+# Security reports must not become public issues, so the blank-issue escape hatch
+# is closed and the advisory form is offered instead.
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/roee-fs/keepsake/security/advisories/new
+    about: >
+      Anything touching tenant isolation, privilege, or data leaking between
+      tenants. Report it privately — never as a public issue.

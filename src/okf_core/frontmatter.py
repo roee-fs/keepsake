@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import re
+import threading
 from typing import Any
 
 from ruamel.yaml import YAML
@@ -13,14 +14,22 @@ from ruamel.yaml.comments import CommentedMap
 # The closing fence is anchored per-line so that empty frontmatter matches too.
 _FENCE = re.compile(r"\A---\n(.*?)^---\n(.*)\Z", re.DOTALL | re.MULTILINE)
 
-_yaml = YAML()
-_yaml.preserve_quotes = True
-# Frontmatter survives a jsonb round trip as plain dicts and lists, with ruamel's
-# style metadata stripped. These two restore how it was originally written.
-# The ceiling: flow is the one canonical style for a style-less leaf collection,
-# so a block-style list written by hand comes back from the database as flow.
-_yaml.default_flow_style = None
-_yaml.width = 4096
+_local = threading.local()
+
+
+def _yaml() -> YAML:
+    """Return this thread's parser. A YAML instance reuses its parser and emitter
+    across calls, so one shared between threads interleaves mid-document."""
+    if (yaml := getattr(_local, "yaml", None)) is None:
+        yaml = _local.yaml = YAML()
+        yaml.preserve_quotes = True
+        # Frontmatter survives a jsonb round trip as plain dicts and lists, with
+        # ruamel's style metadata stripped. These two restore how it was written.
+        # The ceiling: flow is the one canonical style for a style-less leaf
+        # collection, so a hand-written block list comes back from the DB as flow.
+        yaml.default_flow_style = None
+        yaml.width = 4096
+    return yaml
 
 
 def split(text: str) -> tuple[dict[str, Any], str]:
@@ -30,7 +39,7 @@ def split(text: str) -> tuple[dict[str, Any], str]:
     text = text.replace("\r\n", "\n")
     if not (m := _FENCE.match(text)):
         return {}, text
-    return dict(_yaml.load(m.group(1)) or {}), m.group(2)
+    return dict(_yaml().load(m.group(1)) or {}), m.group(2)
 
 
 def join(meta: dict[str, Any], body: str) -> str:
@@ -39,5 +48,5 @@ def join(meta: dict[str, Any], body: str) -> str:
     root = CommentedMap(meta)
     # `default_flow_style = None` would otherwise collapse an all-scalar mapping.
     root.fa.set_block_style()
-    _yaml.dump(root, buf)
+    _yaml().dump(root, buf)
     return f"---\n{buf.getvalue()}---\n{body}"

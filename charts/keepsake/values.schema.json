@@ -1,18 +1,27 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
+  "_comment": [
+    "Nothing with a chart default is `required`, at any level.",
+    "`helm upgrade --reuse-values` renders against the PREVIOUS release's computed",
+    "values, which cannot contain a key this version introduced — so a newly required",
+    "key fails every in-place upgrade, on the one release that adds it. Requiring a",
+    "defaulted key buys nothing anyway: the default always supplies it. `dsn` and",
+    "`ownerDsn` are the only required values, conditionally, because they have no",
+    "usable default and the install is broken without them."
+  ],
   "type": "object",
   "properties": {
     "postgres": {
       "type": "object",
       "properties": {
         "mode": {"enum": ["managed", "existing"]},
-        "schema": {"type": "string", "minLength": 1},
+        "schema": {"type": "string", "pattern": "^[a-z_][a-z0-9_]*$"},
+        "poolSize": {"type": "integer", "minimum": 1},
         "dsn": {"type": "string"},
         "ownerDsn": {"type": "string"}
       },
-      "required": ["mode", "schema"],
       "allOf": [{
-        "if": {"properties": {"mode": {"const": "existing"}}},
+        "if": {"properties": {"mode": {"const": "existing"}}, "required": ["mode"]},
         "then": {
           "properties": {"dsn": {"minLength": 1}, "ownerDsn": {"minLength": 1}},
           "required": ["dsn", "ownerDsn"]
@@ -21,8 +30,13 @@
     },
     "auth": {
       "type": "object",
-      "properties": {"mode": {"enum": ["none"]}},
-      "required": ["mode"]
+      "properties": {
+        "mode": {"enum": ["none"]},
+        "fixedTenantId": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
+        }
+      }
     },
     "service": {
       "type": "object",
@@ -30,9 +44,11 @@
         "type": {"enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
         "port": {"type": "integer"},
         "nodePort": {"type": ["integer", "null"]}
-      },
-      "required": ["type", "port"]
-    }
-  },
-  "required": ["postgres", "auth", "service"]
+      }
+    },
+    "replicaCount": {"type": "integer", "minimum": 1},
+    "resources": {"type": "object"},
+    "podSecurityContext": {"type": "object"},
+    "securityContext": {"type": "object"}
+  }
 }

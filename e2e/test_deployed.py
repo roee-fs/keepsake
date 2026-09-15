@@ -18,12 +18,15 @@ from typing import Any
 
 import pytest
 
+from keepsake.cli import head
+
 BASE = "http://localhost:30800"
 CHART = str(Path(__file__).resolve().parent.parent / "charts" / "keepsake")
 
 # Named on every command rather than taken from the ambient one. These tests install a
 # Helm release, and a machine that runs this suite is likely to have other clusters.
 CONTEXT = "kind-keepsake-e2e"
+HEAD = head()
 
 TOOL_NAMES = {
     "okf_list",
@@ -143,7 +146,7 @@ def test_the_owner_migrated_the_schema() -> None:
     place its outcome stays legible. The owner ran it, not the app role: a schema the
     app role owns is one the server refuses to serve against, and dropping it is the
     only way back."""
-    assert _psql("SELECT version_num FROM okf.alembic_version") == "0001"
+    assert _psql("SELECT version_num FROM okf.alembic_version") == HEAD
     owner = _psql("SELECT nspowner::regrole FROM pg_namespace WHERE nspname = 'okf'")
     assert owner == "okf_owner"
 
@@ -226,7 +229,7 @@ def test_a_privileged_app_role_crash_loops_the_pod() -> None:
     # Helm waits on its hooks, so the migration has run by now. Asserted because a
     # hook that failed would leave no pod at all, and this test would then be red for
     # a reason that has nothing to do with `verify`.
-    assert _psql(f"SELECT version_num FROM {BAD_SCHEMA}.alembic_version") == "0001"
+    assert _psql(f"SELECT version_num FROM {BAD_SCHEMA}.alembic_version") == HEAD
 
     # Scoped to the release: the good release's pods are healthy and would say nothing.
     pod = _until(

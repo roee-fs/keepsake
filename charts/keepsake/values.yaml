@@ -1,8 +1,32 @@
 image:
-  repository: ghcr.io/frontier-security/keepsake
+  repository: ghcr.io/roee-fs/keepsake
   tag: "" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 replicaCount: 2
+
+# A request is what the scheduler honours; without one the pod is BestEffort and is
+# evicted first under node pressure. The limit is memory only on purpose — a CPU
+# limit throttles rather than kills, which turns a busy pod into a slow one and
+# makes the readiness probe flap.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+# The server writes nothing to its filesystem and needs no privileges. No runAsUser:
+# the image already declares one, and pinning a second here is a value that drifts
+# from the Dockerfile silently.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
 
 service:
   type: ClusterIP
@@ -16,6 +40,11 @@ auth:
 postgres:
   mode: managed # managed | existing
   schema: okf
+
+  # Connections per replica, and so the concurrency one replica serves: the tool
+  # bodies block on the driver, and the worker threads running them are bounded by
+  # this same number. The database sees poolSize × replicaCount backends.
+  poolSize: 10
 
   # existing mode. `dsn` is the server's, and it MUST NOT own the schema or the
   # tables: the server verifies that at startup and refuses to serve otherwise.

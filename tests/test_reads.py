@@ -4,6 +4,7 @@
 """
 
 import uuid
+from dataclasses import astuple
 
 import pytest
 
@@ -87,14 +88,18 @@ def test_search_ranks_more_matching_terms_higher(
 
 
 def test_search_never_returns_a_body(concepts: ConceptStore, tenant: uuid.UUID) -> None:
-    _seed(concepts, tenant)
-    hit = concepts.search(tenant, "dormant", limit=1, prefix=None)[0]
-    assert not hasattr(hit, "body")
-    assert (hit.path, hit.type, hit.title) == (
-        "detect/dormant",
-        "Concept",
-        "Dormant Rule Identification",
+    """The values, not `hasattr`. `Hit` is slots=True, so an attribute check is
+    guaranteed by the dataclass rather than by the query — it would pass on a `Hit`
+    whose `description` held the whole body."""
+    secret = "zqxjkbody"
+    concepts.create(
+        tenant,
+        Concept(path="detect/secret", type="Concept", title="Dormant", body=secret),
+        "seed",
     )
+    hit = concepts.search(tenant, "dormant", limit=1, prefix=None)[0]
+    assert secret not in "".join(str(v) for v in astuple(hit))
+    assert (hit.path, hit.type, hit.title) == ("detect/secret", "Concept", "Dormant")
 
 
 def test_search_respects_limit(concepts: ConceptStore, tenant: uuid.UUID) -> None:

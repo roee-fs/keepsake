@@ -75,6 +75,10 @@ Byte-for-byte has four known exceptions, each pinned by a test:
 - [x] CLI: import, export, validate, migrate, serve
 - [x] Helm chart with managed and existing Postgres modes
 - [x] kind end-to-end suite
+- [x] Tool arguments validated against their advertised schemas, so a bad one is
+      something the agent can correct rather than a transport failure
+- [x] Concurrent writes served in parallel, with readiness that follows the
+      database rather than the bound port
 
 **Next**
 
@@ -94,7 +98,19 @@ Pre-release. Nothing here is stable yet.
 
 - [`docs/design.md`](docs/design.md) — the specification
 - [`docs/plans/`](docs/plans/) — implementation plans
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, newest first
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the checks CI runs, and what
+a good change looks like. `uv sync && uv run pytest` is the whole loop; the tests
+bring up PostgreSQL in a container themselves.
+
+Found something touching tenant isolation? [`SECURITY.md`](SECURITY.md) — report
+it privately, not as an issue.
+
+Participation is covered by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
-MIT
+MIT — see [`LICENSE`](LICENSE).

@@ -1,0 +1,28 @@
+name: Feature request
+description: Something keepsake should be able to do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do that keepsake makes hard or impossible? Describe
+        the situation rather than the feature — the best solution is often not the
+        one either of us thought of first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. If you already have a shape in mind, describe it.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >
+        Workarounds you have already used, and why they are not enough. This is
+        usually the most useful part.
