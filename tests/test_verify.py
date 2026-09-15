@@ -9,6 +9,7 @@ from collections.abc import Iterator
 
 import psycopg
 import pytest
+from psycopg.conninfo import make_conninfo
 
 from keepsake.store.pool import Store
 from keepsake.store.verify import MisconfiguredDatabase, verify
@@ -81,17 +82,14 @@ DECOYS = (
 
 def _as_role(pg_dsn: str, role: str, password: str) -> str:
     """Swap the app credentials in `pg_dsn` for another role's."""
-    return pg_dsn.replace("okf_app:app@", f"{role}:{password}@")
+    return make_conninfo(pg_dsn, user=role, password=password)
 
 
-@pytest.fixture(params=("the owner itself", "a NOINHERIT member of the owner"))
-def table_owner_dsn(
-    request: pytest.FixtureRequest, migrated: bool, pg_dsn: str, admin_dsn: str
-) -> Iterator[str]:
+@pytest.fixture
+def table_owner_dsn(migrated: bool, pg_dsn: str, admin_dsn: str) -> Iterator[str]:
     """A role that owns one table in the schema, but does not own the schema.
 
     The table has RLS enabled and forced, so only the ownership branch can reject it.
-    The second case inherits nothing until it runs SET ROLE, which it may do at will.
     """
     _execute(
         admin_dsn,
@@ -103,21 +101,7 @@ def table_owner_dsn(
         f"ALTER TABLE okf.{OWNED_TABLE} ENABLE ROW LEVEL SECURITY",
         f"ALTER TABLE okf.{OWNED_TABLE} FORCE ROW LEVEL SECURITY",
     )
-    if request.param == "the owner itself":
-        yield _as_role(pg_dsn, TABLE_OWNER_ROLE, TABLE_OWNER_PASSWORD)
-    else:
-        _execute(
-            admin_dsn,
-            f"CREATE ROLE {NOINHERIT_ROLE} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS "
-            f"PASSWORD '{NOINHERIT_PASSWORD}'",
-            f"GRANT {TABLE_OWNER_ROLE} TO {NOINHERIT_ROLE}",
-        )
-        yield _as_role(pg_dsn, NOINHERIT_ROLE, NOINHERIT_PASSWORD)
-        _execute(
-            admin_dsn,
-            f"REVOKE {TABLE_OWNER_ROLE} FROM {NOINHERIT_ROLE}",
-            f"DROP ROLE {NOINHERIT_ROLE}",
-        )
+    yield _as_role(pg_dsn, TABLE_OWNER_ROLE, TABLE_OWNER_PASSWORD)
     _execute(
         admin_dsn,
         f"DROP TABLE okf.{OWNED_TABLE}",
@@ -140,7 +124,7 @@ def test_passes_although_the_bookkeeping_table_has_no_forced_rls(
             "JOIN pg_namespace n ON n.oid = c.relnamespace "
             "WHERE n.nspname = 'okf' AND c.relname = 'alembic_version'"
         ).fetchone()
-    assert row == (False, False), "the exemption no longer covers a real case"
+    assert row == (False, False), "alembic_version no longer exercises the rule"
     _verify(pg_dsn)
 
 

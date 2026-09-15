@@ -31,16 +31,10 @@ _SEED = [
 ]
 
 
-@pytest.fixture
-def t() -> uuid.UUID:
-    """A tenant of its own per test: the database outlives the function-scoped store."""
-    return uuid.uuid4()
-
-
-def _seed(concepts: ConceptStore, t: uuid.UUID) -> None:
+def _seed(concepts: ConceptStore, tenant: uuid.UUID) -> None:
     for path, title, body in _SEED:
         concepts.create(
-            t,
+            tenant,
             Concept(
                 path=path,
                 type="Concept",
@@ -53,7 +47,7 @@ def _seed(concepts: ConceptStore, t: uuid.UUID) -> None:
 
 
 def test_read_round_trips_a_created_concept(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     c = Concept(
         path="a/b",
@@ -64,37 +58,37 @@ def test_read_round_trips_a_created_concept(
         frontmatter={"owner": "sec"},
         links=("detect/dormant",),
     )
-    concepts.create(t, c, "seed")
-    assert concepts.read(t, "a/b") == c
+    concepts.create(tenant, c, "seed")
+    assert concepts.read(tenant, "a/b") == c
 
 
 def test_read_returns_none_for_an_unknown_path(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    assert concepts.read(t, "detect/nothing") is None
+    _seed(concepts, tenant)
+    assert concepts.read(tenant, "detect/nothing") is None
 
 
 def test_search_ors_terms_rather_than_anding(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     """AND semantics returned nothing for realistic queries. OR plus rank recovers them."""
-    _seed(concepts, t)
-    hits = concepts.search(t, "cursors stalling", limit=10, prefix=None)
+    _seed(concepts, tenant)
+    hits = concepts.search(tenant, "cursors stalling", limit=10, prefix=None)
     assert [h.path for h in hits][:1] == ["splunk/cursor"]
 
 
 def test_search_ranks_more_matching_terms_higher(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    hits = concepts.search(t, "dormant detection rules", limit=10, prefix=None)
+    _seed(concepts, tenant)
+    hits = concepts.search(tenant, "dormant detection rules", limit=10, prefix=None)
     assert hits[0].path == "detect/dormant"
 
 
-def test_search_never_returns_a_body(concepts: ConceptStore, t: uuid.UUID) -> None:
-    _seed(concepts, t)
-    hit = concepts.search(t, "dormant", limit=1, prefix=None)[0]
+def test_search_never_returns_a_body(concepts: ConceptStore, tenant: uuid.UUID) -> None:
+    _seed(concepts, tenant)
+    hit = concepts.search(tenant, "dormant", limit=1, prefix=None)[0]
     assert not hasattr(hit, "body")
     assert (hit.path, hit.type, hit.title) == (
         "detect/dormant",
@@ -103,22 +97,22 @@ def test_search_never_returns_a_body(concepts: ConceptStore, t: uuid.UUID) -> No
     )
 
 
-def test_search_respects_limit(concepts: ConceptStore, t: uuid.UUID) -> None:
-    _seed(concepts, t)
+def test_search_respects_limit(concepts: ConceptStore, tenant: uuid.UUID) -> None:
+    _seed(concepts, tenant)
     q = "cursor detection authentication"
-    assert len(concepts.search(t, q, limit=10, prefix=None)) == len(_SEED)
-    assert len(concepts.search(t, q, limit=2, prefix=None)) == 2
+    assert len(concepts.search(tenant, q, limit=10, prefix=None)) == len(_SEED)
+    assert len(concepts.search(tenant, q, limit=2, prefix=None)) == 2
     # Negative, not zero: Postgres answers LIMIT 0 with no rows by itself, so only a
     # negative limit reaches the guard.
-    assert concepts.search(t, q, limit=-1, prefix=None) == []
+    assert concepts.search(tenant, q, limit=-1, prefix=None) == []
 
 
 def test_search_confines_hits_to_the_prefix(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
+    _seed(concepts, tenant)
     hits = concepts.search(
-        t, "cursor detection authentication", limit=10, prefix="detect/"
+        tenant, "cursor detection authentication", limit=10, prefix="detect/"
     )
     assert [h.path for h in hits] == ["detect/dormant"]
 
@@ -127,69 +121,71 @@ def test_search_confines_hits_to_the_prefix(
 _DORMANT_HITS = ["detect/dormant", "splunk/cursor"]
 
 
-def test_search_is_case_insensitive(concepts: ConceptStore, t: uuid.UUID) -> None:
+def test_search_is_case_insensitive(concepts: ConceptStore, tenant: uuid.UUID) -> None:
     """A tokeniser restricted to lowercase would drop the query entirely."""
-    _seed(concepts, t)
-    hits = concepts.search(t, "DORMANT", limit=10, prefix=None)
+    _seed(concepts, tenant)
+    hits = concepts.search(tenant, "DORMANT", limit=10, prefix=None)
     assert [h.path for h in hits] == _DORMANT_HITS
 
 
 def test_search_treats_tsquery_syntax_as_text(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     """Untokenised caller text reaches to_tsquery as syntax and raises."""
-    assert concepts.search(t, "dormant | ) & !(", limit=10, prefix=None) == []
-    _seed(concepts, t)
-    hits = concepts.search(t, "dormant | ) & !(", limit=10, prefix=None)
+    assert concepts.search(tenant, "dormant | ) & !(", limit=10, prefix=None) == []
+    _seed(concepts, tenant)
+    hits = concepts.search(tenant, "dormant | ) & !(", limit=10, prefix=None)
     assert [h.path for h in hits] == _DORMANT_HITS
 
 
 def test_search_of_a_termless_query_is_empty_not_invalid(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    assert concepts.search(t, "  !!!  ", limit=10, prefix=None) == []
+    _seed(concepts, tenant)
+    assert concepts.search(tenant, "  !!!  ", limit=10, prefix=None) == []
 
 
 def test_grep_matches_a_regex_and_is_limited(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    assert [p for p, _ in concepts.grep(t, "index-time", limit=10)] == ["splunk/cursor"]
-    assert [p for p, _ in concepts.grep(t, "inde.-tim[ez]", limit=10)] == [
+    _seed(concepts, tenant)
+    assert [p for p, _ in concepts.grep(tenant, "index-time", limit=10)] == [
         "splunk/cursor"
     ]
-    assert len(concepts.grep(t, "[a-z]", limit=10)) == len(_SEED)
-    assert len(concepts.grep(t, "[a-z]", limit=2)) == 2
-    assert concepts.grep(t, "index-time", limit=-1) == []
+    assert [p for p, _ in concepts.grep(tenant, "inde.-tim[ez]", limit=10)] == [
+        "splunk/cursor"
+    ]
+    assert len(concepts.grep(tenant, "[a-z]", limit=10)) == len(_SEED)
+    assert len(concepts.grep(tenant, "[a-z]", limit=2)) == 2
+    assert concepts.grep(tenant, "index-time", limit=-1) == []
 
 
 def test_grep_matches_titles_as_well_as_bodies(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    assert [p for p, _ in concepts.grep(t, "OAuth2", limit=10)] == ["auth/flow"]
-    assert [p for p, _ in concepts.grep(t, "oauth2", limit=10)] == ["auth/flow"]
+    _seed(concepts, tenant)
+    assert [p for p, _ in concepts.grep(tenant, "OAuth2", limit=10)] == ["auth/flow"]
+    assert [p for p, _ in concepts.grep(tenant, "oauth2", limit=10)] == ["auth/flow"]
 
 
 def test_grep_snippet_carries_surrounding_context(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     """The match alone tells an agent nothing about relevance."""
-    _seed(concepts, t)
-    [(_, snippet)] = concepts.grep(t, "index-time", limit=10)
+    _seed(concepts, tenant)
+    [(_, snippet)] = concepts.grep(tenant, "index-time", limit=10)
     assert "poller advances an index-time cursor" in snippet
 
 
 def test_grep_snippet_is_bounded_and_single_line(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     """A snippet is a card, not a body. The match is early, so the tail must be cut."""
     body = "needle here\n" + "\n".join(f"filler line {i}" for i in range(400))
     concepts.create(
-        t, Concept(path="big/one", type="Concept", title="Big", body=body), "seed"
+        tenant, Concept(path="big/one", type="Concept", title="Big", body=body), "seed"
     )
-    [(_, snippet)] = concepts.grep(t, "needle", limit=10)
+    [(_, snippet)] = concepts.grep(tenant, "needle", limit=10)
     assert "needle" in snippet
     assert len(snippet) <= 200
     assert "\n" not in snippet
@@ -204,47 +200,54 @@ def test_grep_snippet_is_bounded_and_single_line(
     ],
 )
 def test_grep_rejects_an_uncompilable_pattern(
-    concepts: ConceptStore, t: uuid.UUID, pattern: str
+    concepts: ConceptStore, tenant: uuid.UUID, pattern: str
 ) -> None:
-    _seed(concepts, t)
+    _seed(concepts, tenant)
     with pytest.raises(ValueError, match="regular expression"):
-        concepts.grep(t, pattern, limit=10)
+        concepts.grep(tenant, pattern, limit=10)
 
 
 def test_grep_is_cancelled_rather_than_holding_the_pod(
-    store: Store, concepts: ConceptStore, t: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    store: Store,
+    concepts: ConceptStore,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every store call blocks the pod's event loop, so an expensive pattern must be
     the caller's problem and not every sibling agent's."""
-    with store.scope(t) as conn:
+    with store.scope(tenant) as conn:
         conn.execute(
             "INSERT INTO concept (tenant_id, path, type, body) "
             "SELECT %s, 'p/' || g, 'Concept', repeat('lorem ipsum dolor ', 100) "
             "FROM generate_series(1, 2000) g",
-            (t,),
+            (tenant,),
         )
     # The scan costs ~10ms, so 1ms cancels with an order of magnitude to spare.
     monkeypatch.setattr(concepts_module, "_GREP_TIMEOUT_MS", 1)
     with pytest.raises(ValueError, match="took longer than 1ms"):
-        concepts.grep(t, "(lorem|ipsum|dolor)+ z", limit=10)
+        concepts.grep(tenant, "(lorem|ipsum|dolor)+ z", limit=10)
 
 
 def test_backlinks_are_computed_not_stored(
-    concepts: ConceptStore, t: uuid.UUID
+    concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    _seed(concepts, t)
-    assert concepts.backlinks(t, "detect/dormant") == ["splunk/cursor"]
-    assert concepts.backlinks(t, "auth/flow") == []
+    _seed(concepts, tenant)
+    assert concepts.backlinks(tenant, "detect/dormant") == ["splunk/cursor"]
+    assert concepts.backlinks(tenant, "auth/flow") == []
 
 
-def test_list_returns_children_of_prefix(concepts: ConceptStore, t: uuid.UUID) -> None:
-    _seed(concepts, t)
-    assert concepts.list_(t, "detect/") == [("detect/dormant", "Concept")]
-    assert len(concepts.list_(t, "")) == len(_SEED)
+def test_list_returns_children_of_prefix(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    assert concepts.list_(tenant, "detect/") == [("detect/dormant", "Concept")]
+    assert len(concepts.list_(tenant, "")) == len(_SEED)
 
 
-def test_list_treats_the_prefix_literally(concepts: ConceptStore, t: uuid.UUID) -> None:
+def test_list_treats_the_prefix_literally(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
     """LIKE would read the underscore as a wildcard."""
     for path in ("a_b/one", "axb/two"):
-        concepts.create(t, Concept(path=path, type="Concept"), "seed")
-    assert [p for p, _ in concepts.list_(t, "a_b/")] == ["a_b/one"]
+        concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
+    assert [p for p, _ in concepts.list_(tenant, "a_b/")] == ["a_b/one"]

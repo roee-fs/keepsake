@@ -45,17 +45,6 @@ def test_tables_have_rls_enabled_and_forced(migrated: bool, pg_dsn: str) -> None
         assert forced, f"{name} does not FORCE RLS"
 
 
-def test_every_policy_has_with_check(migrated: bool, pg_dsn: str) -> None:
-    with psycopg.connect(pg_dsn) as conn:
-        rows = conn.execute(
-            "SELECT tablename, policyname, with_check FROM pg_policies "
-            "WHERE schemaname = 'okf'"
-        ).fetchall()
-    assert rows, "no policies created"
-    for table, policy, with_check in rows:
-        assert with_check is not None, f"{table}.{policy} has no WITH CHECK"
-
-
 def test_policies_read_the_okf_guc(migrated: bool, pg_dsn: str) -> None:
     """A policy on the wrong GUC satisfies every structural check and isolates nothing."""
     with psycopg.connect(pg_dsn) as conn:
@@ -68,6 +57,9 @@ def test_policies_read_the_okf_guc(migrated: bool, pg_dsn: str) -> None:
     for table, policy, qual, with_check in rows:
         for clause, expression in (("USING", qual), ("WITH CHECK", with_check)):
             where = f"{table}.{policy} {clause}"
+            # A null expression is one Postgres does not apply: WITH CHECK absent is
+            # WITH CHECK (true), which reads one tenant and writes any.
+            assert expression is not None, f"{where} has no expression"
             assert "current_setting('okf.current_tenant'" in expression, (
                 f"{where} does not read okf.current_tenant: {expression}"
             )
