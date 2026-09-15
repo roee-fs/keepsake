@@ -36,6 +36,81 @@ the isolation or round-trip guarantees.
 - `e2e.yaml` runs on every pull request and takes several minutes. Worth a path
   filter once the repo has traffic.
 
+## Making this an open-source project rather than a public repository
+
+Assessed against [GitHub's community profile][gh], the [OpenSSF Scorecard
+checks][sc] and the [OpenSSF Best Practices passing badge][bp]. The repository is
+public and the code is good; almost none of the scaffolding a stranger needs in
+order to use, trust or contribute to it exists yet.
+
+[gh]: https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/about-community-profiles-for-public-repositories
+[sc]: https://github.com/ossf/scorecard/blob/main/docs/checks.md
+[bp]: https://www.bestpractices.dev/en/criteria/0
+
+### Blocking — do these before telling anyone the repo exists
+
+- **There is no `LICENSE` file.** The README says "MIT" and `pyproject.toml`
+  declares no license at all. A README line is not a grant: with no license file,
+  the default is exclusive copyright and nobody may legally use, fork or
+  redistribute this. Add `LICENSE` at the top level and
+  `license = "MIT"` plus `license-files` to `pyproject.toml` so the wheel carries
+  it too. Scorecard scores the filename and location, not the README.
+- **No `SECURITY.md`.** This is a multi-tenant isolation boundary; it needs a
+  documented private disclosure channel more than most projects do. Scorecard
+  grades the contents, not just the file: a reachable contact, prose beyond the
+  contact, and a stated response window. The Best Practices badge asks for an
+  initial response within 14 days. GitHub private vulnerability reporting is the
+  cheapest channel and needs no inbox.
+- **No `CONTRIBUTING.md`.** Nothing tells a contributor that `uv sync` is the
+  setup, that `uv run pytest` is the suite, that `harness/` exists and is
+  gitignored, or that `docs/design.md` is the authority a change argues against.
+  All of that is currently only in this session's history.
+
+### Expected — a stranger will notice these missing
+
+- **No `CODE_OF_CONDUCT.md`.** Contributor Covenant is the default; it needs a
+  real contact address to mean anything.
+- **No issue or pull-request templates.** A bug report against a database-backed
+  MCP server is useless without the Postgres version, the install mode and the
+  chart values, and nothing currently asks for them.
+- **No `CHANGELOG.md` and no releases.** There are no git tags, and `0.1.0`
+  appears in three places (`pyproject.toml`, `Chart.yaml` `version` and
+  `appVersion`) that nothing keeps in step. The badge asks for unique version
+  identifiers and human-readable release notes naming any fixed vulnerabilities.
+- **Nothing publishes anything.** The chart's default image is
+  `ghcr.io/frontier-security/keepsake` and no workflow builds or pushes it, so
+  the documented install cannot work for anyone but us. Same for the chart itself
+  and for `okf-core`, which the import-linter contract deliberately keeps
+  publishable.
+- **No dependency update tool.** No Dependabot or Renovate config. Scorecard
+  checks for one specifically because pinned dependencies without an updater
+  become stale pinned dependencies — and this repo now pins its action refs to
+  SHAs, which is exactly the case that needs a bot.
+
+### Supply chain — the part a security company will be asked about
+
+- **No SAST in CI.** CodeQL on a schedule plus pull requests is the Scorecard
+  check, and is a few lines.
+- **No signed releases, no provenance, no SBOM.** Scorecard scores a signature
+  at 8/10 and SLSA provenance at 10/10. `actions/attest-build-provenance` and a
+  CycloneDX or SPDX SBOM published as a release asset cover both, and matter more
+  for a container image an operator runs in their cluster than for a library.
+- **Branch protection on `main` is unverified.** Scorecard's highest-weighted
+  check. At minimum: no force pushes, no deletion, a required review, and the
+  status checks that now exist actually required.
+- **No `osv-scanner` or equivalent in CI.** The Vulnerabilities check queries OSV
+  against the dependency tree; `uv.lock` is committed, so this is cheap.
+
+### Judgement calls, not omissions
+
+- **Fuzzing** is a Scorecard check keepsake will not score on. The parser is the
+  only plausible target, and `okf_core` is small, pure and already
+  property-shaped; Hypothesis over `parse`/`serialize` would be a better use of
+  the effort than OSS-Fuzz.
+- **Contributors-from-3-companies** is a trust signal, not an action. It will be
+  false until the project has outside users, and nothing should be done about it.
+- **`Maintained`** cannot pass until the repo is 90 days old. Informational only.
+
 ## Known ceilings, deliberately accepted
 
 These are documented where they bite and are not bugs to fix:
