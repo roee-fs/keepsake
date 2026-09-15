@@ -366,6 +366,35 @@ def test_serve_hands_uvicorn_the_verified_app_and_the_parsed_port(
     app.state.store.close()
 
 
+def test_serve_falls_back_when_the_port_variable_is_a_service_link(
+    tenant: uuid.UUID, pg_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """kubelet injects `tcp://<ip>:8000` as KEEPSAKE_PORT wherever a Service is named
+    keepsake, which is not a port number."""
+    monkeypatch.setenv("KEEPSAKE_PORT", "tcp://10.96.0.1:8000")
+    served: dict[str, object] = {}
+    monkeypatch.setattr(
+        "keepsake.cli.uvicorn.run",
+        lambda app, **kwargs: served.update(app=app, **kwargs),
+    )
+
+    assert main(["serve", "--dsn", pg_dsn, "--tenant", str(tenant)]) == 0
+
+    assert served["port"] == 8000
+    app = served["app"]
+    assert isinstance(app, Starlette)
+    app.state.store.close()
+
+
+def test_a_service_link_port_does_not_break_a_subcommand_that_binds_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default was parsed at parser-construction time, so it fired for `validate`,
+    `import`, `export` and `migrate` too."""
+    monkeypatch.setenv("KEEPSAKE_PORT", "tcp://10.96.0.1:8000")
+    assert main(["validate", str(_bundle(tmp_path))]) == 0
+
+
 def test_serve_refuses_a_database_that_does_not_isolate(
     migrated: bool,
     admin_dsn: str,
