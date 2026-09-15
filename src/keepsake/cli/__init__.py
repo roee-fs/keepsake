@@ -55,7 +55,12 @@ def _env_port() -> int:
     value = os.environ.get("KEEPSAKE_PORT", "")
     # isdecimal, not isdigit: the latter admits superscripts and other non-decimal
     # digits that int() then rejects — in the function whose job is to not raise.
-    return int(value) if value.isdecimal() else _DEFAULT_PORT
+    if not value.isdecimal():
+        return _DEFAULT_PORT
+    # Parsing is not enough. `0` and `70000` are decimal and are not ports, and that
+    # failure lands at bind time as an OSError out of uvicorn rather than here.
+    port = int(value)
+    return port if 1 <= port <= 65535 else _DEFAULT_PORT
 
 
 class CliError(RuntimeError):
