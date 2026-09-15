@@ -8,6 +8,7 @@ non-default KEEPSAKE_SCHEMA.
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from functools import partial
@@ -95,9 +96,39 @@ LIMIT %s
 """
 
 
+# Sequential within the tenant, and the GIN index on `links` cannot help:
+# `links @> ARRAY[path]` is the only form the index serves, and arraycontains is not
+# leakproof, so FORCE ROW LEVEL SECURITY keeps it out of the index condition. `= ANY`
+# is the cheaper of the two filters. Written as a scalar subquery so one read can take
+# the concept and its backlinks in a single statement.
+_BACKLINKS = (
+    "ARRAY(SELECT b.path FROM concept b WHERE %s = ANY(b.links) ORDER BY b.path)"
+)
+
+
 def _tsquery(query: str) -> str:
     """OR the terms. AND semantics returned nothing for realistic agent queries."""
     return " | ".join(_WORD.findall(query))
+
+
+def _values(c: Concept) -> tuple[Any, ...]:
+    """The bound parameters for `_FIELDS`, in that order."""
+    return (
+        c.type,
+        c.title,
+        c.description,
+        c.body,
+        _jsonb(c.frontmatter),
+        list(c.links),
+    )
+
+
+def _concept(row: Sequence[Any]) -> Concept:
+    """A row selected as `_READ_COLS`, which is `Concept`'s own field order."""
+    path, type_, title, description, body, frontmatter, links, version = row[:8]
+    return Concept(
+        path, type_, title, description, body, frontmatter, tuple(links), int(version)
+    )
 
 
 class ConceptStore:
@@ -106,66 +137,31 @@ class ConceptStore:
 
     def create(self, tenant_id: UUID, c: Concept, actor: str) -> int | None:
         """Insert a concept. None means the path is already taken."""
-        columns = ", ".join(("tenant_id", "path", *_FIELDS, "updated_by"))
-        placeholders = ",".join(["%s"] * (len(_FIELDS) + 3))
         with self._store.scope(tenant_id) as conn:
-            row = conn.execute(
-                f"INSERT INTO concept ({columns}) VALUES ({placeholders}) "
-                "ON CONFLICT (tenant_id, path) DO NOTHING RETURNING version",
-                (
-                    tenant_id,
-                    c.path,
-                    c.type,
-                    c.title,
-                    c.description,
-                    c.body,
-                    _jsonb(c.frontmatter),
-                    list(c.links),
-                    actor,
-                ),
-            ).fetchone()
-            if row is None:
-                return None
-            version = int(row[0])
-            self._revise(conn, tenant_id, c, version, "create", actor)
-            return version
+            return self._insert(conn, tenant_id, c, actor)
 
     def update(
         self, tenant_id: UUID, c: Concept, actor: str, expected_version: int | None
     ) -> int | Conflict:
         """Write a concept. `expected_version` makes it a compare-and-swap; None is
         last-write-wins. Raises KeyError if the path does not exist."""
-        assignments = ", ".join(f"{f}=%s" for f in _FIELDS)
         with self._store.scope(tenant_id) as conn:
-            row = conn.execute(
-                f"UPDATE concept SET {assignments}, updated_by=%s, "
-                "version=version+1, updated_at=now() "
-                "WHERE path=%s AND (%s::int IS NULL OR version=%s) RETURNING version",
-                (
-                    c.type,
-                    c.title,
-                    c.description,
-                    c.body,
-                    _jsonb(c.frontmatter),
-                    list(c.links),
-                    actor,
-                    c.path,
-                    expected_version,
-                    expected_version,
-                ),
-            ).fetchone()
-            if row is not None:
-                version = int(row[0])
-                self._revise(conn, tenant_id, c, version, "update", actor)
-                return version
-            current = conn.execute(
-                "SELECT version, body FROM concept WHERE path=%s", (c.path,)
-            ).fetchone()
-            if current is None:
-                raise KeyError(c.path)
-            return Conflict(
-                current_version=int(current[0]), current_body=str(current[1])
-            )
+            return self._overwrite(conn, tenant_id, c, actor, expected_version)
+
+    def import_many(
+        self, tenant_id: UUID, bundle: Sequence[Concept], actor: str
+    ) -> int:
+        """Store a whole bundle in one transaction, last write winning per path.
+
+        Raises KeyError if a path is deleted underneath the import.
+        """
+        with self._store.scope(tenant_id) as conn:
+            for c in bundle:
+                if self._insert(conn, tenant_id, c, actor) is None:
+                    # The bundle is the authority the operator is replaying, so there
+                    # is no version to compare and no conflict to resolve.
+                    self._overwrite(conn, tenant_id, c, actor, None)
+        return len(bundle)
 
     def read(self, tenant_id: UUID, path: str) -> Concept | None:
         """The whole concept, body included. None means no such path."""
@@ -173,18 +169,29 @@ class ConceptStore:
             row = conn.execute(
                 f"SELECT {_READ_COLS} FROM concept WHERE path = %s", (path,)
             ).fetchone()
-        if row is None:
-            return None
-        return Concept(
-            path=row[0],
-            type=row[1],
-            title=row[2],
-            description=row[3],
-            body=row[4],
-            frontmatter=row[5],
-            links=tuple(row[6]),
-            version=int(row[7]),
-        )
+        return None if row is None else _concept(row)
+
+    def read_with_backlinks(
+        self, tenant_id: UUID, path: str
+    ) -> tuple[Concept, list[str]] | None:
+        """The concept and the paths linking to it. One statement, so the backlinks
+        cannot be read from a later snapshot than the concept."""
+        with self._store.scope(tenant_id) as conn:
+            row = conn.execute(
+                f"SELECT {_READ_COLS}, {_BACKLINKS} FROM concept WHERE path = %s",
+                (path, path),
+            ).fetchone()
+        return None if row is None else (_concept(row), [str(p) for p in row[-1]])
+
+    def read_all(self, tenant_id: UUID) -> list[Concept]:
+        """Every concept, body included, path-ordered, from one snapshot."""
+        # ponytail: the whole corpus materialises at once. Stream it through a named
+        # cursor if a bundle ever outgrows the process exporting it.
+        with self._store.scope(tenant_id) as conn:
+            rows = conn.execute(
+                f"SELECT {_READ_COLS} FROM concept ORDER BY path"
+            ).fetchall()
+        return [_concept(row) for row in rows]
 
     def revisions(self, tenant_id: UUID, limit: int) -> list[Revision]:
         """The revision log, oldest first. Bounded like every other read here."""
@@ -205,15 +212,8 @@ class ConceptStore:
     def backlinks(self, tenant_id: UUID, path: str) -> list[str]:
         """The paths whose outbound links name `path`."""
         with self._store.scope(tenant_id) as conn:
-            rows = conn.execute(
-                # Sequential within the tenant, and the GIN index on `links` cannot
-                # help: `links @> ARRAY[path]` is the only form the index serves, and
-                # arraycontains is not leakproof, so FORCE ROW LEVEL SECURITY keeps it
-                # out of the index condition. `= ANY` is the cheaper of two filters.
-                "SELECT path FROM concept WHERE %s = ANY(links) ORDER BY path",
-                (path,),
-            ).fetchall()
-        return [str(r[0]) for r in rows]
+            row = conn.execute(f"SELECT {_BACKLINKS}", (path,)).fetchone()
+        return [] if row is None else [str(p) for p in row[0]]
 
     def list_(self, tenant_id: UUID, prefix: str) -> list[tuple[str, str]]:
         """`(path, type)` for every concept under `prefix`. An empty prefix is all."""
@@ -270,6 +270,49 @@ class ConceptStore:
                 f"{pattern!r}"
             ) from exc
         return [(str(r[0]), str(r[1])) for r in rows]
+
+    @staticmethod
+    def _insert(
+        conn: psycopg.Connection, tenant_id: UUID, c: Concept, actor: str
+    ) -> int | None:
+        columns = ", ".join(("tenant_id", "path", *_FIELDS, "updated_by"))
+        placeholders = ",".join(["%s"] * (len(_FIELDS) + 3))
+        row = conn.execute(
+            f"INSERT INTO concept ({columns}) VALUES ({placeholders}) "
+            "ON CONFLICT (tenant_id, path) DO NOTHING RETURNING version",
+            (tenant_id, c.path, *_values(c), actor),
+        ).fetchone()
+        if row is None:
+            return None
+        version = int(row[0])
+        ConceptStore._revise(conn, tenant_id, c, version, "create", actor)
+        return version
+
+    @staticmethod
+    def _overwrite(
+        conn: psycopg.Connection,
+        tenant_id: UUID,
+        c: Concept,
+        actor: str,
+        expected_version: int | None,
+    ) -> int | Conflict:
+        assignments = ", ".join(f"{f}=%s" for f in _FIELDS)
+        row = conn.execute(
+            f"UPDATE concept SET {assignments}, updated_by=%s, "
+            "version=version+1, updated_at=now() "
+            "WHERE path=%s AND (%s::int IS NULL OR version=%s) RETURNING version",
+            (*_values(c), actor, c.path, expected_version, expected_version),
+        ).fetchone()
+        if row is not None:
+            version = int(row[0])
+            ConceptStore._revise(conn, tenant_id, c, version, "update", actor)
+            return version
+        current = conn.execute(
+            "SELECT version, body FROM concept WHERE path=%s", (c.path,)
+        ).fetchone()
+        if current is None:
+            raise KeyError(c.path)
+        return Conflict(current_version=int(current[0]), current_body=str(current[1]))
 
     @staticmethod
     def _revise(

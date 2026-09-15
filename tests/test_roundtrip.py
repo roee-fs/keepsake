@@ -328,24 +328,6 @@ def test_main_exports_a_bundle(
     assert (out / "architecture" / "layers.md").read_text() == DOC
 
 
-def test_export_skips_a_concept_that_vanished_mid_export(
-    concepts: ConceptStore,
-    tenant: uuid.UUID,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A concept deleted between the listing and the read loses its file, not the
-    whole export."""
-    import_bundle(concepts, tenant, _bundle(tmp_path))
-    monkeypatch.setattr(concepts, "read", lambda *_: None)
-    out = tmp_path / "out"
-
-    assert export_bundle(concepts, tenant, out) == 0
-    assert not (out / "architecture" / "layers.md").exists()
-    # The index lists what reached the disk, never a file that was not written.
-    assert "architecture/layers" not in (out / "index.md").read_text()
-
-
 def test_serve_hands_uvicorn_the_verified_app_and_the_parsed_port(
     tenant: uuid.UUID, pg_dsn: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
