@@ -8,6 +8,10 @@ if TYPE_CHECKING:
     # Runtime import would be circular: okf_core re-exports validate.
     from okf_core import Concept
 
+# A bundle materialises these two at its root when it is written, so a concept
+# holding one would be overwritten on export and skipped on the way back in.
+RESERVED_PATHS = frozenset({"index", "log"})
+
 
 def validate(c: Concept) -> list[str]:
     """Return every rule the concept breaks. An empty list means valid."""
@@ -20,4 +24,6 @@ def validate(c: Concept) -> list[str]:
         errors.append("path must not traverse upward")
     if not c.path.strip():
         errors.append("path is required")
+    if c.path in RESERVED_PATHS:
+        errors.append(f"path {c.path!r} is reserved for a generated bundle file")
     return errors

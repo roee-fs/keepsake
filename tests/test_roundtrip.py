@@ -193,10 +193,55 @@ def test_export_refuses_a_path_that_escapes_the_bundle(
 def test_export_refuses_a_concept_that_collides_with_a_generated_file(
     concepts: ConceptStore, tenant: uuid.UUID, tmp_path: Path
 ) -> None:
+    """The backstop behind the write-time rule: a reserved path cannot be created
+    through a tool, but one already stored MUST NOT be exported over."""
+    import_bundle(concepts, tenant, _bundle(tmp_path))
     concepts.create(tenant, Concept(path="index", type="Concept"), "test")
+    out = tmp_path / "out"
 
     with pytest.raises(CliError):
-        export_bundle(concepts, tenant, tmp_path / "out")
+        export_bundle(concepts, tenant, out)
+    # Refused before the first write: a half-written bundle looks like a whole one.
+    assert not (out / "architecture" / "layers.md").exists()
+
+
+def test_export_refuses_a_dsn_that_bypasses_row_level_security(
+    migrated: bool,
+    owner_dsn: str,
+    tenant: uuid.UUID,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Nothing in the export filters by tenant, so a privileged DSN would write every
+    tenant's concepts into one bundle without saying so."""
+    out = tmp_path / "out"
+
+    code = main(["export", str(out), "--dsn", owner_dsn, "--tenant", str(tenant)])
+
+    assert code == 1
+    assert "owns the schema" in capsys.readouterr().err
+    assert not (out / "index.md").exists()
+
+
+def test_a_malformed_document_is_named_and_refuses_the_whole_import(
+    concepts: ConceptStore, tenant: uuid.UUID, tmp_path: Path
+) -> None:
+    """ruamel names the string it was handed, so the file has to be named here."""
+    src = _bundle(tmp_path)
+    (src / "architecture" / "zz-broken.md").write_text("---\ntype: [unclosed\n---\nx\n")
+
+    with pytest.raises(CliError, match="zz-broken.md"):
+        import_bundle(concepts, tenant, src)
+    # Nothing was written: the bundle is parsed through before the first insert.
+    assert concepts.read(tenant, "architecture/layers") is None
+
+
+def test_validate_reports_a_malformed_document_by_name(tmp_path: Path) -> None:
+    src = _bundle(tmp_path)
+    (src / "architecture" / "broken.md").write_text("---\ntype: [unclosed\n---\nx\n")
+
+    with pytest.raises(CliError, match="broken.md"):
+        validate_bundle(src)
 
 
 def test_crlf_is_normalised_to_lf(
@@ -282,7 +327,8 @@ def test_export_skips_a_concept_that_vanished_mid_export(
 
     assert export_bundle(concepts, tenant, out) == 0
     assert not (out / "architecture" / "layers.md").exists()
-    assert (out / "index.md").exists()
+    # The index lists what reached the disk, never a file that was not written.
+    assert "architecture/layers" not in (out / "index.md").read_text()
 
 
 def test_serve_hands_uvicorn_the_verified_app_and_the_parsed_port(
@@ -298,6 +344,8 @@ def test_serve_hands_uvicorn_the_verified_app_and_the_parsed_port(
 
     assert code == 0
     assert served["port"] == 9123
+    # Every interface, not loopback: the chart's probes reach the pod from outside it.
+    assert served["host"] == "0.0.0.0"
     app = served["app"]
     assert isinstance(app, Starlette)
     app.state.store.close()

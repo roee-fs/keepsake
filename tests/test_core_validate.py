@@ -28,3 +28,12 @@ def test_every_broken_rule_is_reported():
 
 def test_valid_concept_has_no_errors():
     assert validate(Concept(path="a/b", type="Concept")) == []
+
+
+def test_the_generated_bundle_names_are_reserved_at_the_root():
+    """A bundle writes index.md and log.md itself, so a concept holding one of those
+    paths would be exported over and skipped on the way back in."""
+    assert "reserved" in validate(Concept(path="index", type="Concept"))[0]
+    assert "reserved" in validate(Concept(path="log", type="Concept"))[0]
+    # Only at the root: deeper in the tree the name is ordinary knowledge.
+    assert validate(Concept(path="architecture/index", type="Concept")) == []

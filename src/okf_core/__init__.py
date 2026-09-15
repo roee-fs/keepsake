@@ -7,9 +7,16 @@ from typing import Any
 
 from okf_core.frontmatter import join, split
 from okf_core.links import extract_links
-from okf_core.validate import validate
+from okf_core.validate import RESERVED_PATHS, validate
 
-__all__ = ["Concept", "extract_links", "parse", "serialize", "validate"]
+__all__ = [
+    "RESERVED_PATHS",
+    "Concept",
+    "extract_links",
+    "parse",
+    "serialize",
+    "validate",
+]
 
 
 @dataclass(frozen=True, slots=True)

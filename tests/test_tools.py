@@ -109,6 +109,17 @@ async def test_create_rejects_a_concept_without_type(tools: Tools) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_rejects_a_path_reserved_for_a_generated_bundle_file(
+    tools: Tools,
+) -> None:
+    """There is no delete tool, so one concept at `index` would make the whole tenant
+    un-exportable for good."""
+    with pytest.raises(ToolError, match="reserved"):
+        await _seed(tools, "index")
+    await _seed(tools, "architecture/index")
+
+
+@pytest.mark.asyncio
 async def test_create_rejects_a_path_that_is_taken(tools: Tools) -> None:
     await _seed(tools, "a/b", body="first")
     with pytest.raises(ToolError, match="already exists"):
