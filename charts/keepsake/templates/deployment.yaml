@@ -34,6 +34,8 @@ spec:
               value: {{ .Values.auth.fixedTenantId | quote }}
             - name: KEEPSAKE_SCHEMA
               value: {{ .Values.postgres.schema | quote }}
+            - name: KEEPSAKE_POOL_SIZE
+              value: {{ .Values.postgres.poolSize | quote }}
             # Set, not left to the CLI's default: the port below and the readiness
             # probe would otherwise depend on that default never moving.
             - name: KEEPSAKE_PORT
@@ -41,9 +43,20 @@ spec:
           ports:
             - name: http
               containerPort: {{ $port }}
-          # The port binds only once the startup check has passed, so a bound port
-          # is the readiness signal. No liveness probe: a pod refusing to start is
-          # already crash-looping, and restarting it would only bury the reason.
+          # /readyz answers only once the startup check has passed and the pool can
+          # still hand out a connection. A bound port is not enough: after a database
+          # failover a replica keeps its port, and its place in the Service, while its
+          # pool is rebuilding — so every request routed to it waits and then fails.
+          # No liveness probe: a pod refusing to start is already crash-looping, and
+          # restarting it would only bury the reason.
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /readyz
               port: http
+            periodSeconds: 5
+            # Longer than the server's own wait for a connection, so the probe reports
+            # a 503 it decided on rather than a timeout the kubelet decided for it.
+            timeoutSeconds: 3
+            # Two failures, not one: a single slow probe during a checkpoint must not
+            # empty the Service.
+            failureThreshold: 2

@@ -177,15 +177,19 @@ def test_labels_derive_from_the_release_name() -> None:
     assert _dsn_secret_key(deployment, release="other") == "app-dsn"
 
 
-def test_readiness_waits_for_the_bound_port_and_nothing_restarts_it() -> None:
-    """`verify` runs before the port binds, so a bound port is the readiness signal.
+def test_readiness_asks_the_server_and_nothing_restarts_it() -> None:
+    """A bound port says the process started; /readyz says it can still serve. After a
+    database failover those differ for as long as the pool takes to rebuild, and a
+    replica that keeps its place in the Service meanwhile fails every request routed
+    to it.
 
     No liveness probe: a pod that is correctly refusing to start would be restarted
     by one, which turns a legible crash into restart noise.
     """
     deployment = _only(_render(MANAGED), "Deployment")
     container = _container(deployment)
-    assert container["readinessProbe"]["tcpSocket"]["port"] == "http"
+    probe = container["readinessProbe"]["httpGet"]
+    assert (probe["path"], probe["port"]) == ("/readyz", "http")
     assert "livenessProbe" not in container
     # The probe watches the port the server was told to bind, not the CLI's default.
     port = container["ports"][0]

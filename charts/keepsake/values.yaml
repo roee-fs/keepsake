@@ -17,6 +17,11 @@ postgres:
   mode: managed # managed | existing
   schema: okf
 
+  # Connections per replica, and so the concurrency one replica serves: the tool
+  # bodies block on the driver, and the worker threads running them are bounded by
+  # this same number. The database sees poolSize × replicaCount backends.
+  poolSize: 10
+
   # existing mode. `dsn` is the server's, and it MUST NOT own the schema or the
   # tables: the server verifies that at startup and refuses to serve otherwise.
   dsn: "" # required when mode = existing

@@ -7,10 +7,11 @@
       "properties": {
         "mode": {"enum": ["managed", "existing"]},
         "schema": {"type": "string", "minLength": 1},
+        "poolSize": {"type": "integer", "minimum": 1},
         "dsn": {"type": "string"},
         "ownerDsn": {"type": "string"}
       },
-      "required": ["mode", "schema"],
+      "required": ["mode", "schema", "poolSize"],
       "allOf": [{
         "if": {"properties": {"mode": {"const": "existing"}}},
         "then": {
