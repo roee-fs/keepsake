@@ -37,6 +37,10 @@ class ToolError(ValueError):
     """Surfaced to the agent. MUST NOT contain a concept body."""
 
 
+# An argument the caller omitted, distinct from one it sent as null.
+_UNSET = object()
+
+
 def _schema(properties: dict[str, Any], *required: str) -> dict[str, Any]:
     return {"type": "object", "properties": properties, "required": list(required)}
 
@@ -168,9 +172,13 @@ class Tools:
 
     def _concept(self, path: str, **kw: Any) -> Concept:
         body = str(kw.get("body", ""))
-        frontmatter = kw.get("frontmatter") or {}
-        if not isinstance(frontmatter, dict):
-            # An agent that sends YAML text here can fix that; dict() would raise.
+        # Absent means leave it alone; anything present must be an object. A falsy
+        # non-dict — null, "", [] — would otherwise coerce to {}, which on the update
+        # path erases what is stored.
+        frontmatter = kw.get("frontmatter", _UNSET)
+        if frontmatter is _UNSET:
+            frontmatter = {}
+        elif not isinstance(frontmatter, dict):
             raise ToolError("frontmatter must be an object")
         c = Concept(
             path=path,
