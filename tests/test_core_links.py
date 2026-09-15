@@ -1,3 +1,5 @@
+import pytest
+
 from okf_core import parse
 from okf_core.links import extract_links
 
@@ -23,6 +25,13 @@ def test_root_relative_target_is_taken_from_the_bundle_root():
 def test_target_escaping_the_bundle_root_is_dropped():
     """A resolved path still leading with `..` can never equal a stored path."""
     assert extract_links("[x](../../outside.md)", "a/doc") == ()
+
+
+@pytest.mark.parametrize("target", ["/../../etc.md", "/a/../../b.md", "/", ".."])
+def test_degenerate_targets_are_not_edges(target: str):
+    """Each once resolved to something no stored path can equal, junking `links` and
+    making `keepsake validate` report a link to an unknown concept."""
+    assert extract_links(f"[x]({target})", "a/doc") == ()
 
 
 def test_anchor_only_target_is_not_an_edge():

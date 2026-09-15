@@ -24,11 +24,16 @@ def _resolve(target: str, directory: str) -> str | None:
     if not target:
         return None
     target = target.removesuffix(".md")
+    # A rooted target resolves against the bundle root, but still resolves: `/../x`
+    # escapes it just as `../x` does.
     if target.startswith("/"):
-        return target.lstrip("/")
+        target, directory = target.lstrip("/"), ""
     resolved = posixpath.normpath(posixpath.join(directory, target))
-    # A leading `..` escaped the bundle root, so no stored path can ever equal it.
-    return None if resolved.split("/", 1)[0] == ".." else resolved
+    # A leading `..` escaped the bundle root and `.` names a directory, so no stored
+    # path can ever equal either.
+    if not resolved or resolved == "." or resolved.split("/", 1)[0] == "..":
+        return None
+    return resolved
 
 
 def extract_links(body: str, path: str) -> tuple[str, ...]:
