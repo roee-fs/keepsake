@@ -6,9 +6,12 @@ isolation. `pg_dsn` checks itself, so the check cannot be skipped.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import psycopg
 import pytest
+from alembic import command
+from alembic.config import Config
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
@@ -90,3 +93,20 @@ def bypassrls_dsn(_pg: PostgresContainer, admin_dsn: str) -> str:
             )
         )
     return _dsn(_pg, BYPASSRLS_ROLE, BYPASSRLS_PASSWORD)
+
+
+@pytest.fixture(scope="session")
+def migrated(owner_dsn: str) -> bool:
+    """Runs the migration as the owner, then grants the app role DML and nothing else."""
+    cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", owner_dsn)
+    command.upgrade(cfg, "head")
+    with psycopg.connect(owner_dsn, autocommit=True) as conn:
+        conn.execute(f"GRANT USAGE ON SCHEMA okf TO {APP_ROLE}")
+        conn.execute(
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA okf "
+            f"TO {APP_ROLE}"
+        )
+        # Alembic's bookkeeping is the owner's, not the application's.
+        conn.execute(f"REVOKE ALL ON okf.alembic_version FROM {APP_ROLE}")
+    return True
