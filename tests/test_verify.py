@@ -254,6 +254,37 @@ def test_rejects_a_permissive_policy(
         )
 
 
+def test_rejects_a_permissive_with_check(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """A correct USING with WITH CHECK (true) reads one tenant and writes any."""
+    _execute(
+        owner_dsn, "ALTER POLICY tenant_isolation ON okf.concept WITH CHECK (true)"
+    )
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="does not read okf.current"):
+            _verify(pg_dsn)
+    finally:
+        _execute(
+            owner_dsn,
+            f"ALTER POLICY tenant_isolation ON okf.concept WITH CHECK ({TENANT_QUAL})",
+        )
+
+
+def test_accepts_a_policy_with_only_a_with_check_clause(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """FOR INSERT carries no USING, and rejecting it would crash-loop a correct install."""
+    _execute(
+        owner_dsn,
+        f"CREATE POLICY insert_only ON okf.concept FOR INSERT WITH CHECK ({TENANT_QUAL})",
+    )
+    try:
+        _verify(pg_dsn)
+    finally:
+        _execute(owner_dsn, "DROP POLICY insert_only ON okf.concept")
+
+
 def test_rejects_a_table_with_no_policy(
     migrated: bool, pg_dsn: str, owner_dsn: str
 ) -> None:
