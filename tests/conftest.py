@@ -5,6 +5,7 @@ security, so tests connecting as any of those would prove nothing about tenant
 isolation. `pg_dsn` checks itself, so the check cannot be skipped.
 """
 
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from alembic.config import Config
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
+from keepsake.server.tools import Tools
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
 
@@ -118,3 +120,9 @@ def store(migrated: bool, pg_dsn: str) -> Iterator[Store]:
 @pytest.fixture
 def concepts(store: Store) -> ConceptStore:
     return ConceptStore(store)
+
+
+@pytest.fixture
+def tools(concepts: ConceptStore) -> Tools:
+    """Bound to a tenant of its own, as the server binds one at startup."""
+    return Tools(concepts, uuid.uuid4(), "test")
