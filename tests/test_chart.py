@@ -194,10 +194,7 @@ def test_readiness_waits_for_the_bound_port_and_nothing_restarts_it() -> None:
 
 
 def test_no_workload_takes_the_service_link_variables() -> None:
-    """The Service is named for the release, so kubelet injects KEEPSAKE_PORT as
-    `tcp://10.96.0.1:8000` into every pod in the namespace. The migration Job sets no
-    KEEPSAKE_PORT of its own to shadow it, so on upgrade — when the Service already
-    exists — its hook crash-loops on an unparseable port."""
+    """Every workload the chart ships must opt out of the injected link variables."""
     docs = _render(MANAGED)
     for kind in ("Deployment", "Job"):
         spec = _only(docs, kind)["spec"]["template"]["spec"]

@@ -351,8 +351,7 @@ def test_serve_hands_uvicorn_the_verified_app_and_the_parsed_port(
 def test_serve_falls_back_when_the_port_variable_is_a_service_link(
     tenant: uuid.UUID, pg_dsn: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """kubelet injects `tcp://<ip>:8000` as KEEPSAKE_PORT wherever a Service is named
-    keepsake, which is not a port number."""
+    """A KEEPSAKE_PORT that is not a port number binds the default instead."""
     monkeypatch.setenv("KEEPSAKE_PORT", "tcp://10.96.0.1:8000")
     served: dict[str, object] = {}
     monkeypatch.setattr(

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
@@ -35,10 +36,6 @@ _CONCEPT_FIELDS: dict[str, Any] = {
 
 class ToolError(ValueError):
     """Surfaced to the agent. MUST NOT contain a concept body."""
-
-
-# An argument the caller omitted, distinct from one it sent as null.
-_UNSET = object()
 
 
 def _schema(properties: dict[str, Any], *required: str) -> dict[str, Any]:
@@ -177,9 +174,7 @@ class Tools:
         `str()` would coerce instead, so `null` became the four characters `None` and
         overwrote what is stored, having passed validation.
         """
-        value = kw.get(name, _UNSET)
-        if value is _UNSET:
-            return ""
+        value = kw.get(name, "")
         if not isinstance(value, str):
             raise ToolError(f"{name} must be a string")
         return value
@@ -189,10 +184,8 @@ class Tools:
         # Absent means leave it alone; anything present must be an object. A falsy
         # non-dict — null, "", [] — would otherwise coerce to {}, which on the update
         # path erases what is stored.
-        frontmatter = kw.get("frontmatter", _UNSET)
-        if frontmatter is _UNSET:
-            frontmatter = {}
-        elif not isinstance(frontmatter, dict):
+        frontmatter = kw.get("frontmatter", {})
+        if not isinstance(frontmatter, dict):
             raise ToolError("frontmatter must be an object")
         c = Concept(
             path=path,
@@ -269,10 +262,7 @@ class Tools:
 
     async def list_(self, prefix: str = "") -> dict[str, Any]:
         rows = self._c.list_(self._t, prefix)
-        counts: dict[str, int] = {}
-        for _, type_ in rows:
-            counts[type_] = counts.get(type_, 0) + 1
-        return {"paths": [p for p, _ in rows], "counts": counts}
+        return {"paths": [p for p, _ in rows], "counts": Counter(t for _, t in rows)}
 
     async def read(self, path: str) -> dict[str, Any] | None:
         found = self._c.read_with_backlinks(self._t, path)
