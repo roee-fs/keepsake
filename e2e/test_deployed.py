@@ -12,6 +12,7 @@ import subprocess
 import time
 import urllib.request
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -44,33 +45,26 @@ BAD_SCHEMA = "okf_bad"
 BAD_DSN = "postgres://postgres:postgres@postgres:5432/keepsake"
 
 
-def _run(args: Sequence[str], timeout: float = 300) -> str:
+def _run(args: Sequence[str], timeout: float = 300, check: bool = True) -> str:
     """Run a command, or fail the test with everything it printed."""
     result = subprocess.run(
         list(args), capture_output=True, text=True, timeout=timeout, check=False
     )
-    assert result.returncode == 0, (
+    assert not check or result.returncode == 0, (
         f"{' '.join(args)} exited {result.returncode}\n"
         f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )
     return result.stdout
 
 
-def _kubectl(*args: str) -> str:
-    return _run(["kubectl", "--context", CONTEXT, *args])
+def _kubectl(*args: str, timeout: float = 300, check: bool = True) -> str:
+    return _run(["kubectl", "--context", CONTEXT, *args], timeout=timeout, check=check)
 
 
 def _logs(pod: str) -> str:
     """Unchecked: `kubectl logs` errors outright while a container is still starting,
     and the caller is polling for the crash that follows."""
-    result = subprocess.run(
-        ["kubectl", "--context", CONTEXT, "logs", pod, "--tail=20"],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    return result.stdout
+    return _kubectl("logs", pod, "--tail=20", timeout=60, check=False)
 
 
 def _psql(statement: str) -> str:
@@ -115,14 +109,21 @@ def _advertised() -> dict[str, dict[str, Any]]:
     return {t["name"]: t for t in _rpc("tools/list")["result"]["tools"]}
 
 
-def _until(read: Callable[[], str], what: str, timeout: float = 120) -> str:
-    """Poll until `read` answers with something, then return it."""
+def _until[T](
+    read: Callable[[], T],
+    what: str,
+    timeout: float = 120,
+    catch: tuple[type[BaseException], ...] = (),
+) -> T:
+    """Poll until `read` answers with something, then return it. Anything in `catch`
+    counts as not yet."""
     deadline = time.monotonic() + timeout
-    seen = ""
     while time.monotonic() < deadline:
-        seen = read()
-        if seen:
-            return seen
+        try:
+            if seen := read():
+                return seen
+        except catch:
+            pass
         time.sleep(2)
     raise AssertionError(f"{what} was still empty after {timeout:.0f}s")
 
@@ -133,13 +134,8 @@ def _wait_for_the_node_port() -> None:
     NodePort, and a request that arrives in between is reset. Waits for the datapath
     and never fails: a test that still cannot reach the endpoint says so itself.
     """
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        try:
-            _rpc("tools/list")
-            return
-        except OSError:
-            time.sleep(1)
+    with suppress(AssertionError):
+        _until(lambda: _rpc("tools/list"), "the NodePort", timeout=60, catch=(OSError,))
 
 
 def test_the_owner_migrated_the_schema() -> None:

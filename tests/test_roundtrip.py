@@ -9,9 +9,7 @@ and unquoted YAML dates.
 import uuid
 from pathlib import Path
 
-import psycopg
 import pytest
-from psycopg import sql
 from starlette.applications import Starlette
 
 from keepsake.cli import (
@@ -20,10 +18,8 @@ from keepsake.cli import (
     export_bundle,
     import_bundle,
     main,
-    migrate,
     validate_bundle,
 )
-from keepsake.store import SCHEMA
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
 from okf_core import Concept
@@ -37,12 +33,6 @@ custom_vendor_field: keep-me
 ---
 The spec sits beneath the convention. Beneath that, the café.
 """
-
-
-@pytest.fixture
-def tenant() -> uuid.UUID:
-    """A tenant of its own per test: the database outlives the function-scoped store."""
-    return uuid.uuid4()
 
 
 def _bundle(tmp_path: Path, text: str = DOC, name: str = "layers.md") -> Path:
@@ -401,17 +391,3 @@ def test_main_reports_a_missing_dsn_without_a_traceback(
     monkeypatch.delenv("KEEPSAKE_DSN", raising=False)
     assert main(["export", str(tmp_path), "--tenant", str(uuid.uuid4())]) == 1
     assert "--dsn" in capsys.readouterr().err
-
-
-def test_migrate_resolves_its_own_script_location(
-    migrated: bool, owner_dsn: str
-) -> None:
-    """Idempotent, so running it over the fixture's schema only proves it resolves."""
-    migrate(owner_dsn)
-    with psycopg.connect(owner_dsn) as conn:
-        row = conn.execute(
-            sql.SQL("SELECT version_num FROM {}.alembic_version").format(
-                sql.Identifier(SCHEMA)
-            )
-        ).fetchone()
-    assert row is not None and row[0] == "0001"

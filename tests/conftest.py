@@ -7,15 +7,13 @@ isolation. `pg_dsn` checks itself, so the check cannot be skipped.
 
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import psycopg
 import pytest
-from alembic import command
-from alembic.config import Config
 from psycopg import sql
 from testcontainers.community.postgres import PostgresContainer
 
+from keepsake.cli import migrate
 from keepsake.server.tools import Tools
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
@@ -42,6 +40,7 @@ def assert_role_unprivileged(dsn: str) -> None:
 
 
 def _dsn(pg: PostgresContainer, user: str, password: str) -> str:
+    """A URL, not a keyword string: one test appends a `?options=` query to it."""
     host = pg.get_container_host_ip()
     port = pg.get_exposed_port(5432)
     return f"postgresql://{user}:{password}@{host}:{port}/{pg.dbname}"
@@ -102,11 +101,18 @@ def bypassrls_dsn(_pg: PostgresContainer, admin_dsn: str) -> str:
 
 @pytest.fixture(scope="session")
 def migrated(owner_dsn: str) -> bool:
-    """Runs the migration as the owner. The migration grants the app role itself."""
-    cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
-    cfg.set_main_option("sqlalchemy.url", owner_dsn)
-    command.upgrade(cfg, "head")
+    """Runs the migration as the owner, through the command an operator runs.
+
+    The migration grants the app role itself.
+    """
+    migrate(owner_dsn)
     return True
+
+
+@pytest.fixture
+def tenant() -> uuid.UUID:
+    """A tenant of its own per test: the database outlives the function-scoped store."""
+    return uuid.uuid4()
 
 
 @pytest.fixture

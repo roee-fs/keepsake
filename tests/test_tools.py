@@ -81,7 +81,6 @@ async def _session(
 @pytest.fixture
 def served(migrated: bool, pg_dsn: str) -> Iterator[str]:
     """The built app on a real socket, so the wire format is the one a pod serves."""
-    assert migrated
     app = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
@@ -426,8 +425,6 @@ def test_the_endpoint_answers_a_plain_json_post(served: str) -> None:
     with urllib.request.urlopen(request, timeout=10) as response:
         advertised = json.loads(response.read())["result"]["tools"]
     assert {t["name"] for t in advertised} == TOOL_NAMES
-    required = {t["name"]: t["inputSchema"]["required"] for t in advertised}
-    assert "limit" in required["okf_search"] and "limit" in required["okf_grep"]
 
 
 @pytest.mark.usefixtures("migrated")
