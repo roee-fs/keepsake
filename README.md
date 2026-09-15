@@ -51,21 +51,30 @@ RLS.
 **No lock-in.** MIT, no hosted tier, no registry, no required runtime. Your
 knowledge is markdown; `keepsake export` hands it back byte-for-byte.
 
+### Fidelity
+
+Byte-for-byte has four known exceptions, each pinned by a test:
+
+- CRLF line endings are normalised to LF.
+- Comments in frontmatter are dropped.
+- An unquoted YAML date (`2026-01-01`) comes back as a string.
+- A hand-written block-style list re-emits flow-style (`tags: [a, b]`).
+
 ## Roadmap
 
 **v1 — the substrate**
 
-- [ ] `okf_core`: OKF parse/serialize with round-trip fidelity
-- [ ] Link extraction and per-write validation
-- [ ] Schema migration: concepts, revisions, RLS policies, tenant purge
-- [ ] Tenant-scoped connection handling
-- [ ] Writes with optional compare-and-swap and an append-only revision log
-- [ ] Read paths: read, list, search, grep, backlinks
-- [ ] Startup verification that refuses a privileged database role
-- [ ] MCP server over streamable HTTP
-- [ ] CLI: import, export, validate, migrate, serve
-- [ ] Helm chart with managed and existing Postgres modes
-- [ ] kind end-to-end suite
+- [x] `okf_core`: OKF parse/serialize with round-trip fidelity
+- [x] Link extraction and per-write validation
+- [x] Schema migration: concepts, revisions, RLS policies, tenant purge
+- [x] Tenant-scoped connection handling
+- [x] Writes with optional compare-and-swap and an append-only revision log
+- [x] Read paths: read, list, search, grep, backlinks
+- [x] Startup verification that refuses a privileged database role
+- [x] MCP server over streamable HTTP
+- [x] CLI: import, export, validate, migrate, serve
+- [x] Helm chart with managed and existing Postgres modes
+- [x] kind end-to-end suite
 
 **Next**
 
