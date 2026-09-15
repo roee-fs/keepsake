@@ -2,11 +2,8 @@
 
 from collections import defaultdict
 
-from keepsake.store import SCHEMA
+from keepsake.store import SCHEMA, TENANT_GUC
 from keepsake.store.pool import Store
-
-# The one GUC a policy may key on. A policy ignoring it isolates nothing.
-_GUC = "okf.current_tenant"
 
 # Alembic's bookkeeping table holds no tenant data and carries no policy, so forcing
 # RLS on it would deny alembic its own version row.
@@ -111,8 +108,8 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
             # however strict its siblings are. Every expression it does apply must
             # read the GUC: reads and writes are gated by different ones.
             for policy, expressions in policies[name]:
-                if not expressions or any(_GUC not in e for e in expressions):
+                if not expressions or any(TENANT_GUC not in e for e in expressions):
                     raise MisconfiguredDatabase(
-                        f"{schema}.{name} policy {policy} does not read {_GUC}: "
+                        f"{schema}.{name} policy {policy} does not read {TENANT_GUC}: "
                         "it does not restrict rows to one tenant"
                     )

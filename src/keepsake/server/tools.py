@@ -221,13 +221,9 @@ class Tools:
         existing = self._c.read(self._t, path)
         if existing is None:
             raise ToolError(f"no concept at {path}")
-        merged = {
-            "type": existing.type,
-            "title": existing.title,
-            "description": existing.description,
-            "body": existing.body,
-            "frontmatter": existing.frontmatter,
-        } | kw
+        # Off the advertised schema: a sixth field hand-listed here would be accepted
+        # by the tool and then dropped on every partial write.
+        merged = {f: getattr(existing, f) for f in _CONCEPT_FIELDS} | kw
         try:
             result = self._c.update(
                 self._t, self._concept(path, **merged), self._actor, expected_version
@@ -307,7 +303,7 @@ def _failed(message: str) -> types.CallToolResult:
 
 def register(server: Server[Any], tools: Tools) -> None:
     """Advertise the seven okf_* tools on `server` and route their calls to `tools`."""
-    dispatch: dict[str, Callable[..., Awaitable[Any]]] = {
+    handlers: dict[str, Callable[..., Awaitable[Any]]] = {
         "okf_list": tools.list_,
         "okf_search": tools.search,
         "okf_grep": tools.grep,
@@ -315,6 +311,11 @@ def register(server: Server[Any], tools: Tools) -> None:
         "okf_create": tools.create,
         "okf_update": tools.update,
         "okf_relate": tools.relate,
+    }
+    # Keyed off the advertised names, so a tool cannot be advertised without a handler.
+    # The signature is bound per call but never changes, so it is taken once.
+    dispatch = {
+        t.name: (handlers[t.name], inspect.signature(handlers[t.name])) for t in _TOOLS
     }
 
     async def on_list_tools(
@@ -325,14 +326,15 @@ def register(server: Server[Any], tools: Tools) -> None:
     async def on_call_tool(
         ctx: ServerRequestContext[Any], params: types.CallToolRequestParams
     ) -> types.CallToolResult:
-        call = dispatch.get(params.name)
-        if call is None:
+        entry = dispatch.get(params.name)
+        if entry is None:
             # An error result, not a protocol error: an agent can correct itself from a
             # tool result and cannot from a transport failure.
             return _failed(f"no such tool: {params.name}")
+        call, signature = entry
         arguments = params.arguments or {}
         try:
-            inspect.signature(call).bind(**arguments)
+            signature.bind(**arguments)
         except TypeError as exc:
             # Bound before the call so only an argument mistake reports as one; a
             # TypeError from inside a tool is a defect here and must surface as one.

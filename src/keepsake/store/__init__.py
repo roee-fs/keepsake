@@ -14,3 +14,7 @@ def validated_schema(name: str) -> str:
 
 
 SCHEMA = validated_schema(os.environ.get("KEEPSAKE_SCHEMA", "okf"))
+
+# The one GUC a policy may key on. The policy, the connection that sets it and the
+# startup check that asserts the policy reads it must all name the same one.
+TENANT_GUC = "okf.current_tenant"

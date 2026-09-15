@@ -8,7 +8,7 @@ import psycopg
 from psycopg import sql
 from psycopg_pool import ConnectionPool
 
-from keepsake.store import SCHEMA
+from keepsake.store import SCHEMA, TENANT_GUC
 
 
 class Store:
@@ -40,6 +40,6 @@ class Store:
             # parameter. A session-scoped value would outlive the transaction and be
             # inherited by whoever next takes this connection from the pool.
             conn.execute(
-                "SELECT set_config('okf.current_tenant', %s, true)", (str(tenant_id),)
+                "SELECT set_config(%s, %s, true)", (TENANT_GUC, str(tenant_id))
             )
             yield conn

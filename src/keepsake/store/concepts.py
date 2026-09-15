@@ -20,10 +20,12 @@ from psycopg.types.json import Jsonb
 from keepsake.store.pool import Store
 from okf_core import Concept
 
-_COLS = (
-    "tenant_id, path, type, title, description, body, frontmatter, links, updated_by"
-)
-_READ_COLS = "path, type, title, description, body, frontmatter, links, version"
+# Every column a write sets and a read returns, in `Concept`'s own field order. The
+# INSERT column list, its placeholder run, the UPDATE SET clause and the SELECT list
+# are all derived from this, so a seventh field cannot reach one statement and not
+# another.
+_FIELDS = ("type", "title", "description", "body", "frontmatter", "links")
+_READ_COLS = ", ".join(("path", *_FIELDS, "version"))
 
 # Anything outside a word is dropped rather than escaped, which is what keeps caller
 # text from reaching to_tsquery as operators.
@@ -104,10 +106,11 @@ class ConceptStore:
 
     def create(self, tenant_id: UUID, c: Concept, actor: str) -> int | None:
         """Insert a concept. None means the path is already taken."""
+        columns = ", ".join(("tenant_id", "path", *_FIELDS, "updated_by"))
+        placeholders = ",".join(["%s"] * (len(_FIELDS) + 3))
         with self._store.scope(tenant_id) as conn:
             row = conn.execute(
-                f"INSERT INTO concept ({_COLS}) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                f"INSERT INTO concept ({columns}) VALUES ({placeholders}) "
                 "ON CONFLICT (tenant_id, path) DO NOTHING RETURNING version",
                 (
                     tenant_id,
@@ -132,10 +135,11 @@ class ConceptStore:
     ) -> int | Conflict:
         """Write a concept. `expected_version` makes it a compare-and-swap; None is
         last-write-wins. Raises KeyError if the path does not exist."""
+        assignments = ", ".join(f"{f}=%s" for f in _FIELDS)
         with self._store.scope(tenant_id) as conn:
             row = conn.execute(
-                "UPDATE concept SET type=%s, title=%s, description=%s, body=%s, "
-                "frontmatter=%s, links=%s, updated_by=%s, version=version+1, updated_at=now() "
+                f"UPDATE concept SET {assignments}, updated_by=%s, "
+                "version=version+1, updated_at=now() "
                 "WHERE path=%s AND (%s::int IS NULL OR version=%s) RETURNING version",
                 (
                     c.type,
