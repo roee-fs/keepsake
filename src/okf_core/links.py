@@ -31,7 +31,7 @@ def _resolve(target: str, directory: str) -> str | None:
     resolved = posixpath.normpath(posixpath.join(directory, target))
     # A leading `..` escaped the bundle root and `.` names a directory, so no stored
     # path can ever equal either.
-    if not resolved or resolved == "." or resolved.split("/", 1)[0] == "..":
+    if resolved == "." or resolved.split("/", 1)[0] == "..":
         return None
     return resolved
 

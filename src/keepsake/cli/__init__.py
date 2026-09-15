@@ -46,8 +46,10 @@ def _env_port() -> int:
     """The port $KEEPSAKE_PORT names, or 8000 when it names nothing usable.
 
     kubelet injects `tcp://10.96.0.1:8000` as KEEPSAKE_PORT into every pod in a
-    namespace holding a Service named keepsake. Read lazily, and never by a
-    subcommand that binds no port.
+    namespace holding a Service named keepsake, which is not a port number. The
+    chart's workloads therefore set `enableServiceLinks: false`, and this parses
+    defensively for every deployment that is not the chart. Read lazily, and never
+    by a subcommand that binds no port.
     """
     value = os.environ.get("KEEPSAKE_PORT", "")
     return int(value) if value.isdigit() else _DEFAULT_PORT
