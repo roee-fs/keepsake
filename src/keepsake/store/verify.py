@@ -5,10 +5,6 @@ from collections import defaultdict
 from keepsake.store import SCHEMA, TENANT_GUC
 from keepsake.store.pool import Store
 
-# Alembic's bookkeeping table holds no tenant data and carries no policy, so forcing
-# RLS on it would deny alembic its own version row.
-_EXEMPT = "alembic_version"
-
 # Every catalog read below is schema-qualified: search_path names pg_catalog explicitly,
 # so it is searched in listed order and a table named okf.pg_class would shadow it.
 
@@ -25,12 +21,18 @@ _SCHEMA_OWNER = (
     "FROM pg_catalog.pg_namespace WHERE nspname = %s"
 )
 
+# A tenant_id column, not a name: the rule is "every table holding tenant data", and
+# an exemption list is how a table that does hold it gets waved through. Alembic's
+# bookkeeping table has no such column, so it stays out without being named.
 _TABLES = """
     SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
            pg_catalog.pg_has_role(c.relowner, 'MEMBER')
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = %s AND c.relkind IN ('r', 'p') AND c.relname <> %s
+    WHERE n.nspname = %s AND c.relkind IN ('r', 'p')
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                  WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
+                    AND NOT a.attisdropped)
 """
 
 # Both expressions: USING alone leaves WITH CHECK (true) free to admit another
@@ -84,9 +86,7 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 (policy, [e for e in (qual, check) if e is not None])
             )
 
-        for name, enabled, forced, owned in conn.execute(
-            _TABLES, (schema, _EXEMPT)
-        ).fetchall():
+        for name, enabled, forced, owned in conn.execute(_TABLES, (schema,)).fetchall():
             if owned:
                 raise MisconfiguredDatabase(
                     f"okf must not connect as a role that owns {schema}.{name}: "
