@@ -60,8 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement by contacting the
-owners of the [Frontier-Security](https://github.com/Frontier-Security)
-organization directly.
+maintainers of this repository directly.
 
 If the behavior took place on GitHub, you can also report it to GitHub through
 [their abuse reporting](https://github.com/contact/report-abuse), which does not

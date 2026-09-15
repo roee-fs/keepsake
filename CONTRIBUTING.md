@@ -90,9 +90,9 @@ For maintainers. Everything is driven by the tag, so there is nothing to click.
    that heading and stops without it.
 3. Merge, then `git tag vX.Y.Z && git push --tags`.
 
-The tag publishes, in order: the image to `ghcr.io/frontier-security/keepsake`
+The tag publishes, in order: the image to `ghcr.io/roee-fs/keepsake`
 for `linux/amd64` and `linux/arm64` with SLSA provenance, the chart to
-`oci://ghcr.io/frontier-security/charts`, and a GitHub Release carrying a
+`oci://ghcr.io/roee-fs/charts`, and a GitHub Release carrying a
 CycloneDX SBOM. The release is created last, so it can never name an artefact
 that was not pushed.
 

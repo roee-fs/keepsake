@@ -5,7 +5,7 @@
 **Please do not open a public issue for a security problem.**
 
 Report it through GitHub's private vulnerability reporting:
-[**open a draft advisory**](https://github.com/Frontier-Security/keepsake/security/advisories/new).
+[**open a draft advisory**](https://github.com/roee-fs/keepsake/security/advisories/new).
 That channel is private to you and the maintainers, and it needs no account
 beyond the GitHub one you already have.
 

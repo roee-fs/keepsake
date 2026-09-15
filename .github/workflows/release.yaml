@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 15
     outputs:
       version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.image.outputs.image }}
+      charts: ${{ steps.image.outputs.charts }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
@@ -33,6 +35,26 @@ jobs:
             exit 1
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
+      # Derived, never written down twice: a GHCR namespace follows the repository
+      # owner, so moving the repo between a user and an org silently makes a
+      # hardcoded namespace one this token cannot push to. Lowercased because GHCR
+      # requires it and GitHub owners are not.
+      - id: image
+        run: |
+          set -euo pipefail
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$owner/keepsake" >> "$GITHUB_OUTPUT"
+          echo "charts=ghcr.io/$owner/charts" >> "$GITHUB_OUTPUT"
+      # The chart's default image must be the one this release publishes, or an
+      # install pulls a tag nobody pushed. A repository transfer breaks this loudly
+      # rather than at the first `helm install` a stranger runs.
+      - run: |
+          set -euo pipefail
+          declared=$(grep -E '^  repository:' charts/keepsake/values.yaml | awk '{print $2}')
+          if [ "$declared" != "${{ steps.image.outputs.image }}" ]; then
+            echo "chart default image is $declared, this release publishes ${{ steps.image.outputs.image }}" >&2
+            exit 1
+          fi
       - run: uv sync --locked
       # Holds Chart.yaml's version and appVersion to pyproject's, and the community
       # health files to their locations.
@@ -70,7 +92,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/frontier-security/keepsake
+          images: ${{ needs.check.outputs.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -87,7 +109,7 @@ jobs:
       # that a signature says who pushed it while provenance says what built it.
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
-          subject-name: ghcr.io/frontier-security/keepsake
+          subject-name: ${{ needs.check.outputs.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
@@ -108,7 +130,7 @@ jobs:
           echo "$GITHUB_TOKEN" | helm registry login ghcr.io \
             --username "${{ github.actor }}" --password-stdin
           helm push "keepsake-${{ needs.check.outputs.version }}.tgz" \
-            oci://ghcr.io/frontier-security/charts
+            "oci://${{ needs.check.outputs.charts }}"
 
   # Last, and only once the artefacts it points at exist. A GitHub Release that
   # names an image nobody pushed is worse than no release.
@@ -131,20 +153,22 @@ jobs:
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.check.outputs.version }}
+          IMAGE: ${{ needs.check.outputs.image }}
+          CHARTS: ${{ needs.check.outputs.charts }}
         run: |
           set -euo pipefail
           {
             echo "## Install"
             echo
             echo '```bash'
-            echo "helm install keepsake oci://ghcr.io/frontier-security/charts/keepsake --version $VERSION"
+            echo "helm install keepsake oci://$CHARTS/keepsake --version $VERSION"
             echo '```'
             echo
-            echo "Image: \`ghcr.io/frontier-security/keepsake:$VERSION\` (linux/amd64, linux/arm64),"
+            echo "Image: \`$IMAGE:$VERSION\` (linux/amd64, linux/arm64),"
             echo "with SLSA provenance attached. Verify it with:"
             echo
             echo '```bash'
-            echo "gh attestation verify oci://ghcr.io/frontier-security/keepsake:$VERSION --owner ${{ github.repository_owner }}"
+            echo "gh attestation verify oci://$IMAGE:$VERSION --owner ${{ github.repository_owner }}"
             echo '```'
             echo
             echo "See [CHANGELOG.md](CHANGELOG.md) for what changed."

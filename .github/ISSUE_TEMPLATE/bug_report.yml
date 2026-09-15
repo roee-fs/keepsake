@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         **If this touches tenant isolation, stop and read
-        [SECURITY.md](https://github.com/Frontier-Security/keepsake/blob/main/SECURITY.md)**
+        [SECURITY.md](https://github.com/roee-fs/keepsake/blob/main/SECURITY.md)**
         — report it privately instead.
 
   - type: textarea
