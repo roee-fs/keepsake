@@ -15,8 +15,11 @@ RESERVED_PATHS = frozenset({"index", "log"})
 # Every limit here is a Postgres one, refused in advance so the agent gets a sentence
 # it can act on rather than a driver error the transport reports as a protocol failure.
 #
+# All of them are counted in BYTES, because every limit they stand in for is. Measured
+# in characters, a 1024-character CJK path is 3072 bytes and blows the btree limit
+# these exist to keep it under — the cap would admit exactly what it was added to stop.
+#
 # A btree entry is capped at 2704 bytes and the primary key is (tenant_id, path).
-# 1024 leaves room for a multi-byte path and is longer than any path worth writing.
 MAX_PATH = 1024
 # The `search` column is generated, so an oversized document fails the INSERT itself:
 # a tsvector holds at most 1MB of lexemes, and positions roughly halve that again.
@@ -29,6 +32,11 @@ _FIELD_LIMITS = (
     ("body", MAX_BODY),
     ("type", MAX_TITLE),
 )
+
+
+def _size(text: str) -> int:
+    """Its length in UTF-8 bytes, which is the unit Postgres counts in."""
+    return len(text.encode())
 
 
 def _control(text: str) -> bool:
@@ -58,8 +66,8 @@ def validate(c: Concept) -> list[str]:
         errors.append("path must not contain a NUL byte")
     elif _control(c.path):
         errors.append("path must not contain a control character")
-    if len(c.path) > MAX_PATH:
-        errors.append(f"path is too long: {len(c.path)} characters, at most {MAX_PATH}")
+    if (size := _size(c.path)) > MAX_PATH:
+        errors.append(f"path is too long: {size} bytes, at most {MAX_PATH}")
 
     for name, limit in _FIELD_LIMITS:
         value: str = getattr(c, name)
@@ -67,8 +75,6 @@ def validate(c: Concept) -> list[str]:
         # after validation has already passed it.
         if "\x00" in value:
             errors.append(f"{name} must not contain a NUL byte")
-        if len(value) > limit:
-            errors.append(
-                f"{name} is too long: {len(value)} characters, at most {limit}"
-            )
+        if (size := _size(value)) > limit:
+            errors.append(f"{name} is too long: {size} bytes, at most {limit}")
     return errors

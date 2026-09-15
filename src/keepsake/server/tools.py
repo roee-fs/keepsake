@@ -33,7 +33,11 @@ _OBJECT: dict[str, Any] = {"type": "object"}
 # whole corpus into one response; advertised, an agent can see the ceiling it has.
 MAX_LIMIT = 200
 _LIMIT: dict[str, Any] = {"type": "integer", "minimum": 0, "maximum": MAX_LIMIT}
-_VERSION: dict[str, Any] = {"type": "integer", "minimum": 1}
+# `expected_version` is bound as int4. A larger value raises NumericValueOutOfRange,
+# a DataError — sibling to the connection errors, so deliberately not caught as
+# "unavailable", and it would reach the agent as a protocol error instead.
+MAX_VERSION = 2_147_483_647
+_VERSION: dict[str, Any] = {"type": "integer", "minimum": 1, "maximum": MAX_VERSION}
 
 # How many times `relate` re-reads and re-appends past a concurrent writer. Each round
 # has exactly one winner, so this is the number of agents that may relate one source at
