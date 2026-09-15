@@ -25,6 +25,9 @@ class Store:
     def raw(self) -> Iterator[psycopg.Connection]:
         """A connection with no tenant scope. For startup checks only."""
         with self._pool.connection() as conn, conn.transaction():
+            # Enforces the docstring rather than advertising it: the pool commits on
+            # clean exit, so an unscoped connection is otherwise a usable write path.
+            conn.execute("SET TRANSACTION READ ONLY")
             conn.execute(self._search_path)
             yield conn
 
