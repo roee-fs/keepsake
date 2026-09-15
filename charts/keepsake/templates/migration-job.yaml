@@ -21,6 +21,10 @@ spec:
         app: {{ .Release.Name }}-migrate
     spec:
       restartPolicy: OnFailure
+      # Without this the Service the release already installed injects KEEPSAKE_PORT as
+      # `tcp://10.96.0.1:8000`, and the CLI fails to parse it: every upgrade's migration
+      # hook crash-loops. This Job sets no KEEPSAKE_PORT of its own to shadow it.
+      enableServiceLinks: false
       containers:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
