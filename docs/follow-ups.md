@@ -48,15 +48,22 @@ exists; what remains needs either a decision or repository-admin rights.
 
 ### Needs a human
 
-- **`conduct@frontier.security` must be confirmed to exist**, or replaced.
-  `CODE_OF_CONDUCT.md` names it as the enforcement contact. Every other address
-  in this repo was avoided deliberately — security reports go through GitHub's
-  advisory form, which needs no inbox — but a code of conduct has to name someone,
-  and a harassment report that bounces is worse than no policy at all.
-- **Branch protection on `main`.** Scorecard's highest-weighted check, and not
-  settable from a commit. At minimum: no force pushes, no deletion, one approving
-  review, and the `check`, `kind`, `codeql` and `osv` status checks actually
-  required. Tiers and exact settings are in the Scorecard docs.
+- **`CODE_OF_CONDUCT.md` has no enforcement address.** It points at the
+  organization's owners and at GitHub's own abuse reporting, which works today
+  and needs no inbox, but a real address is better: it gives a reporter somewhere
+  to go that is not the platform the conduct happened on. Add one when a mailbox
+  exists — and only then, because a harassment report that bounces is worse than
+  no policy at all.
+- **The `main` ruleset is disabled and targets no branches.** It exists, it is
+  named `main`, and it enforces nothing: `enforcement: disabled`, and
+  `conditions.ref_name` has empty `include` and `exclude`, so even enabled it
+  would apply to no ref. Its rules are the right ones — `deletion`,
+  `non_fast_forward`, `pull_request` — but the pull-request rule asks for
+  **0 approving reviews**, and there is no `required_status_checks` rule, so none
+  of `check`, `kind`, `codeql` or `osv` gates a merge. To make it real: set
+  enforcement to active, include `~DEFAULT_BRANCH`, raise the review count to 1,
+  and add the four status checks. Scorecard's highest-weighted check, and not
+  settable from a commit.
 - **Enable GitHub private vulnerability reporting** in Settings → Security.
   `SECURITY.md` and the issue-template chooser both link to the advisory form;
   until the setting is on, those links 404.

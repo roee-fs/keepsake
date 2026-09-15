@@ -59,8 +59,13 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the community leaders responsible for enforcement at
-**conduct@frontier.security**.
+reported to the community leaders responsible for enforcement by contacting the
+owners of the [Frontier-Security](https://github.com/Frontier-Security)
+organization directly.
+
+If the behavior took place on GitHub, you can also report it to GitHub through
+[their abuse reporting](https://github.com/contact/report-abuse), which does not
+require us to act first.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
