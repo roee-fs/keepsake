@@ -19,18 +19,15 @@ from uuid import UUID
 import uvicorn
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from ruamel.yaml import YAMLError
 
 from keepsake.server.app import Config as ServerConfig
 from keepsake.server.app import build_app
 from keepsake.store import SCHEMA
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
-from keepsake.store.verify import MisconfiguredDatabase
-from okf_core import Concept, parse, serialize, validate
-
-# Reserved at the bundle root only: `architecture/index` is knowledge, and skipping
-# it on import would silently drop it.
-_GENERATED = frozenset({"index", "log"})
+from keepsake.store.verify import MisconfiguredDatabase, verify
+from okf_core import RESERVED_PATHS, Concept, parse, serialize, validate
 
 _ACTOR = "cli"
 
@@ -47,14 +44,25 @@ class CliError(RuntimeError):
     """An operator-facing failure. `main` prints it instead of a traceback."""
 
 
-def _documents(root: Path) -> Iterator[Concept]:
-    """Every concept in the bundle, generated files excluded."""
+def _documents(root: Path) -> list[Concept]:
+    """Every concept in the bundle, the generated files excluded.
+
+    Parses the whole bundle before returning, so a malformed file refuses the
+    command rather than aborting it half-applied.
+    """
+    concepts = []
     for file in sorted(root.rglob("*.md")):
         path = file.relative_to(root).with_suffix("").as_posix()
-        if path not in _GENERATED:
+        if path in RESERVED_PATHS:
+            continue
+        try:
             # OKF is UTF-8. The default encoding is the locale's, and a container
             # with no LANG set reads ASCII.
-            yield parse(file.read_text(encoding="utf-8"), path)
+            concepts.append(parse(file.read_text(encoding="utf-8"), path))
+        except YAMLError as exc:
+            # ruamel names the frontmatter it was handed, never the file it came from.
+            raise CliError(f"{file}: {exc}") from None
+    return concepts
 
 
 def import_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
@@ -74,37 +82,46 @@ def import_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
     return count
 
 
+def _target(root: Path, path: str) -> Path:
+    """The file a concept is written to. Raises rather than leave the bundle."""
+    if path in RESERVED_PATHS:
+        raise CliError(
+            f"the concept {path!r} collides with a generated file: the bundle root "
+            f"reserves {' and '.join(f'{n}.md' for n in sorted(RESERVED_PATHS))}"
+        )
+    target = root / f"{path}.md"
+    # A traversing path cannot be written through a tool, but whatever is stored, the
+    # export MUST NOT write outside the directory the operator named.
+    if not target.resolve().is_relative_to(root):
+        raise CliError(f"refusing to write {path!r} outside the bundle")
+    return target
+
+
 def export_bundle(concepts: ConceptStore, tenant_id: UUID, root: Path) -> int:
     """Write the corpus out as a bundle, index and log included."""
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    paths = [p for p, _ in concepts.list_(tenant_id, "")]
-    written = 0
-    for path in paths:
-        if path in _GENERATED:
-            raise CliError(
-                f"the concept {path!r} collides with a generated file: the bundle "
-                f"root reserves {' and '.join(f'{n}.md' for n in sorted(_GENERATED))}"
-            )
-        target = root / f"{path}.md"
-        # A traversing path cannot be written through a tool, but whatever is stored,
-        # the export MUST NOT write outside the directory the operator named.
-        if not target.resolve().is_relative_to(root):
-            raise CliError(f"refusing to write {path!r} outside the bundle")
+    # Every path is checked before the first file is written: a bundle that is half
+    # written looks exactly like a complete one.
+    targets = [(p, _target(root, p)) for p, _ in concepts.list_(tenant_id, "")]
+    written: list[str] = []
+    for path, target in targets:
         concept = concepts.read(tenant_id, path)
         if concept is None:
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(serialize(concept), encoding="utf-8")
-        written += 1
-    (root / "index.md").write_text(_render_index(paths), encoding="utf-8")
+        written.append(path)
+    # From what reached the disk, not from the listing: the index MUST NOT link to a
+    # file that was never written.
+    (root / "index.md").write_text(_render_index(written), encoding="utf-8")
     (root / "log.md").write_text(_render_log(concepts, tenant_id), encoding="utf-8")
-    return written
+    return len(written)
 
 
 def validate_bundle(root: Path) -> list[str]:
     """Every rule the bundle breaks: per-concept errors plus links to nothing."""
-    concepts = list(_documents(root))
+    concepts = _documents(root)
     known = {c.path for c in concepts}
     errors: list[str] = []
     for concept in concepts:
@@ -181,6 +198,10 @@ def _bound(args: argparse.Namespace) -> Iterator[tuple[ConceptStore, UUID]]:
     tenant_id = _tenant(args)
     store = Store(_required(args.dsn, "--dsn", "KEEPSAKE_DSN"), schema=SCHEMA)
     try:
+        # Nothing here filters by tenant: RLS is the only thing keeping one tenant's
+        # concepts out of another's bundle. A privileged DSN — the same one `migrate`
+        # needs — would export every tenant at once, silently.
+        verify(store, SCHEMA)
         yield ConceptStore(store), tenant_id
     finally:
         store.close()

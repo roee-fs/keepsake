@@ -106,7 +106,9 @@ def test_search_respects_limit(concepts: ConceptStore, t: uuid.UUID) -> None:
     q = "cursor detection authentication"
     assert len(concepts.search(t, q, limit=10, prefix=None)) == len(_SEED)
     assert len(concepts.search(t, q, limit=2, prefix=None)) == 2
-    assert concepts.search(t, q, limit=0, prefix=None) == []
+    # Negative, not zero: Postgres answers LIMIT 0 with no rows by itself, so only a
+    # negative limit reaches the guard.
+    assert concepts.search(t, q, limit=-1, prefix=None) == []
 
 
 def test_search_confines_hits_to_the_prefix(
@@ -157,7 +159,7 @@ def test_grep_matches_a_regex_and_is_limited(
     ]
     assert len(concepts.grep(t, "[a-z]", limit=10)) == len(_SEED)
     assert len(concepts.grep(t, "[a-z]", limit=2)) == 2
-    assert concepts.grep(t, "index-time", limit=0) == []
+    assert concepts.grep(t, "index-time", limit=-1) == []
 
 
 def test_grep_matches_titles_as_well_as_bodies(
