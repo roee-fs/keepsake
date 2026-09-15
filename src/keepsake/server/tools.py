@@ -170,8 +170,22 @@ class Tools:
         self._t = tenant_id
         self._actor = actor
 
+    @staticmethod
+    def _text(kw: dict[str, Any], name: str) -> str:
+        """An absent field is empty; a present one must already be a string.
+
+        `str()` would coerce instead, so `null` became the four characters `None` and
+        overwrote what is stored, having passed validation.
+        """
+        value = kw.get(name, _UNSET)
+        if value is _UNSET:
+            return ""
+        if not isinstance(value, str):
+            raise ToolError(f"{name} must be a string")
+        return value
+
     def _concept(self, path: str, **kw: Any) -> Concept:
-        body = str(kw.get("body", ""))
+        body = self._text(kw, "body")
         # Absent means leave it alone; anything present must be an object. A falsy
         # non-dict — null, "", [] — would otherwise coerce to {}, which on the update
         # path erases what is stored.
@@ -182,9 +196,9 @@ class Tools:
             raise ToolError("frontmatter must be an object")
         c = Concept(
             path=path,
-            type=str(kw.get("type", "")),
-            title=str(kw.get("title", "")),
-            description=str(kw.get("description", "")),
+            type=self._text(kw, "type"),
+            title=self._text(kw, "title"),
+            description=self._text(kw, "description"),
             body=body,
             frontmatter=dict(frontmatter),
             # Derived, never taken from the caller: an edge exists only where a reader

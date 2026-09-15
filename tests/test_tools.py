@@ -185,6 +185,30 @@ async def test_a_null_frontmatter_is_refused_rather_than_erasing(tools: Tools) -
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["body", "type", "title", "description"])
+async def test_a_null_text_field_is_refused_rather_than_erasing(
+    tools: Tools, field: str
+) -> None:
+    """`str(None)` stored the four characters `None` over what was there, and passed."""
+    await _seed(tools, "a/b", title="T", description="D", body="v1")
+    with pytest.raises(ToolError, match=f"{field} must be a string"):
+        await tools.update(path="a/b", **{field: None})
+    concept = await tools.read(path="a/b")
+    assert concept is not None
+    assert (
+        concept["body"],
+        concept["type"],
+        concept["title"],
+        concept["description"],
+    ) == (
+        "v1",
+        "Concept",
+        "T",
+        "D",
+    )
+
+
+@pytest.mark.asyncio
 async def test_update_of_another_tenants_path_is_indistinguishable_from_absent(
     tools: Tools, concepts: ConceptStore
 ) -> None:
