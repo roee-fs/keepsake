@@ -21,6 +21,7 @@ import pytest
 import uvicorn
 from mcp.client.session import ClientSession
 from mcp.server.lowlevel import Server
+from mcp.shared.exceptions import MCPError
 from mcp.shared.memory import create_client_server_memory_streams
 from starlette.applications import Starlette
 
@@ -45,8 +46,14 @@ SECRET = "zqxjkbody"
 
 
 @asynccontextmanager
-async def _session(tools: Tools) -> AsyncIterator[ClientSession]:
-    """A client talking to the registered tools over an in-memory MCP transport."""
+async def _session(
+    tools: Tools, raise_exceptions: bool = True
+) -> AsyncIterator[ClientSession]:
+    """A client talking to the registered tools over an in-memory MCP transport.
+
+    `raise_exceptions=False` lets the runner answer an unhandled handler exception with
+    a protocol error, which is the whole point of the test that asserts one.
+    """
     server: Server[Any] = Server("keepsake-test")
     register(server, tools)
     async with (
@@ -62,7 +69,7 @@ async def _session(tools: Tools) -> AsyncIterator[ClientSession]:
                 server_read,
                 server_write,
                 server.create_initialization_options(),
-                raise_exceptions=True,
+                raise_exceptions=raise_exceptions,
             )
         )
         async with ClientSession(client_read, client_write) as session:
@@ -153,6 +160,17 @@ async def test_update_keeps_the_fields_it_was_not_given(tools: Tools) -> None:
 async def test_frontmatter_that_is_not_an_object_is_correctable(tools: Tools) -> None:
     with pytest.raises(ToolError, match="frontmatter must be an object"):
         await _seed(tools, "a/b", frontmatter="owner: sec")
+
+
+@pytest.mark.asyncio
+async def test_a_null_frontmatter_is_refused_rather_than_erasing(tools: Tools) -> None:
+    """`null` is the likeliest way an agent says "leave it alone"; it must not wipe."""
+    await _seed(tools, "a/b", body="v1", frontmatter={"owner": "sec"})
+    with pytest.raises(ToolError, match="frontmatter must be an object"):
+        await tools.update(path="a/b", body="v2", frontmatter=None)
+    concept = await tools.read(path="a/b")
+    assert concept is not None
+    assert concept["frontmatter"] == {"owner": "sec"}
 
 
 @pytest.mark.asyncio
@@ -296,8 +314,6 @@ async def test_every_tool_is_described_and_search_explains_its_matching(
 @pytest.mark.asyncio
 async def test_a_tool_call_round_trips_over_the_protocol(tools: Tools) -> None:
     async with _session(tools) as session:
-        # Listing first arms the client's output-schema validation of the result below.
-        await session.list_tools()
         await session.call_tool(
             "okf_create",
             {
@@ -308,7 +324,11 @@ async def test_a_tool_call_round_trips_over_the_protocol(tools: Tools) -> None:
             },
         )
         result = await session.call_tool("okf_search", {"query": "smoke", "limit": 5})
+        # call_tool validates a result against the tool's advertised output schema,
+        # fetching the listing itself, so a shape contradicting it raises here.
+        matched = await session.call_tool("okf_grep", {"pattern": "smoke", "limit": 5})
     assert result.is_error is False
+    assert matched.is_error is False
     assert [h["path"] for h in result.structured_content["results"]] == ["e2e/smoke"]
     assert SECRET not in json.dumps(result.structured_content)
     assert SECRET not in json.dumps([c.model_dump() for c in result.content])
@@ -331,6 +351,22 @@ async def test_a_call_missing_a_required_argument_is_an_error_result(
     async with _session(tools) as session:
         result = await session.call_tool("okf_search", {"query": "smoke"})
     assert result.is_error is True
+
+
+@pytest.mark.asyncio
+async def test_an_internal_typeerror_is_not_dressed_up_as_the_agents_mistake(
+    tools: Tools, concepts: ConceptStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A defect below the boundary must stay a defect: a tidy error result would send
+    the agent to retry a request that was never wrong, and hide the bug."""
+
+    def broken(*args: Any, **kw: Any) -> None:
+        raise TypeError("a defect below the tool layer")
+
+    monkeypatch.setattr(concepts, "list_", broken)
+    async with _session(tools, raise_exceptions=False) as session:
+        with pytest.raises(MCPError):
+            await session.call_tool("okf_list", {})
 
 
 @pytest.mark.asyncio
