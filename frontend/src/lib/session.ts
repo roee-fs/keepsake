@@ -52,6 +52,18 @@ function goToLogin(): void {
 // it itself. Mutations (login, logout) deliberately go through their own error
 // handling instead, since a failed login must show inline, not bounce to /login.
 export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // A 4xx means the request itself is wrong -- 401 the session is gone, 422 bad
+      // params, 404 no such concept -- and retrying can't turn it into a success.
+      // Without this, the default 3 retries delay a 401's redirect by ~7s of
+      // exponential backoff. Keep retrying everything else (5xx, dropped connections).
+      retry: (failureCount, error) =>
+        error instanceof HttpError && error.status >= 400 && error.status < 500
+          ? false
+          : failureCount < 3,
+    },
+  },
   queryCache: new QueryCache({
     onError: (error) => {
       if (error instanceof HttpError && error.status === 401) goToLogin()
