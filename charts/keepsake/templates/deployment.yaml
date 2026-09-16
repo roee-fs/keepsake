@@ -55,6 +55,11 @@ spec:
             # probe would otherwise depend on that default never moving.
             - name: KEEPSAKE_PORT
               value: {{ $port | quote }}
+            - name: KEEPSAKE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.existingSecret | default (printf "%s-admin" .Release.Name) }}
+                  key: password
           ports:
             - name: http
               containerPort: {{ $port }}

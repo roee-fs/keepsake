@@ -37,6 +37,17 @@ auth:
   mode: none # the only mode implemented; proxy and token are not built yet
   fixedTenantId: "00000000-0000-0000-0000-000000000001"
 
+admin:
+  # Generated at install and printed by NOTES.txt. Read it with:
+  #   kubectl get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d
+  # Change it by editing this Secret and restarting the Deployment, which also
+  # invalidates every open session.
+  existingSecret: "" # required for GitOps; see below
+  # `lookup` (which keeps the password stable across upgrades) returns nothing
+  # under `helm template` and `--dry-run` — how Argo CD and `helm template |
+  # kubectl apply` render this chart — so the password regenerates on every
+  # sync. Set existingSecret above when deploying that way, or risk lockout.
+
 postgres:
   mode: managed # managed | existing
   schema: okf
