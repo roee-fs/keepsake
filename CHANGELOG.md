@@ -9,7 +9,7 @@ SBOM. `pyproject.toml`, `Chart.yaml`'s `version` and its `appVersion` must all
 agree with the tag — a test enforces it and the release workflow refuses
 otherwise.
 
-## Unreleased
+## 0.1.0 — 2026-09-15
 
 ### Added
 
