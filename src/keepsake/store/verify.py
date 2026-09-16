@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 
-from keepsake.store import SCHEMA, TENANT_GUC
+from keepsake.store import ADMIN_GUC, ADMIN_POLICY, SCHEMA, TENANT_GUC
 from keepsake.store.pool import Store
 
 # Every catalog read below is schema-qualified: search_path names pg_catalog explicitly,
@@ -38,7 +38,7 @@ _TABLES = """
 # Both expressions: USING alone leaves WITH CHECK (true) free to admit another
 # tenant's inserts, and an INSERT-only policy carries no USING at all.
 _POLICIES = """
-    SELECT c.relname, p.polname,
+    SELECT c.relname, p.polname, p.polcmd,
            pg_catalog.pg_get_expr(p.polqual, p.polrelid),
            pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
     FROM pg_catalog.pg_policy p
@@ -50,6 +50,27 @@ _POLICIES = """
 
 class MisconfiguredDatabase(RuntimeError):
     """Raised at startup. Crashing loudly beats serving cross-tenant reads."""
+
+
+# pg_policy.polcmd for a policy applying to SELECT alone. '*' is ALL, and a policy
+# reaching a write is not the exemption.
+_SELECT_ONLY = "r"
+
+
+def _restricts_rows(policy: str, cmd: str, expressions: list[str]) -> bool:
+    """Whether a policy confines the rows it admits to something the server sets."""
+    if not expressions:
+        return False
+    if all(TENANT_GUC in e for e in expressions):
+        return True
+    # The single exemption, for the admin console's cross-tenant read. Pinned to all
+    # three of the name, the command and the GUC: widen any one of them and a policy
+    # that admits another tenant's rows to a write starts passing this check.
+    return (
+        policy == ADMIN_POLICY
+        and cmd == _SELECT_ONLY
+        and all(ADMIN_GUC in e for e in expressions)
+    )
 
 
 def verify(store: Store, schema: str = SCHEMA) -> None:
@@ -79,11 +100,13 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 "an owner bypasses row-level security"
             )
 
-        policies: defaultdict[str, list[tuple[str, list[str]]]] = defaultdict(list)
-        for table, policy, qual, check in conn.execute(_POLICIES, (schema,)).fetchall():
+        policies: defaultdict[str, list[tuple[str, str, list[str]]]] = defaultdict(list)
+        for table, policy, cmd, qual, check in conn.execute(
+            _POLICIES, (schema,)
+        ).fetchall():
             # A null expression is one Postgres does not apply, not an empty one.
             policies[table].append(
-                (policy, [e for e in (qual, check) if e is not None])
+                (policy, cmd, [e for e in (qual, check) if e is not None])
             )
 
         for name, enabled, forced, owned in conn.execute(_TABLES, (schema,)).fetchall():
@@ -100,15 +123,20 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 raise MisconfiguredDatabase(
                     f"{schema}.{name} does not FORCE row-level security"
                 )
-            if not policies[name]:
+            # A tenant policy, not merely a policy: admin_read on its own leaves the
+            # table unreadable by every tenant while the console still reads all of it.
+            if not any(
+                TENANT_GUC in e for _, _, exprs in policies[name] for e in exprs
+            ):
                 raise MisconfiguredDatabase(
-                    f"{schema}.{name} has no row-level security policy"
+                    f"{schema}.{name} has no row-level security policy scoping it"
+                    f" to one tenant"
                 )
             # Permissive policies are ORed, so one that ignores the GUC opens the table
             # however strict its siblings are. Every expression it does apply must
-            # read the GUC: reads and writes are gated by different ones.
-            for policy, expressions in policies[name]:
-                if not expressions or any(TENANT_GUC not in e for e in expressions):
+            # read a GUC: reads and writes are gated by different ones.
+            for policy, cmd, expressions in policies[name]:
+                if not _restricts_rows(policy, cmd, expressions):
                     raise MisconfiguredDatabase(
                         f"{schema}.{name} policy {policy} does not read {TENANT_GUC}: "
                         "it does not restrict rows to one tenant"

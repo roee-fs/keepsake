@@ -9,6 +9,22 @@ SBOM. `pyproject.toml`, `Chart.yaml`'s `version` and its `appVersion` must all
 agree with the tag — a test enforces it and the release workflow refuses
 otherwise.
 
+## Unreleased
+
+### Added
+
+- An `admin_read` policy on every tenant table, letting a connection that sets
+  `okf.admin` read across tenants. It is `FOR SELECT`, so writes stay scoped to
+  one tenant even for an admin.
+
+### Upgrading
+
+- The migration adds a policy that an earlier release's startup check does not
+  recognise. During `helm upgrade` the migration hook runs before the new pods
+  roll, so running pods are unaffected — but an old pod that restarts inside that
+  window crash-loops until the rollout reaches it. It is minutes wide and
+  self-resolving.
+
 ## 0.1.0 — 2026-09-15
 
 ### Added

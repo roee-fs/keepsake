@@ -7,10 +7,17 @@ from uuid import UUID
 import psycopg
 from psycopg_pool import ConnectionPool
 
-from keepsake.store import POOL_SIZE, SCHEMA, TENANT_GUC, validated_schema
+from keepsake.store import ADMIN_GUC, POOL_SIZE, SCHEMA, TENANT_GUC, validated_schema
 
 # search_path is an ordinary GUC, so it travels as a parameter rather than as DDL.
 _SET_SEARCH_PATH = "SELECT set_config('search_path', %s, true)"
+
+# The two policies OR into one expression, and tenant_isolation casts TENANT_GUC to
+# uuid whichever way that OR is planned: Postgres does not promise short-circuiting
+# and says outright not to rely on it to avoid an error. An unset GUC reads NULL or
+# '', and ''::uuid raises. This value casts cleanly, matches nothing, and so leaves
+# admin_read to supply the true.
+_NIL_TENANT = "00000000-0000-0000-0000-000000000000"
 
 
 class Store:
@@ -77,5 +84,23 @@ class Store:
                 "SELECT set_config('search_path', %s, true),"
                 "       set_config(%s, %s, true)",
                 (self._search_path, TENANT_GUC, str(tenant_id)),
+            )
+            yield conn
+
+    @contextmanager
+    def admin_scope(self) -> Iterator[psycopg.Connection]:
+        """Yield a connection that reads every tenant, for the admin console only.
+
+        Read-only, and the policy behind it is FOR SELECT: an admin has no write
+        path into a tenant it did not name. Callers must authenticate first — this
+        method is the whole of the database-side authorisation.
+        """
+        with self._pool.connection() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION READ ONLY")
+            conn.execute(
+                "SELECT set_config('search_path', %s, true),"
+                "       set_config(%s, 'on', true),"
+                "       set_config(%s, %s, true)",
+                (self._search_path, ADMIN_GUC, TENANT_GUC, _NIL_TENANT),
             )
             yield conn

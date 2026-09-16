@@ -26,6 +26,14 @@ def _insert(conn: psycopg.Connection, tenant: uuid.UUID, path: str) -> None:
     )
 
 
+def _owners(conn: psycopg.Connection, paths: list[str]) -> set[uuid.UUID]:
+    """The tenants owning `paths` that this connection can actually see."""
+    rows = conn.execute(
+        "SELECT tenant_id FROM okf.concept WHERE path = ANY(%s)", (paths,)
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
 def _assert_no_leftover_scope(conn: psycopg.Connection) -> None:
     """missing_ok: an unset GUC reads NULL, and one reset by SET LOCAL reads ''."""
     left = conn.execute("SELECT current_setting('okf.current_tenant', true)").fetchone()
@@ -134,3 +142,28 @@ def test_raw_is_read_only_and_not_merely_documented(store: Store) -> None:
     """
     with pytest.raises(psycopg.errors.ReadOnlySqlTransaction), store.raw() as c:
         c.execute("CREATE TABLE okf.should_never_exist (x int)")
+
+
+def test_admin_scope_reads_every_tenant(store: Store) -> None:
+    one, two = uuid.uuid4(), uuid.uuid4()
+    paths = [f"admin/{one}", f"admin/{two}"]
+    for tenant, path in zip((one, two), paths, strict=True):
+        with store.scope(tenant) as c:
+            _insert(c, tenant, path)
+
+    # The positive control: the same query under a tenant scope sees one of the two.
+    with store.scope(one) as c:
+        assert _owners(c, paths) == {one}
+    with store.admin_scope() as c:
+        assert _owners(c, paths) == {one, two}
+
+
+def test_admin_scope_cannot_write(store: Store) -> None:
+    """The admin policy is FOR SELECT, so it is never consulted for an UPDATE and
+    an admin's write stays scoped to the nil tenant.
+
+    That alone would match no rows silently, which reads to a caller as a write that
+    succeeded and changed nothing. The read-only transaction is what raises here.
+    """
+    with store.admin_scope() as c, pytest.raises(psycopg.errors.Error):
+        c.execute("UPDATE okf.concept SET title = 'x'")
