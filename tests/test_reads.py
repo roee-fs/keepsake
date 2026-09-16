@@ -5,6 +5,7 @@
 
 import uuid
 from dataclasses import astuple
+from datetime import UTC, datetime
 
 import pytest
 
@@ -256,3 +257,144 @@ def test_list_treats_the_prefix_literally(
     for path in ("a_b/one", "axb/two"):
         concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
     assert [p for p, _ in concepts.list_(tenant, "a_b/")] == ["a_b/one"]
+
+
+# The admin console's read paths. `tenant_id=None` means every tenant and must take
+# `admin_scope()`; a concrete id must never fall through to it.
+
+
+def test_page_returns_summaries_under_prefix(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    page = concepts.page(tenant, "detect/", limit=10, offset=0)
+    assert [s.path for s in page] == ["detect/dormant"]
+    assert (page[0].type, page[0].title) == ("Concept", "Dormant Rule Identification")
+
+
+def test_page_respects_limit_and_offset(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    first = concepts.page(tenant, "", limit=2, offset=0)
+    second = concepts.page(tenant, "", limit=2, offset=2)
+    assert [s.path for s in first] == ["auth/flow", "detect/dormant"]
+    assert [s.path for s in second] == ["splunk/cursor"]
+
+
+def test_page_of_a_negative_limit_is_empty_not_invalid(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """Negative, not zero: Postgres answers LIMIT 0 with no rows by itself, so only a
+    negative limit reaches the guard."""
+    _seed(concepts, tenant)
+    assert concepts.page(tenant, "", limit=-1, offset=0) == []
+
+
+def test_count_matches_what_page_covers(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    assert concepts.count(tenant, "") == len(_SEED)
+    assert concepts.count(tenant, "detect/") == 1
+
+
+def test_page_of_one_tenant_never_returns_anothers_rows(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    other = uuid.uuid4()
+    _seed(concepts, tenant)
+    concepts.create(other, Concept(path="other/one", type="Concept"), "seed")
+    page = concepts.page(tenant, "", limit=10, offset=0)
+    assert "other/one" not in [s.path for s in page]
+    assert {s.tenant_id for s in page} == {tenant}
+
+
+def test_page_of_every_tenant_returns_both(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    other = uuid.uuid4()
+    _seed(concepts, tenant)
+    concepts.create(other, Concept(path="other/one", type="Concept"), "seed")
+    page = concepts.page(None, "", limit=1000, offset=0)
+    tenants_seen = {s.tenant_id for s in page}
+    assert tenant in tenants_seen
+    assert other in tenants_seen
+
+
+def test_totals_counts_concepts_types_revisions_links_and_orphans(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    totals = concepts.totals(tenant)
+    assert totals.concepts == len(_SEED)
+    assert totals.by_type == {"Concept": len(_SEED)}
+    assert totals.revisions == len(_SEED)
+    # Only splunk/cursor carries a link, to detect/dormant.
+    assert totals.links == 1
+    # detect/dormant has an inbound link; the other two don't.
+    assert totals.orphans == 2
+
+
+def test_activity_returns_recent_revisions_newest_first(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    revs = concepts.activity(tenant, limit=10)
+    # _seed writes dormant, then flow, then cursor: newest-first reverses that.
+    assert [r.path for r in revs] == ["splunk/cursor", "auth/flow", "detect/dormant"]
+
+
+def test_daily_writes_groups_by_day_and_zero_fills_gaps(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    writes = concepts.daily_writes(tenant, days=7)
+    assert len(writes) == 7
+    assert writes[-1] == (datetime.now(UTC).date(), len(_SEED))
+    assert all(count == 0 for _, count in writes[:-1])
+
+
+def test_tenants_lists_every_tenant_with_its_concept_count(
+    concepts: ConceptStore,
+) -> None:
+    a, b = uuid.uuid4(), uuid.uuid4()
+    concepts.create(a, Concept(path="a/one", type="Concept"), "seed")
+    concepts.create(a, Concept(path="a/two", type="Concept"), "seed")
+    concepts.create(b, Concept(path="b/one", type="Concept"), "seed")
+    counts = dict(concepts.tenants())
+    assert counts[a] == 2
+    assert counts[b] == 1
+
+
+def test_graph_marks_a_missing_link_target_as_not_existing(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    concepts.create(
+        tenant,
+        Concept(path="a/one", type="Concept", links=("missing/target",)),
+        "seed",
+    )
+    graph = concepts.graph(tenant, "", limit=10)
+    target = next(n for n in graph.nodes if n.path == "missing/target")
+    assert target.exists is False
+    assert ("a/one", "missing/target") in graph.edges
+
+
+def test_graph_reports_a_target_outside_a_capped_page_as_existing(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """The bug this design exists to prevent: a link target with a real row, just not
+    on the page a `limit` cap returned, must not be reported as missing."""
+    # "b/target" sorts after "a/one", so limit=1 pages in only "a/one".
+    concepts.create(tenant, Concept(path="b/target", type="Concept"), "seed")
+    concepts.create(
+        tenant,
+        Concept(path="a/one", type="Concept", links=("b/target",)),
+        "seed",
+    )
+    graph = concepts.graph(tenant, "", limit=1)
+    assert graph.truncated is True
+    assert [n.path for n in graph.nodes if n.path == "a/one"] == ["a/one"]
+    target = next(n for n in graph.nodes if n.path == "b/target")
+    assert target.exists is True

@@ -8,9 +8,10 @@ non-default KEEPSAKE_SCHEMA.
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 from functools import partial
 from typing import Any
 from uuid import UUID
@@ -79,6 +80,51 @@ class Hit:
     score: float
 
 
+@dataclass(frozen=True, slots=True)
+class Summary:
+    """One row in the admin console's concept table. `Hit` without the score, plus
+    `tenant_id`: a `tenant_id=None` page mixes tenants, and the table is how an
+    admin tells them apart."""
+
+    path: str
+    type: str
+    title: str
+    description: str
+    version: int
+    updated_at: datetime
+    tenant_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class Totals:
+    """Corpus-wide counts for the admin console's summary tiles."""
+
+    concepts: int
+    by_type: dict[str, int]
+    revisions: int
+    links: int
+    orphans: int
+
+
+@dataclass(frozen=True, slots=True)
+class Node:
+    """One node in a `Graph`. `exists=False` marks a link target with no row."""
+
+    path: str
+    type: str
+    title: str
+    exists: bool
+
+
+@dataclass(frozen=True, slots=True)
+class Graph:
+    """A page of concepts and their links, for the admin console's graph view."""
+
+    nodes: list[Node]
+    edges: list[tuple[str, str]]
+    truncated: bool
+
+
 # The match position, not the matched text: substring(body from pattern) returns the
 # pattern back, which tells an agent nothing about relevance. One haystack rather than
 # three columns keeps the snippet and the predicate from ever disagreeing.
@@ -121,6 +167,12 @@ def _values(c: Concept) -> tuple[Any, ...]:
         _jsonb(c.frontmatter),
         list(c.links),
     )
+
+
+def _row(row: Sequence[Any] | None) -> Sequence[Any]:
+    """A bare aggregate's `fetchone()`, which always returns exactly one row."""
+    assert row is not None
+    return row
 
 
 def _concept(row: Sequence[Any]) -> Concept:
@@ -235,6 +287,160 @@ class ConceptStore:
                 (prefix,),
             ).fetchall()
         return [(str(r[0]), str(r[1])) for r in rows]
+
+    @contextmanager
+    def _connect(self, tenant_id: UUID | None) -> Iterator[psycopg.Connection]:
+        """The one place `tenant_id=None` is dispatched to `admin_scope()` instead of
+        `scope()`. Centralised so a per-method copy cannot get the two backwards."""
+        with (
+            self._store.admin_scope()
+            if tenant_id is None
+            else self._store.scope(tenant_id)
+        ) as conn:
+            yield conn
+
+    def page(
+        self, tenant_id: UUID | None, prefix: str, limit: int, offset: int
+    ) -> list[Summary]:
+        """A path-ordered page of concepts under `prefix`, for the admin console's
+        table. `tenant_id=None` mixes every tenant."""
+        if limit <= 0:
+            return []
+        with self._connect(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, type, title, description, version, updated_at,"
+                "       tenant_id "
+                "FROM concept WHERE starts_with(path, %s) "
+                "ORDER BY path LIMIT %s OFFSET %s",
+                (prefix, limit, offset),
+            ).fetchall()
+        return [
+            Summary(str(r[0]), str(r[1]), str(r[2]), str(r[3]), int(r[4]), r[5], r[6])
+            for r in rows
+        ]
+
+    def count(self, tenant_id: UUID | None, prefix: str) -> int:
+        """How many concepts `page` would cover for the same `tenant_id`/`prefix`."""
+        with self._connect(tenant_id) as conn:
+            row = conn.execute(
+                "SELECT count(*) FROM concept WHERE starts_with(path, %s)", (prefix,)
+            ).fetchone()
+        return int(_row(row)[0])
+
+    def totals(self, tenant_id: UUID | None) -> Totals:
+        """Corpus-wide counts for the admin console's summary tiles."""
+        with self._connect(tenant_id) as conn:
+            concepts, links = _row(
+                conn.execute(
+                    "SELECT count(*), coalesce(sum(cardinality(links)), 0) FROM concept"
+                ).fetchone()
+            )
+            by_type = conn.execute(
+                "SELECT type, count(*) FROM concept GROUP BY type"
+            ).fetchall()
+            revisions = _row(
+                conn.execute("SELECT count(*) FROM concept_revision").fetchone()
+            )[0]
+            # An orphan is a concept no other concept's links array names. Sequential
+            # like `_BACKLINKS`, and for the same reason: the GIN index only serves
+            # `@>`, and arraycontains is not leakproof under FORCE ROW LEVEL SECURITY.
+            orphans = _row(
+                conn.execute(
+                    "SELECT count(*) FROM concept c WHERE NOT EXISTS "
+                    "(SELECT 1 FROM concept b WHERE c.path = ANY(b.links))"
+                ).fetchone()
+            )[0]
+        return Totals(
+            concepts=int(concepts),
+            by_type={str(t): int(n) for t, n in by_type},
+            revisions=int(revisions),
+            links=int(links),
+            orphans=int(orphans),
+        )
+
+    def activity(self, tenant_id: UUID | None, limit: int) -> list[Revision]:
+        """The most recent `limit` revisions, newest first: a live feed, not a log
+        rendered top-to-bottom like `revisions()`."""
+        if limit <= 0:
+            return []
+        with self._connect(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
+                "FROM concept_revision "
+                "ORDER BY created_at DESC, path DESC, version DESC LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return [
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+        ]
+
+    def daily_writes(self, tenant_id: UUID | None, days: int) -> list[tuple[date, int]]:
+        """Concept-revision counts for each of the last `days` days, oldest first,
+        zero-filled so a quiet day doesn't just vanish from the chart."""
+        if days <= 0:
+            return []
+        with self._connect(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT d::date, count(r.created_at) FROM generate_series("
+                "  (current_date - (%s::int - 1))::timestamp, current_date::timestamp,"
+                "  interval '1 day'"
+                ") AS d "
+                "LEFT JOIN concept_revision r ON r.created_at::date = d::date "
+                "GROUP BY d ORDER BY d",
+                (days,),
+            ).fetchall()
+        return [(r[0], int(r[1])) for r in rows]
+
+    def tenants(self) -> list[tuple[UUID, int]]:
+        """Every tenant holding at least one concept, and its count. Admin-only: the
+        switcher's source, and there is no tenant registry besides this table."""
+        with self._store.admin_scope() as conn:
+            rows = conn.execute(
+                "SELECT tenant_id, count(*) FROM concept "
+                "GROUP BY tenant_id ORDER BY tenant_id"
+            ).fetchall()
+        return [(r[0], int(r[1])) for r in rows]
+
+    def graph(self, tenant_id: UUID | None, prefix: str, limit: int) -> Graph:
+        """The concepts under `prefix`, capped at `limit`, and their links.
+
+        A link target outside the page is still a node: `exists` comes from a second
+        query over the whole table rather than from set difference against the page,
+        because a target missing from a capped page is not necessarily missing from
+        the table.
+        """
+        if limit <= 0:
+            return Graph([], [], False)
+        with self._connect(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, type, title, links FROM concept "
+                "WHERE starts_with(path, %s) ORDER BY path LIMIT %s",
+                (prefix, limit + 1),
+            ).fetchall()
+            truncated = len(rows) > limit
+            rows = rows[:limit]
+
+            page_paths = {str(r[0]) for r in rows}
+            edges: list[tuple[str, str]] = []
+            outside: set[str] = set()
+            for r in rows:
+                src = str(r[0])
+                for target in r[3]:
+                    target = str(target)
+                    edges.append((src, target))
+                    if target not in page_paths:
+                        outside.add(target)
+
+            existing: set[str] = set()
+            if outside:
+                found = conn.execute(
+                    "SELECT path FROM concept WHERE path = ANY(%s)", (list(outside),)
+                ).fetchall()
+                existing = {str(f[0]) for f in found}
+
+        nodes = [Node(str(r[0]), str(r[1]), str(r[2]), True) for r in rows]
+        nodes.extend(Node(t, "", "", t in existing) for t in sorted(outside))
+        return Graph(nodes, edges, truncated)
 
     def search(
         self, tenant_id: UUID, query: str, limit: int, prefix: str | None
