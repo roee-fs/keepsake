@@ -7,7 +7,7 @@ later stays covered without anyone remembering to list it here.
 
 import re
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -66,6 +66,18 @@ def seeded(app: Starlette, tenant: uuid.UUID) -> uuid.UUID:
     return tenant
 
 
+@pytest.fixture
+def other_tenant(app: Starlette) -> uuid.UUID:
+    """A second tenant, seeded through the app's own store — distinguishes
+    `admin_scope()` mixing every tenant from just re-reading `seeded` alone."""
+    tid = uuid.uuid4()
+    concepts = ConceptStore(app.state.store)
+    concepts.create(
+        tid, Concept(path="other/thing", type="Concept", title="Other"), "test"
+    )
+    return tid
+
+
 def _leaf_routes(app: Starlette) -> Iterator[Any]:
     """Flattens FastAPI's lazily-wrapped `_IncludedRouter` entries to their routes."""
     for route in _api_app(app).routes:
@@ -79,7 +91,11 @@ def _leaf_routes(app: Starlette) -> Iterator[Any]:
 def test_every_route_except_login_requires_a_session(
     client: TestClient, app: Starlette
 ) -> None:
-    for route in _leaf_routes(app):
+    routes = list(_leaf_routes(app))
+    # A future FastAPI change to `app.routes`'s shape could make this iterate zero
+    # routes and pass vacuously without checking anything; this floor catches that.
+    assert len(routes) >= 10
+    for route in routes:
         for method in route.methods:
             if (route.path, method) == ("/session", "POST"):
                 continue
@@ -104,10 +120,31 @@ def test_a_good_password_sets_an_httponly_strict_cookie(client: TestClient) -> N
     assert "secure" not in cookie_header.lower()
 
 
+def test_a_good_password_sets_secure_over_tls(app: Starlette) -> None:
+    with TestClient(app, base_url="https://testserver") as https_client:
+        response = https_client.post("/api/session", json={"password": PASSWORD})
+    assert response.status_code == 204
+    assert "secure" in response.headers["set-cookie"].lower()
+
+
 def test_logout_clears_the_cookie(logged_in: TestClient) -> None:
     response = logged_in.delete("/api/session")
     assert response.status_code == 204
     assert logged_in.cookies.get(COOKIE_NAME) is None
+
+
+def test_openapi_schema_is_served_behind_the_session_guard(
+    logged_in: TestClient,
+) -> None:
+    response = logged_in.get("/api/openapi.json")
+    assert response.status_code == 200
+    assert "openapi" in response.json()
+
+
+def test_docs_ui_is_served_behind_the_session_guard(logged_in: TestClient) -> None:
+    response = logged_in.get("/api/docs")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
 
 
 def test_tenants_lists_every_tenant_with_a_concept(
@@ -154,6 +191,33 @@ def test_concepts_page_lists_a_seeded_concept(
     body = response.json()
     assert body["total"] == 1
     assert body["items"][0]["path"] == "detect/dormant"
+
+
+def test_concepts_page_rejects_a_negative_offset(
+    logged_in: TestClient, seeded: uuid.UUID
+) -> None:
+    response = logged_in.get(
+        "/api/concepts", params={"tenant": str(seeded), "offset": -1}
+    )
+    assert response.status_code == 422
+
+
+def test_concepts_page_rejects_a_non_positive_limit(
+    logged_in: TestClient, seeded: uuid.UUID
+) -> None:
+    response = logged_in.get(
+        "/api/concepts", params={"tenant": str(seeded), "limit": -1}
+    )
+    assert response.status_code == 422
+
+
+def test_stats_timeseries_rejects_an_unbounded_days(
+    logged_in: TestClient, seeded: uuid.UUID
+) -> None:
+    response = logged_in.get(
+        "/api/stats/timeseries", params={"tenant": str(seeded), "days": 1_000_000}
+    )
+    assert response.status_code == 422
 
 
 def test_concept_detail_carries_backlinks_and_history(
@@ -223,6 +287,37 @@ def test_graph_lists_the_seeded_node(logged_in: TestClient, seeded: uuid.UUID) -
     body = response.json()
     assert body["nodes"][0]["path"] == "detect/dormant"
     assert body["truncated"] is False
+
+
+@pytest.mark.parametrize(
+    ("path", "extract"),
+    [
+        ("/api/concepts", lambda body: {i["path"] for i in body["items"]}),
+        ("/api/activity", lambda body: {r["path"] for r in body}),
+        ("/api/graph", lambda body: {n["path"] for n in body["nodes"]}),
+    ],
+)
+def test_admin_scope_mixes_every_tenant_when_none_is_named(
+    logged_in: TestClient,
+    seeded: uuid.UUID,
+    other_tenant: uuid.UUID,
+    path: str,
+    extract: Callable[[Any], set[str]],
+) -> None:
+    response = logged_in.get(path)
+    assert response.status_code == 200
+    assert {"detect/dormant", "other/thing"} <= extract(response.json())
+
+
+def test_stats_timeseries_admin_scope_mixes_every_tenant(
+    logged_in: TestClient, seeded: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    scoped = logged_in.get(
+        "/api/stats/timeseries", params={"tenant": str(seeded)}
+    ).json()
+    admin = logged_in.get("/api/stats/timeseries").json()
+    # Both tenants wrote today; a tenant-scoped call only sees its own write.
+    assert sum(d["count"] for d in admin) > sum(d["count"] for d in scoped)
 
 
 def test_ui_disabled_mounts_no_api_but_still_serves_mcp_and_readyz(

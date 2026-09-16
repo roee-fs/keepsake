@@ -14,7 +14,9 @@ from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from keepsake.server.auth import COOKIE_NAME, Auth, require_session
@@ -29,7 +31,7 @@ _SESSION_TTL = 12 * 60 * 60
 _HISTORY_LIMIT = 50
 
 
-class _Credentials(BaseModel):
+class Credentials(BaseModel):
     password: str
 
 
@@ -137,7 +139,7 @@ public = APIRouter()
 
 
 @public.post("/session", status_code=204)
-def login(credentials: _Credentials, request: Request, response: Response) -> None:
+def login(credentials: Credentials, request: Request, response: Response) -> None:
     auth: Auth = request.app.state.auth
     if not auth.check_password(credentials.password):
         raise HTTPException(status_code=401)
@@ -153,6 +155,18 @@ def logout(response: Response) -> None:
     response.delete_cookie(COOKIE_NAME)
 
 
+# The brief's Produces line names /api/openapi.json; docs_url=None only turned off
+# FastAPI's own unguarded copies, so the schema still needs a guarded route of its own.
+@guarded.get("/openapi.json")
+def openapi_schema(request: Request) -> dict[str, Any]:
+    return request.app.openapi()
+
+
+@guarded.get("/docs", include_in_schema=False)
+def docs() -> HTMLResponse:
+    return get_swagger_ui_html(openapi_url="openapi.json", title="keepsake API")
+
+
 @guarded.get("/tenants")
 def tenants(store: _Store) -> list[TenantCount]:
     return [TenantCount(tenant_id=t, concepts=n) for t, n in store.tenants()]
@@ -165,7 +179,9 @@ def stats(store: _Store, tenant: UUID | None = None) -> TotalsOut:
 
 @guarded.get("/stats/timeseries")
 def stats_timeseries(
-    store: _Store, tenant: UUID | None = None, days: int = 30
+    store: _Store,
+    tenant: UUID | None = None,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
 ) -> list[DailyWrite]:
     return [DailyWrite(date=d, count=n) for d, n in store.daily_writes(tenant, days)]
 
@@ -175,8 +191,8 @@ def list_concepts(
     store: _Store,
     tenant: UUID | None = None,
     prefix: str = "",
-    limit: int = 50,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ConceptPage:
     items = store.page(tenant, prefix, limit, offset)
     total = store.count(tenant, prefix)
@@ -198,12 +214,19 @@ def concept_detail(path: str, tenant: UUID, store: _Store) -> ConceptDetail:
 
 
 @guarded.get("/search")
-def search(store: _Store, tenant: UUID, q: str, limit: int = 20) -> list[HitOut]:
+def search(
+    store: _Store, tenant: UUID, q: str, limit: Annotated[int, Query(ge=1, le=100)] = 20
+) -> list[HitOut]:
     return [HitOut(**asdict(h)) for h in store.search(tenant, q, limit, prefix=None)]
 
 
 @guarded.get("/grep")
-def grep(store: _Store, tenant: UUID, pattern: str, limit: int = 20) -> list[GrepHit]:
+def grep(
+    store: _Store,
+    tenant: UUID,
+    pattern: str,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[GrepHit]:
     try:
         rows = store.grep(tenant, pattern, limit)
     except ValueError as exc:
@@ -213,7 +236,9 @@ def grep(store: _Store, tenant: UUID, pattern: str, limit: int = 20) -> list[Gre
 
 @guarded.get("/activity")
 def activity(
-    store: _Store, tenant: UUID | None = None, limit: int = 50
+    store: _Store,
+    tenant: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[RevisionOut]:
     return [RevisionOut(**asdict(r)) for r in store.activity(tenant, limit)]
 
@@ -223,7 +248,7 @@ def graph(
     store: _Store,
     tenant: UUID | None = None,
     prefix: str = "",
-    limit: int = 500,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
 ) -> GraphOut:
     g = store.graph(tenant, prefix, limit)
     return GraphOut(
@@ -234,9 +259,9 @@ def graph(
 
 
 def create_api(concepts: ConceptStore, auth: Auth) -> FastAPI:
-    """The FastAPI app to mount at /api. `app.openapi()` is what Task 7 dumps —
-    the docs/redoc/openapi HTTP routes are disabled so every reachable route in
-    the table above is covered by the session guard."""
+    """The FastAPI app to mount at /api. FastAPI's own docs/redoc/openapi routes
+    are disabled since they ship unguarded; `openapi_schema`/`docs` above serve
+    the same content behind the session guard instead."""
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.concepts = concepts
     app.state.auth = auth
