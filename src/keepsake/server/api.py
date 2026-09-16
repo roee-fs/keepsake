@@ -24,9 +24,9 @@ from keepsake.store.concepts import ConceptStore
 # does not stay valid indefinitely.
 _SESSION_TTL = 12 * 60 * 60
 
-# concept-detail has no `limit` of its own; this bounds how far back the activity
-# feed is scanned to build one concept's history.
-_HISTORY_SCAN_LIMIT = 500
+# concept-detail has no `limit` of its own; this bounds how many of one
+# concept's own revisions come back.
+_HISTORY_LIMIT = 50
 
 
 class _Credentials(BaseModel):
@@ -189,10 +189,7 @@ def concept_detail(path: str, tenant: UUID, store: _Store) -> ConceptDetail:
     if found is None:
         raise HTTPException(status_code=404)
     concept, backlinks = found
-    # No per-concept revision method exists; filter the tenant's recent activity feed
-    # instead. ponytail: incomplete for a concept whose history has scrolled past the
-    # scan limit — add a dedicated store method if that gap matters.
-    history = [r for r in store.activity(tenant, _HISTORY_SCAN_LIMIT) if r.path == path]
+    history = store.revisions_for(tenant, path, _HISTORY_LIMIT)
     return ConceptDetail(
         **asdict(concept),
         backlinks=backlinks,

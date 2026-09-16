@@ -383,6 +383,27 @@ class ConceptStore:
             Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
         ]
 
+    def revisions_for(
+        self, tenant_id: UUID | None, path: str, limit: int
+    ) -> list[Revision]:
+        """The most recent `limit` revisions of one path, newest first.
+
+        Unlike `activity()`, the cap is per path, not per tenant: a concept's own
+        history cannot be crowded out by other concepts' unrelated revisions.
+        """
+        if limit <= 0:
+            return []
+        with self._connect(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
+                "FROM concept_revision WHERE path = %s "
+                "ORDER BY version DESC LIMIT %s",
+                (path, limit),
+            ).fetchall()
+        return [
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+        ]
+
     def daily_writes(self, tenant_id: UUID | None, days: int) -> list[tuple[date, int]]:
         """Concept-revision counts for each of the last `days` days, oldest first,
         zero-filled so a quiet day doesn't just vanish from the chart."""

@@ -345,6 +345,30 @@ def test_activity_returns_recent_revisions_newest_first(
     assert [r.path for r in revs] == ["splunk/cursor", "auth/flow", "detect/dormant"]
 
 
+def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """`activity()`'s cap is tenant-wide, so a quiet concept can fall off it even
+    with a perfectly good history of its own. `revisions_for` filters in SQL by
+    path, so noise on other paths can never push a concept's own history out."""
+    concepts.create(
+        tenant, Concept(path="detect/dormant", type="Concept", title="v1"), "seed"
+    )
+    concepts.update(
+        tenant, Concept(path="detect/dormant", type="Concept", title="v2"), "seed", 1
+    )
+    # More noisy revisions on other paths than the limit passed below: with a
+    # tenant-wide scan, these alone would crowd "detect/dormant" out entirely.
+    for i in range(5):
+        concepts.create(
+            tenant, Concept(path=f"noise/{i}", type="Concept", title="noise"), "seed"
+        )
+
+    revs = concepts.revisions_for(tenant, "detect/dormant", limit=3)
+
+    assert [r.version for r in revs] == [2, 1]
+
+
 def test_daily_writes_groups_by_day_and_zero_fills_gaps(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
