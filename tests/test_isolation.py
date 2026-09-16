@@ -35,9 +35,17 @@ def _owners(conn: psycopg.Connection, paths: list[str]) -> set[uuid.UUID]:
 
 
 def _assert_no_leftover_scope(conn: psycopg.Connection) -> None:
-    """missing_ok: an unset GUC reads NULL, and one reset by SET LOCAL reads ''."""
-    left = conn.execute("SELECT current_setting('okf.current_tenant', true)").fetchone()
-    assert left in {(None,), ("",)}, f"scope outlived its transaction: {left}"
+    """missing_ok: an unset GUC reads NULL, and one reset by SET LOCAL reads ''.
+
+    Both GUCs: okf.admin riding a recycled connection to the next caller is a
+    cross-tenant read exactly as okf.current_tenant leaking is.
+    """
+    left = conn.execute(
+        "SELECT current_setting('okf.current_tenant', true),"
+        "       current_setting('okf.admin', true)"
+    ).fetchone()
+    assert left is not None, "the probe read no row"
+    assert set(left) <= {None, ""}, f"scope outlived its transaction: {left}"
 
 
 def _probe_until_a_scoped_connection_returns(store: Store, scoped: set[int]) -> None:
@@ -154,8 +162,13 @@ def test_admin_scope_reads_every_tenant(store: Store) -> None:
     # The positive control: the same query under a tenant scope sees one of the two.
     with store.scope(one) as c:
         assert _owners(c, paths) == {one}
+
+    scoped: set[int] = set()
     with store.admin_scope() as c:
+        scoped.add(id(c))
         assert _owners(c, paths) == {one, two}
+    # Both GUCs are SET LOCAL, so neither may ride this connection back out.
+    _probe_until_a_scoped_connection_returns(store, scoped)
 
 
 def test_admin_scope_cannot_write(store: Store) -> None:
@@ -163,9 +176,14 @@ def test_admin_scope_cannot_write(store: Store) -> None:
     an admin's write stays scoped to the nil tenant.
 
     That alone would match no rows silently, which reads to a caller as a write that
-    succeeded and changed nothing. The read-only transaction is what raises here.
+    succeeded and changed nothing. The read-only transaction is what raises here, so
+    the class is pinned: a bare Error also catches the UndefinedColumn a renamed
+    `title` would raise, and would stay green with READ ONLY gone.
     """
-    with store.admin_scope() as c, pytest.raises(psycopg.errors.Error):
+    with (
+        store.admin_scope() as c,
+        pytest.raises(psycopg.errors.ReadOnlySqlTransaction),
+    ):
         c.execute("UPDATE okf.concept SET title = 'x'")
 
 

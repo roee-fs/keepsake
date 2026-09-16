@@ -92,8 +92,12 @@ class Store:
         """Yield a connection that reads every tenant, for the admin console only.
 
         Read-only, and the policy behind it is FOR SELECT: an admin has no write
-        path into a tenant it did not name. Callers must authenticate first — this
-        method is the whole of the database-side authorisation.
+        path into a tenant it did not name. The read is gated far more weakly —
+        okf.admin is self-asserted, so anything holding the app DSN can set it and
+        read every tenant, with or without this method. That follows from gating on
+        a GUC with no TO clause, which is what keeps the policy working in
+        postgres.mode: existing, where the role has a name we do not know.
+        Authentication therefore happens above this method and never inside it.
         """
         with self._pool.connection() as conn, conn.transaction():
             conn.execute("SET TRANSACTION READ ONLY")

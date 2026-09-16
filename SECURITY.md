@@ -34,12 +34,14 @@ it early than be right:
 
 Out of scope, because they are documented behaviour rather than defects:
 
-- The admin console reading across tenants. An authenticated admin session sets
-  the `okf.admin` GUC, and an `admin_read` policy on every tenant table admits
-  rows to a connection that has set it. That policy is `FOR SELECT`, so no write
-  crosses a tenant boundary. `/mcp` is unaffected: an agent still names no tenant
-  and still reads only its own. A cross-tenant read reached without an
-  authenticated admin session is in scope.
+- The admin console reading across tenants. A console session sets the
+  `okf.admin` GUC, and an `admin_read` policy on every tenant table admits rows to
+  a connection that has set it. That policy is `FOR SELECT`, so no write crosses a
+  tenant boundary. The console authenticates with a password session of its own,
+  from `KEEPSAKE_ADMIN_PASSWORD`. That is a separate mechanism from `auth.mode`
+  below, which governs the `/mcp` surface alone and is unchanged by any of this:
+  an agent on `/mcp` still names no tenant and still reads only its own. A
+  cross-tenant read reached without a console session is in scope.
 - The round-trip fidelity ceilings in the README.
 - `okf_grep` accepting a regular expression. It is a deliberate capability,
   bounded by a 5s statement timeout.
