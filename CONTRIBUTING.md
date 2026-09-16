@@ -50,9 +50,6 @@ tool rather than a gate.
 
 ## What a good change looks like
 
-- **`docs/design.md` is the authority.** It is the specification the code argues
-  from. If your change contradicts it, change the document in the same pull
-  request and say why — do not leave the two disagreeing.
 - **Tests assert behaviour, not structure.** A test that would pass against a
   stub is not a test. If you are asserting that something is absent, assert on
   the value rather than on the shape: `assert not hasattr(hit, "body")` passes

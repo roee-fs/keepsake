@@ -96,8 +96,6 @@ Pre-release. Nothing here is stable yet.
 
 ## Docs
 
-- [`docs/design.md`](docs/design.md) — the specification
-- [`docs/plans/`](docs/plans/) — implementation plans
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, newest first
 
 ## Contributing

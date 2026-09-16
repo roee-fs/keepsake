@@ -24,7 +24,7 @@ def upgrade() -> None:
     # either to an index condition — measured on postgres 17 at 10,000 rows, the app
     # role gets a sequential scan every time while `row_security = off` gets a bitmap
     # index scan. They only buy write amplification (~11% on a 2000-row insert) and
-    # disk. They come back if the isolation model ever changes; see docs/design.md.
+    # disk. They come back if the isolation model ever changes.
     op.execute(f"DROP INDEX {SCHEMA}.concept_search_idx")
     op.execute(f"DROP INDEX {SCHEMA}.concept_links_idx")
 

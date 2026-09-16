@@ -29,4 +29,3 @@ why, a limit you accepted deliberately.
 - [ ] `uv run pytest`
 - [ ] If this changes the schema, it is a **new** migration and `helm upgrade`
       re-running the hook against a database already at head is fine
-- [ ] If this contradicts `docs/design.md`, that document is updated here too
