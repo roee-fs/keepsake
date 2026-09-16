@@ -107,9 +107,19 @@ def test_the_database_is_created_before_the_migration_runs() -> None:
 
 
 def test_secrets_are_installed_before_the_hooks_that_read_them() -> None:
-    docs = _render(MANAGED)
+    release = "keepsake"
+    docs = _render(MANAGED, release=release)
     weight = int(_only(docs, "Job")["metadata"]["annotations"]["helm.sh/hook-weight"])
-    for secret in (d for d in docs if d["kind"] == "Secret"):
+    # The admin Secret is excluded by name, not by an "if it has hook annotations"
+    # filter: nothing in the hook phase reads it, only the Deployment does, so it is
+    # correctly an ordinary resource with none. A property filter would silently pass
+    # any future hook-read Secret that forgets its annotations too — the exact bug
+    # this test exists to catch.
+    for secret in (
+        d
+        for d in docs
+        if d["kind"] == "Secret" and d["metadata"]["name"] != f"{release}-admin"
+    ):
         annotations = secret["metadata"]["annotations"]
         assert "pre-install" in annotations["helm.sh/hook"]
         assert int(annotations["helm.sh/hook-weight"]) < weight
