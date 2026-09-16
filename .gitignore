@@ -6,3 +6,4 @@ dist/
 .simplify-report.md
 harness/
 docs/
+node_modules/
