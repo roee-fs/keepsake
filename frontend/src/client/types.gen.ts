@@ -207,6 +207,10 @@ export type RevisionOut = {
      * Created At
      */
     created_at: string;
+    /**
+     * Tenant Id
+     */
+    tenant_id: string;
 };
 
 /**

@@ -52,7 +52,11 @@ function Index() {
 
       <div>
         <h2 className="mb-2 text-sm font-medium text-gray-500">Recent activity</h2>
-        <ActivityList revisions={activity.data} isLoading={activity.isLoading} />
+        <ActivityList
+          revisions={activity.data}
+          isLoading={activity.isLoading}
+          showTenant={tenant === undefined}
+        />
       </div>
     </div>
   )

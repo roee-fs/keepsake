@@ -69,6 +69,7 @@ class RevisionOut(BaseModel):
     op: str
     updated_by: str
     created_at: datetime
+    tenant_id: UUID
 
 
 class ConceptDetail(BaseModel):

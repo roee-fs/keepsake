@@ -865,6 +865,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
           }
         },
         "type": "object",
@@ -873,7 +878,8 @@
           "version",
           "op",
           "updated_by",
-          "created_at"
+          "created_at",
+          "tenant_id"
         ],
         "title": "RevisionOut"
       },

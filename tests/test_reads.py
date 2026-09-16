@@ -345,6 +345,24 @@ def test_activity_returns_recent_revisions_newest_first(
     assert [r.path for r in revs] == ["splunk/cursor", "auth/flow", "detect/dormant"]
 
 
+def test_activity_of_every_tenant_tags_each_row_with_its_own_tenant(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """A path is only unique within a tenant, so two tenants can both write
+    `decisions/policy`. Without `tenant_id` on each row, an all-tenants feed
+    would render both writes as the same concept; a test using distinct paths
+    across tenants wouldn't catch that."""
+    other = uuid.uuid4()
+    concepts.create(tenant, Concept(path="decisions/policy", type="Concept"), "seed")
+    concepts.create(other, Concept(path="decisions/policy", type="Concept"), "seed")
+
+    revs = concepts.activity(None, limit=10)
+
+    same_path = [r for r in revs if r.path == "decisions/policy"]
+    assert len(same_path) == 2
+    assert {r.tenant_id for r in same_path} == {tenant, other}
+
+
 def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
@@ -367,6 +385,7 @@ def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(
     revs = concepts.revisions_for(tenant, "detect/dormant", limit=3)
 
     assert [r.version for r in revs] == [2, 1]
+    assert all(r.tenant_id == tenant for r in revs)
 
 
 def test_daily_writes_groups_by_day_and_zero_fills_gaps(

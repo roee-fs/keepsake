@@ -78,6 +78,7 @@ class Revision:
     op: str
     updated_by: str
     created_at: datetime
+    tenant_id: UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,16 +270,17 @@ class ConceptStore:
             rows = conn.execute(
                 # A bulk import shares one clock reading, so created_at alone is not a
                 # total order; path and version break the tie the same way both ways.
-                "SELECT path, version, op, updated_by, created_at FROM ("
+                "SELECT path, version, op, updated_by, created_at, tenant_id FROM ("
                 "  SELECT path, version, op, coalesce(updated_by, '') AS updated_by,"
-                "         created_at"
+                "         created_at, tenant_id"
                 "  FROM concept_revision"
                 "  ORDER BY created_at DESC, path DESC, version DESC LIMIT %s"
                 ") recent ORDER BY created_at, path, version",
                 (limit,),
             ).fetchall()
         return [
-            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4], r[5])
+            for r in rows
         ]
 
     def backlinks(self, tenant_id: UUID, path: str) -> list[str]:
@@ -374,13 +376,15 @@ class ConceptStore:
             return []
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
+                "SELECT path, version, op, coalesce(updated_by, ''), created_at, "
+                "tenant_id "
                 "FROM concept_revision "
                 "ORDER BY created_at DESC, path DESC, version DESC LIMIT %s",
                 (limit,),
             ).fetchall()
         return [
-            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4], r[5])
+            for r in rows
         ]
 
     def revisions_for(
@@ -395,13 +399,15 @@ class ConceptStore:
             return []
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path, version, op, coalesce(updated_by, ''), created_at "
+                "SELECT path, version, op, coalesce(updated_by, ''), created_at, "
+                "tenant_id "
                 "FROM concept_revision WHERE path = %s "
                 "ORDER BY version DESC LIMIT %s",
                 (path, limit),
             ).fetchall()
         return [
-            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4]) for r in rows
+            Revision(str(r[0]), int(r[1]), str(r[2]), str(r[3]), r[4], r[5])
+            for r in rows
         ]
 
     def daily_writes(self, tenant_id: UUID | None, days: int) -> list[tuple[date, int]]:
