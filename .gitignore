@@ -5,3 +5,4 @@ dist/
 .env
 .simplify-report.md
 harness/
+docs/
