@@ -57,20 +57,32 @@ class MisconfiguredDatabase(RuntimeError):
 _SELECT_ONLY = "r"
 
 
-def _restricts_rows(policy: str, cmd: str, expressions: list[str]) -> bool:
-    """Whether a policy confines the rows it admits to something the server sets."""
+def _policy_fault(policy: str, cmd: str, expressions: list[str]) -> str | None:
+    """Why a policy fails to confine the rows it admits, or None if it does.
+
+    The sentence is read off a crash-looping pod, so each case names the clause
+    that actually failed rather than the one checked first.
+    """
     if not expressions:
-        return False
+        return "applies no expression, so it admits every row"
     if all(TENANT_GUC in e for e in expressions):
-        return True
+        return None
+    if policy != ADMIN_POLICY:
+        return f"does not read {TENANT_GUC}, so it does not restrict rows to one tenant"
     # The single exemption, for the admin console's cross-tenant read. Pinned to all
     # three of the name, the command and the GUC: widen any one of them and a policy
     # that admits another tenant's rows to a write starts passing this check.
-    return (
-        policy == ADMIN_POLICY
-        and cmd == _SELECT_ONLY
-        and all(ADMIN_GUC in e for e in expressions)
-    )
+    if cmd != _SELECT_ONLY:
+        return (
+            f"is the {ADMIN_POLICY} exemption but is not FOR SELECT, so it would "
+            "admit another tenant's rows to a write"
+        )
+    if not all(ADMIN_GUC in e for e in expressions):
+        return (
+            f"is the {ADMIN_POLICY} exemption but reads neither {TENANT_GUC} nor "
+            f"{ADMIN_GUC}, so nothing gates the rows it admits"
+        )
+    return None
 
 
 def verify(store: Store, schema: str = SCHEMA) -> None:
@@ -136,8 +148,8 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
             # however strict its siblings are. Every expression it does apply must
             # read a GUC: reads and writes are gated by different ones.
             for policy, cmd, expressions in policies[name]:
-                if not _restricts_rows(policy, cmd, expressions):
+                fault = _policy_fault(policy, cmd, expressions)
+                if fault is not None:
                     raise MisconfiguredDatabase(
-                        f"{schema}.{name} policy {policy} does not read {TENANT_GUC}: "
-                        "it does not restrict rows to one tenant"
+                        f"{schema}.{name} policy {policy} {fault}"
                     )

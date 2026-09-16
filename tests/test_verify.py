@@ -262,7 +262,10 @@ def test_rejects_a_widened_admin_policy(
     """The exemption is for one policy shape, not for "any second policy"."""
     _execute(owner_dsn, "ALTER POLICY admin_read ON okf.concept USING (true)")
     try:
-        with pytest.raises(MisconfiguredDatabase, match="does not read okf.current"):
+        # The message must name the clause that failed, not the first one checked.
+        with pytest.raises(
+            MisconfiguredDatabase, match="reads neither .* nor okf.admin"
+        ):
             _verify(pg_dsn)
     finally:
         _execute(
@@ -284,7 +287,7 @@ def test_rejects_an_admin_policy_that_covers_writes(
         f"CREATE POLICY admin_read ON okf.concept_revision USING ({ADMIN_QUAL})",
     )
     try:
-        with pytest.raises(MisconfiguredDatabase, match="does not read okf.current"):
+        with pytest.raises(MisconfiguredDatabase, match="is not FOR SELECT"):
             _verify(pg_dsn)
     finally:
         _execute(

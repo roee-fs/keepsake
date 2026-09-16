@@ -167,3 +167,29 @@ def test_admin_scope_cannot_write(store: Store) -> None:
     """
     with store.admin_scope() as c, pytest.raises(psycopg.errors.Error):
         c.execute("UPDATE okf.concept SET title = 'x'")
+
+
+def test_the_admin_guc_does_not_widen_a_write(store: Store) -> None:
+    """Pins the FOR SELECT half, which the test above cannot reach.
+
+    That one raises because the transaction is read-only, so it would still pass if
+    admin_read were widened to FOR ALL. This sets the admin GUC on an ordinary
+    writable connection, where only the policy's command scope stops the UPDATE.
+    """
+    one, two = uuid.uuid4(), uuid.uuid4()
+    paths = [f"write/{one}", f"write/{two}"]
+    for tenant, path in zip((one, two), paths, strict=True):
+        with store.scope(tenant) as c:
+            _insert(c, tenant, path)
+
+    with store.scope(one) as c:
+        c.execute("SELECT set_config('okf.admin', 'on', true)")
+        # No WHERE, so the count is exactly the rows the policies let it reach.
+        updated = c.execute("UPDATE okf.concept SET title = 'claimed'").rowcount
+
+    assert updated == 1, f"the admin GUC widened an UPDATE to {updated} rows"
+    with store.admin_scope() as c:
+        titles = c.execute(
+            "SELECT path, title FROM okf.concept WHERE path = ANY(%s)", (paths,)
+        ).fetchall()
+    assert dict(titles) == {paths[0]: "claimed", paths[1]: ""}

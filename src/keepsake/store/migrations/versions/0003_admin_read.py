@@ -1,5 +1,12 @@
 """Let a connection that declares itself an admin read every tenant.
 
+A recorded exception to "no caller-supplied scope identifiers, in any mode, ever".
+That rule governs the agent surface and still holds there: on /mcp an agent names no
+tenant and reads only the one bound to its session. The authenticated admin console
+is a new actor class the rule did not contemplate, and its tenant switcher is a
+caller-supplied scope identifier by design. What contains the exception is that the
+policy below is FOR SELECT, so it never reaches a write.
+
 Revision ID: 0003
 Revises: 0002
 """
