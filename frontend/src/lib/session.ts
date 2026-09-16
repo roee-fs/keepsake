@@ -26,9 +26,19 @@ client.interceptors.error.use((error, response) => new HttpError(response?.statu
 
 const LOGIN_PATH = '/login'
 
-/** Only ever navigate to a same-origin path -- an absolute URL would be an open redirect. */
+// Prefix checks don't model URL parsing -- e.g. "/\evil.com" isn't caught by
+// startsWith('//'), because WHATWG URL parsing normalizes the backslash to a
+// slash and resolves it off-origin. Parse and compare origins instead. The
+// try/catch matters: a malformed candidate must fail closed to '/', not throw
+// and take the login page down with it.
 export function safeRedirectTarget(candidate: string | undefined): string {
-  return candidate && candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/'
+  if (!candidate) return '/'
+  try {
+    const url = new URL(candidate, window.location.origin)
+    return url.origin === window.location.origin ? `${url.pathname}${url.search}` : '/'
+  } catch {
+    return '/'
+  }
 }
 
 function goToLogin(): void {
