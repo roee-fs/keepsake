@@ -29,6 +29,17 @@ from okf_core import Concept
 _FIELDS = ("type", "title", "description", "body", "frontmatter", "links")
 _READ_COLS = ", ".join(("path", *_FIELDS, "version"))
 
+# Deliberately not derived from _FIELDS: Summary and Node are their own fixed
+# shapes, not a Concept subset, so slicing _FIELDS positionally would couple their
+# column order to a tuple whose order is free to change for round-trip reasons.
+_SUMMARY_COLS = "path, type, title, description, version, updated_at, tenant_id"
+_GRAPH_COLS = "path, type, title, links"
+
+# Shared so `count()` and `page()` can't drift onto two different notions of
+# "under this prefix". starts_with, not LIKE: an underscore is legal in a path and
+# a wildcard in a pattern.
+_STARTS_WITH = "starts_with(path, %s)"
+
 # Anything outside a word is dropped rather than escaped, which is what keeps caller
 # text from reaching to_tsquery as operators.
 _WORD = re.compile(r"\w+")
@@ -308,9 +319,7 @@ class ConceptStore:
             return []
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path, type, title, description, version, updated_at,"
-                "       tenant_id "
-                "FROM concept WHERE starts_with(path, %s) "
+                f"SELECT {_SUMMARY_COLS} FROM concept WHERE {_STARTS_WITH} "
                 "ORDER BY path LIMIT %s OFFSET %s",
                 (prefix, limit, offset),
             ).fetchall()
@@ -323,7 +332,7 @@ class ConceptStore:
         """How many concepts `page` would cover for the same `tenant_id`/`prefix`."""
         with self._connect(tenant_id) as conn:
             row = conn.execute(
-                "SELECT count(*) FROM concept WHERE starts_with(path, %s)", (prefix,)
+                f"SELECT count(*) FROM concept WHERE {_STARTS_WITH}", (prefix,)
             ).fetchone()
         return int(_row(row)[0])
 
@@ -413,8 +422,8 @@ class ConceptStore:
             return Graph([], [], False)
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
-                "SELECT path, type, title, links FROM concept "
-                "WHERE starts_with(path, %s) ORDER BY path LIMIT %s",
+                f"SELECT {_GRAPH_COLS} FROM concept WHERE {_STARTS_WITH} "
+                "ORDER BY path LIMIT %s",
                 (prefix, limit + 1),
             ).fetchall()
             truncated = len(rows) > limit
