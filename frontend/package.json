@@ -17,6 +17,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.38",
     "@types/node": "^24.13.3",
