@@ -13,6 +13,7 @@ urls.Source = "https://github.com/roee-fs/keepsake"
 urls.Issues = "https://github.com/roee-fs/keepsake/issues"
 dependencies = [
     "alembic>=1.20.0",
+    "fastapi>=0.121.0",
     "mcp>=2.2.0",
     "jsonschema>=4.26.0",
     "psycopg[binary,pool]>=3.3.5",

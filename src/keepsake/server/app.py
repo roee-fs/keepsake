@@ -15,6 +15,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from keepsake.server.api import create_api
+from keepsake.server.auth import Auth, admin_password, ui_enabled
 from keepsake.server.tools import Tools, register
 from keepsake.store import SCHEMA
 from keepsake.store.concepts import ConceptStore
@@ -52,6 +54,10 @@ def build_app(config: Config) -> Starlette:
     Raises MisconfiguredDatabase when the database does not isolate tenants. That
     exception MUST reach the caller: crashing is the check.
     """
+    # Read before the pool opens: a misconfigured console should fail fast, not after
+    # the database is already holding connections open.
+    password = admin_password()
+
     store = Store(config.dsn, schema=config.schema)
     try:
         verify(store, config.schema)
@@ -59,8 +65,9 @@ def build_app(config: Config) -> Starlette:
         store.close()
         raise
 
+    concepts = ConceptStore(store)
     server: Server[Any] = Server("keepsake")
-    register(server, Tools(ConceptStore(store), config.tenant_id, _ACTOR))
+    register(server, Tools(concepts, config.tenant_id, _ACTOR))
     app = server.streamable_http_app(
         streamable_http_path="/mcp",
         json_response=True,
@@ -76,6 +83,8 @@ def build_app(config: Config) -> Starlette:
     # The pool outlives any one request, so the app owns it.
     app.state.store = store
     app.router.add_route("/readyz", _readyz, methods=["GET"])
+    if ui_enabled():
+        app.mount("/api", create_api(concepts, Auth(password)))
     # Process exit covers this in a pod, but not in a test or an embedding host, where
     # a pool left open holds its connections until the interpreter goes.
     # Wrapped rather than passed in: the MCP app builds its own lifespan, which runs
