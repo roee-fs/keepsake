@@ -8,6 +8,7 @@ later stays covered without anyone remembering to list it here.
 import re
 import uuid
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -332,5 +333,52 @@ def test_ui_disabled_mounts_no_api_but_still_serves_mcp_and_readyz(
             response = c.get("/readyz")
             assert response.status_code == 200
             assert response.json() == {"ready": True}
+    finally:
+        built.state.store.close()
+
+
+def test_missing_static_bundle_skips_the_mount_but_api_and_mcp_still_serve(
+    monkeypatch: pytest.MonkeyPatch, migrated: bool, pg_dsn: str, tmp_path: Path
+) -> None:
+    """A source checkout has no built bundle; the API MUST NOT depend on one."""
+    monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(tmp_path / "no-such-dir"))
+    built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
+    try:
+        assert not any(isinstance(r, Mount) and r.path == "" for r in built.routes)
+        assert any(isinstance(r, Mount) and r.path == "/api" for r in built.routes)
+        assert "/mcp" in [getattr(r, "path", None) for r in built.routes]
+        with TestClient(built) as c:
+            assert c.get("/readyz").status_code == 200
+            login = c.post("/api/session", json={"password": PASSWORD})
+            assert login.status_code == 204
+    finally:
+        built.state.store.close()
+
+
+def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
+    monkeypatch: pytest.MonkeyPatch, migrated: bool, pg_dsn: str, tmp_path: Path
+) -> None:
+    """The catch-all must not shadow /api or /mcp, and a deep link must not 404."""
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html>console shell</html>")
+    monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(static_dir))
+    built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
+    try:
+        last = built.routes[-1]
+        assert isinstance(last, Mount)
+        assert last.path == ""
+        with TestClient(built) as c:
+            index = c.get("/")
+            assert index.status_code == 200
+            assert index.text == "<html>console shell</html>"
+            # A route the client-side router owns, not a real file: this must render
+            # the shell, not 404, or a reload on a deep link breaks.
+            deep_link = c.get("/concepts/notes%2Fa.md")
+            assert deep_link.status_code == 200
+            assert deep_link.text == "<html>console shell</html>"
+            assert c.get("/readyz").status_code == 200
+            login = c.post("/api/session", json={"password": PASSWORD})
+            assert login.status_code == 204
     finally:
         built.state.store.close()
