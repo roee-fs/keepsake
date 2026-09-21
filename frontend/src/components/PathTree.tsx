@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
-type TreeNode = {
+export type TreeNode = {
   name: string
   prefix: string
   count: number
   children: TreeNode[]
 }
 
-// Only directory segments form the tree; the leaf (file) segment is dropped,
-// since leaves are what the table lists, not what the tree navigates.
-function buildTree(dirSegments: string[][], prefix: string): TreeNode[] {
+function groupBySegment(dirSegments: string[][], prefix: string): TreeNode[] {
   const groups = new Map<string, string[][]>()
   for (const segments of dirSegments) {
     if (segments.length === 0) continue
@@ -26,9 +24,18 @@ function buildTree(dirSegments: string[][], prefix: string): TreeNode[] {
         name,
         prefix: childPrefix,
         count: rest.length,
-        children: buildTree(rest, childPrefix),
+        children: groupBySegment(rest, childPrefix),
       }
     })
+}
+
+// Only directory segments form the tree; the leaf (file) segment is dropped,
+// since leaves are what the table lists, not what the tree navigates.
+export function buildTree(paths: string[]): TreeNode[] {
+  return groupBySegment(
+    paths.map((p) => p.split('/').slice(0, -1)),
+    '',
+  )
 }
 
 type PathTreeProps = {
@@ -43,7 +50,7 @@ type PathTreeProps = {
  * fetch's page size, not the whole tenant's corpus.
  */
 export function PathTree({ paths, selectedPrefix, onSelect }: PathTreeProps) {
-  const tree = buildTree((paths ?? []).map((p) => p.split('/').slice(0, -1)), '')
+  const tree = buildTree(paths ?? [])
 
   return (
     <div className="text-sm">

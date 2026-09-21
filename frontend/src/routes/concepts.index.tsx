@@ -20,9 +20,9 @@ export const Route = createFileRoute('/concepts/')({
   component: Browse,
 })
 
-type Mode = 'browse' | 'search' | 'grep'
+export type Mode = 'browse' | 'search' | 'grep'
 
-function modeOf(q: string): Mode {
+export function modeOf(q: string): Mode {
   if (q === '') return 'browse'
   return q.startsWith('/') ? 'grep' : 'search'
 }
