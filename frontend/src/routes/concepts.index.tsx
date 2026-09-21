@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { useState } from 'react'
 import type { ConceptPage, GrepHit, HitOut } from '../client'
 import { grepGrepGet, listConceptsConceptsGet, searchSearchGet } from '../client'
 import { PathTree } from '../components/PathTree'
@@ -13,9 +12,10 @@ const PAGE_SIZE = 50
 const TREE_SAMPLE_SIZE = 200
 
 export const Route = createFileRoute('/concepts/')({
-  validateSearch: (search: Record<string, unknown>): { prefix?: string; q?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { prefix?: string; q?: string; offset?: number } => ({
     prefix: typeof search.prefix === 'string' ? search.prefix : undefined,
     q: typeof search.q === 'string' ? search.q : undefined,
+    offset: typeof search.offset === 'number' ? search.offset : undefined,
   }),
   component: Browse,
 })
@@ -29,25 +29,19 @@ function modeOf(q: string): Mode {
 
 function Browse() {
   const { tenant } = useSearch({ strict: false })
-  const { prefix = '', q = '' } = Route.useSearch()
+  const { prefix = '', q = '', offset = 0 } = Route.useSearch()
   const navigate = useNavigate()
   const mode = modeOf(q)
   const showTenant = tenant === undefined
 
-  const [offset, setOffset] = useState(0)
-  // Reset the page whenever the filter changes underneath it. Adjusted
-  // during render (not in an effect) to skip the extra commit.
-  const resetKey = `${tenant ?? ''}|${prefix}|${q}`
-  const [prevResetKey, setPrevResetKey] = useState(resetKey)
-  if (resetKey !== prevResetKey) {
-    setPrevResetKey(resetKey)
-    setOffset(0)
-  }
-
+  // A page deep-link is shareable like prefix/q/tenant, so it lives in the
+  // URL too. Changing the filter starts back at page one.
   const setPrefix = (next: string) =>
-    void navigate({ to: '.', search: (prev) => ({ ...prev, prefix: next || undefined }) })
+    void navigate({ to: '.', search: (prev) => ({ ...prev, prefix: next || undefined, offset: undefined }) })
   const setQuery = (next: string) =>
-    void navigate({ to: '.', search: (prev) => ({ ...prev, q: next || undefined }) })
+    void navigate({ to: '.', search: (prev) => ({ ...prev, q: next || undefined, offset: undefined }) })
+  const setOffset = (next: number) =>
+    void navigate({ to: '.', search: (prev) => ({ ...prev, offset: next || undefined }) })
 
   const tree = useQuery({
     queryKey: ['concepts-tree', tenant],
@@ -100,6 +94,11 @@ function Browse() {
             selectedPrefix={prefix}
             onSelect={setPrefix}
           />
+          {tree.data && tree.data.total > TREE_SAMPLE_SIZE && (
+            <p className="mt-2 text-xs text-gray-500">
+              Showing the first {TREE_SAMPLE_SIZE} of {tree.data.total} concepts.
+            </p>
+          )}
         </div>
       </div>
 
