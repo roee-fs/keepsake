@@ -71,3 +71,24 @@ test('search narrows results, a row opens the concept, and a backlink navigates'
   await page.reload()
   await expect(page.getByRole('heading', { level: 1, name: 'Login' })).toBeVisible()
 })
+
+test('the nav shell links overview to browse and back, by clicking', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText('Concepts', { exact: true })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Browse' }).click()
+  await expect(page.getByPlaceholder('Search, or /pattern to grep')).toBeVisible()
+
+  await page.getByRole('link', { name: 'Overview' }).click()
+  await expect(page.getByText('Concepts', { exact: true })).toBeVisible()
+})
+
+test('logging out ends the session, so a guarded route redirects to /login', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Log out' }).click()
+  await page.waitForURL('**/login')
+
+  // Same ERR_ABORTED race as auth.spec.ts's logged-out redirect: goto tolerates it.
+  await page.goto('/concepts').catch(() => {})
+  await expect(page).toHaveURL(/\/login\?redirect=/)
+})
