@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 from starlette.testclient import TestClient
 
 from keepsake.server.app import Config, build_app
@@ -335,7 +336,7 @@ def test_missing_static_bundle_skips_the_mount_but_api_and_mcp_still_serve(
     monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(tmp_path / "no-such-dir"))
     built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
     try:
-        assert not any(isinstance(r, Mount) and r.path == "" for r in built.routes)
+        assert not isinstance(built.router.default, StaticFiles)
         assert any(isinstance(r, Mount) and r.path == "/api" for r in built.routes)
         assert "/mcp" in [getattr(r, "path", None) for r in built.routes]
         with TestClient(built) as c:
@@ -356,9 +357,7 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
     monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(static_dir))
     built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
     try:
-        last = built.routes[-1]
-        assert isinstance(last, Mount)
-        assert last.path == ""
+        assert isinstance(built.router.default, StaticFiles)
         with TestClient(built) as c:
             index = c.get("/")
             assert index.status_code == 200
@@ -368,6 +367,13 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             deep_link = c.get("/concepts/notes%2Fa.md")
             assert deep_link.status_code == 200
             assert deep_link.text == "<html>console shell</html>"
+            # The shell names this build's assets, so it must not outlive an upgrade.
+            assert index.headers["cache-control"] == "no-cache"
+            assert deep_link.headers["cache-control"] == "no-cache"
+            # The console must not stop the router redirecting a trailing slash.
+            slashed = c.post("/mcp/", json={}, follow_redirects=False)
+            assert slashed.status_code == 307
+            assert slashed.headers["location"].endswith("/mcp")
             assert c.get("/readyz").status_code == 200
             login = c.post("/api/session", json={"password": PASSWORD})
             assert login.status_code == 204
