@@ -41,3 +41,26 @@ func promote(fm *Map, key string) string {
 	}
 	return pyStr(v)
 }
+
+// Serialize renders a concept as an OKF document, known fields first.
+// It fails only on a non-finite float, which the store cannot hold.
+func Serialize(c Concept) (string, error) {
+	meta := NewMap()
+	meta.Set("type", c.Type)
+	if c.Title != "" {
+		meta.Set("title", c.Title)
+	}
+	if c.Description != "" {
+		meta.Set("description", c.Description)
+	}
+	if c.Frontmatter != nil {
+		for _, k := range c.Frontmatter.keys {
+			meta.Set(k, c.Frontmatter.vals[k])
+		}
+	}
+	fm, err := emitRoot(meta)
+	if err != nil {
+		return "", err
+	}
+	return "---\n" + fm + "---\n" + c.Body, nil
+}
