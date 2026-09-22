@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Stand up a kind cluster, install the chart against a plain Postgres, assert, tear down.
+# Stand up the e2e cluster with up.sh, assert, tear down.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 CLUSTER=keepsake-e2e
-IMAGE=keepsake:e2e
 # Never the caller's kubeconfig: every command here must reach this cluster and no
 # other. Everything below inherits it, pytest's own kubectl calls included.
 export KUBECONFIG="${TMPDIR:-/tmp}/keepsake-e2e-kubeconfig"
@@ -31,27 +30,7 @@ teardown() {
 # only if one is installed — without these, Ctrl-C leaks the cluster and its containers.
 trap teardown EXIT INT TERM
 
-kind create cluster --name "$CLUSTER" --config e2e/kind.yaml --kubeconfig "$KUBECONFIG"
-# The cluster is only ever addressed through $KUBECONFIG, but assert it anyway: every
-# command below is destructive against whatever context it lands in.
-context=$(kubectl config current-context)
-[[ "$context" == "kind-$CLUSTER" ]] || { echo "refusing to run against $context"; exit 1; }
-
-docker build -t "$IMAGE" .
-kind load docker-image "$IMAGE" --name "$CLUSTER"
-
-kubectl apply -f e2e/postgres.yaml
-kubectl wait --for=condition=available deploy/postgres --timeout=180s
-
-# ownerDsn, not just dsn: left unset the migration runs as the app role, which here
-# cannot create the schema at all, and on a database where it can would end up owning
-# it — which the server then refuses to serve against, for good.
-helm install keepsake charts/keepsake \
-  --set image.repository=keepsake --set image.tag=e2e \
-  --set postgres.mode=existing \
-  --set postgres.dsn="postgres://okf_app:app@postgres:5432/keepsake" \
-  --set postgres.ownerDsn="postgres://okf_owner:owner@postgres:5432/keepsake" \
-  --set service.type=NodePort --set service.nodePort=30800 \
-  --wait --timeout 180s
+# The ports and tag test_deployed.py assumes.
+CLUSTER=$CLUSTER IMAGE_TAG=e2e NODE_PORT=30800 bash e2e/up.sh
 
 uv run pytest e2e/test_deployed.py -v

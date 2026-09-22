@@ -23,7 +23,7 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      # install_only: run.sh creates the cluster itself, from e2e/kind.yaml.
+      # install_only: run.sh creates the cluster itself, through e2e/up.sh.
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           install_only: true
