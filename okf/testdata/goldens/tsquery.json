@@ -1,0 +1,90 @@
+[
+  {
+    "query": "café crème",
+    "terms": "café | crème"
+  },
+  {
+    "query": "naïve_test 42",
+    "terms": "naïve_test | 42"
+  },
+  {
+    "query": "a & b | !c",
+    "terms": "a | b | c"
+  },
+  {
+    "query": "日本語",
+    "terms": "日本語"
+  },
+  {
+    "query": "Ⅻ roman",
+    "terms": "Ⅻ | roman"
+  },
+  {
+    "query": "x_y",
+    "terms": "x_y"
+  },
+  {
+    "query": "'quoted'",
+    "terms": "quoted"
+  },
+  {
+    "query": "",
+    "terms": ""
+  },
+  {
+    "query": "   ",
+    "terms": ""
+  },
+  {
+    "query": "hello world",
+    "terms": "hello | world"
+  },
+  {
+    "query": "SELECT * FROM x",
+    "terms": "SELECT | FROM | x"
+  },
+  {
+    "query": "a-b-c",
+    "terms": "a | b | c"
+  },
+  {
+    "query": "123",
+    "terms": "123"
+  },
+  {
+    "query": "!!!",
+    "terms": ""
+  },
+  {
+    "query": "emoji 🎉 test",
+    "terms": "emoji | test"
+  },
+  {
+    "query": "tab\ttab",
+    "terms": "tab | tab"
+  },
+  {
+    "query": "multi\nline query",
+    "terms": "multi | line | query"
+  },
+  {
+    "query": "  leading and trailing  ",
+    "terms": "leading | and | trailing"
+  },
+  {
+    "query": "UPPER lower MiXeD",
+    "terms": "UPPER | lower | MiXeD"
+  },
+  {
+    "query": "quotes \"inside\"",
+    "terms": "quotes | inside"
+  },
+  {
+    "query": "back\\slash",
+    "terms": "back | slash"
+  },
+  {
+    "query": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "terms": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+]

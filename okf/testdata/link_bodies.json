@@ -1,0 +1,174 @@
+[
+  {
+    "body": "See [layers](../architecture/layers.md) and [auth](decisions/auth.md).",
+    "path": "concepts/overview"
+  },
+  {
+    "body": "[auth](decisions/auth.md)",
+    "path": "a/b/c"
+  },
+  {
+    "body": "[x](/a/b.md)",
+    "path": "deep/nested/doc"
+  },
+  {
+    "body": "[x](../../outside.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[x](/../../etc.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[x](/a/../../b.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[x](/)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[x](..)",
+    "path": "a/doc"
+  },
+  {
+    "body": "See [Overview](#overview) and [Setup](#setup).",
+    "path": "a/doc"
+  },
+  {
+    "body": "[x](b.md#section) [y](c.md?v=1)",
+    "path": "a/doc"
+  },
+  {
+    "body": "![diagram](d.png) and [real](a.md)",
+    "path": "x/doc"
+  },
+  {
+    "body": "[x](a.md \"Title\")",
+    "path": "p/doc"
+  },
+  {
+    "body": "[a](https://example.com/x.md) [b](//example.com/y.md) [c](mailto:a@b.c)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md) [b](y.md) [c](x.md)",
+    "path": "d/doc"
+  },
+  {
+    "body": "See [layers](../architecture/layers.md).\n",
+    "path": "concepts/overview"
+  },
+  {
+    "body": "![img](a.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "![x [y](z.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](b.md \"title\")",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a]( b.md )",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a]( b.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](b.md \"t\")",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](../../x.md)",
+    "path": "p/q"
+  },
+  {
+    "body": "[a](/../x)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](#frag)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md?y=1)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](HTTP://x)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](mailto:x)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](//cdn/x)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a]()",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a\nb](x.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md) [b](x.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](TEL:12345)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.MD)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](./x.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](sub/../x.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "![alt](pic.png)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](X.md) [b](x.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md)\n[b](y.md)\n[c](z.md)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md?y=1#z)",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](x.md \"title (extra)\")",
+    "path": "a/doc"
+  },
+  {
+    "body": "[a](b.md)",
+    "path": ""
+  },
+  {
+    "body": "[a](../../../../x.md)",
+    "path": "a/b/c/doc"
+  },
+  {
+    "body": "no links here at all",
+    "path": "a/doc"
+  }
+]

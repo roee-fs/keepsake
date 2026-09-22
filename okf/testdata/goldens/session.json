@@ -1,0 +1,17 @@
+[
+  {
+    "password": "test-admin-password",
+    "expiry": 4102444800,
+    "cookie": "4102444800.1272f5c16499d658edc51d5dc3b7a7c091455d6ec30497d96542b1b8ac86973d"
+  },
+  {
+    "password": "pässwörd",
+    "expiry": 4102444800,
+    "cookie": "4102444800.818575ceafd8a54688c4c9b000a266bef0b10c5f5e545b4a0238ac114765738f"
+  },
+  {
+    "password": "🎉",
+    "expiry": 4102444800,
+    "cookie": "4102444800.5a8407f07e5fdd7d318dcfd2f71c16b85e19d73a259dc9504f78a87e31c11c9c"
+  }
+]

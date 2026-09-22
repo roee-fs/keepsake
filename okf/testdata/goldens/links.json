@@ -1,0 +1,271 @@
+[
+  {
+    "body": "See [layers](../architecture/layers.md) and [auth](decisions/auth.md).",
+    "path": "concepts/overview",
+    "links": [
+      "architecture/layers",
+      "concepts/decisions/auth"
+    ]
+  },
+  {
+    "body": "[auth](decisions/auth.md)",
+    "path": "a/b/c",
+    "links": [
+      "a/b/decisions/auth"
+    ]
+  },
+  {
+    "body": "[x](/a/b.md)",
+    "path": "deep/nested/doc",
+    "links": [
+      "a/b"
+    ]
+  },
+  {
+    "body": "[x](../../outside.md)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[x](/../../etc.md)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[x](/a/../../b.md)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[x](/)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[x](..)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "See [Overview](#overview) and [Setup](#setup).",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[x](b.md#section) [y](c.md?v=1)",
+    "path": "a/doc",
+    "links": [
+      "a/b",
+      "a/c"
+    ]
+  },
+  {
+    "body": "![diagram](d.png) and [real](a.md)",
+    "path": "x/doc",
+    "links": [
+      "x/a"
+    ]
+  },
+  {
+    "body": "[x](a.md \"Title\")",
+    "path": "p/doc",
+    "links": [
+      "p/a"
+    ]
+  },
+  {
+    "body": "[a](https://example.com/x.md) [b](//example.com/y.md) [c](mailto:a@b.c)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](x.md) [b](y.md) [c](x.md)",
+    "path": "d/doc",
+    "links": [
+      "d/x",
+      "d/y"
+    ]
+  },
+  {
+    "body": "See [layers](../architecture/layers.md).\n",
+    "path": "concepts/overview",
+    "links": [
+      "architecture/layers"
+    ]
+  },
+  {
+    "body": "![img](a.md)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "![x [y](z.md)",
+    "path": "a/doc",
+    "links": [
+      "a/z"
+    ]
+  },
+  {
+    "body": "[a](b.md \"title\")",
+    "path": "a/doc",
+    "links": [
+      "a/b"
+    ]
+  },
+  {
+    "body": "[a]( b.md )",
+    "path": "a/doc",
+    "links": [
+      "a/b"
+    ]
+  },
+  {
+    "body": "[a]( b.md)",
+    "path": "a/doc",
+    "links": [
+      "a/b"
+    ]
+  },
+  {
+    "body": "[a](b.md \"t\")",
+    "path": "a/doc",
+    "links": [
+      "a/b"
+    ]
+  },
+  {
+    "body": "[a](../../x.md)",
+    "path": "p/q",
+    "links": []
+  },
+  {
+    "body": "[a](/../x)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](#frag)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](x.md?y=1)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](HTTP://x)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](mailto:x)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](//cdn/x)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a]()",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a\nb](x.md)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](x.md) [b](x.md)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](TEL:12345)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](x.MD)",
+    "path": "a/doc",
+    "links": [
+      "a/x.MD"
+    ]
+  },
+  {
+    "body": "[a](./x.md)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](sub/../x.md)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "![alt](pic.png)",
+    "path": "a/doc",
+    "links": []
+  },
+  {
+    "body": "[a](X.md) [b](x.md)",
+    "path": "a/doc",
+    "links": [
+      "a/X",
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](x.md)\n[b](y.md)\n[c](z.md)",
+    "path": "a/doc",
+    "links": [
+      "a/x",
+      "a/y",
+      "a/z"
+    ]
+  },
+  {
+    "body": "[a](x.md?y=1#z)",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](x.md \"title (extra)\")",
+    "path": "a/doc",
+    "links": [
+      "a/x"
+    ]
+  },
+  {
+    "body": "[a](b.md)",
+    "path": "",
+    "links": [
+      "b"
+    ]
+  },
+  {
+    "body": "[a](../../../../x.md)",
+    "path": "a/b/c/doc",
+    "links": []
+  },
+  {
+    "body": "no links here at all",
+    "path": "a/doc",
+    "links": []
+  }
+]

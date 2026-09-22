@@ -1,0 +1,5 @@
+---
+type: Concept
+m: {a: 1, b: 2}
+---
+b
