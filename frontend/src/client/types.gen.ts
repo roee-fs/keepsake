@@ -91,6 +91,49 @@ export type DailyWrite = {
 };
 
 /**
+ * Graph
+ */
+export type Graph = {
+    /**
+     * Nodes
+     */
+    nodes: Array<GraphNode>;
+    /**
+     * Edges
+     */
+    edges: Array<[
+        string,
+        string
+    ]>;
+    /**
+     * Truncated
+     */
+    truncated: boolean;
+};
+
+/**
+ * GraphNode
+ */
+export type GraphNode = {
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Type
+     */
+    type: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Missing
+     */
+    missing?: boolean;
+};
+
+/**
  * GrepHit
  */
 export type GrepHit = {
@@ -575,6 +618,36 @@ export type GrepGrepGetResponses = {
 };
 
 export type GrepGrepGetResponse = GrepGrepGetResponses[keyof GrepGrepGetResponses];
+
+export type GraphGraphGetData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Tenant
+         */
+        tenant: string;
+    };
+    url: '/graph';
+};
+
+export type GraphGraphGetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GraphGraphGetError = GraphGraphGetErrors[keyof GraphGraphGetErrors];
+
+export type GraphGraphGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: Graph;
+};
+
+export type GraphGraphGetResponse = GraphGraphGetResponses[keyof GraphGraphGetResponses];
 
 export type ActivityActivityGetData = {
     body?: never;

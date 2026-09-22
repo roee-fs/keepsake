@@ -2,8 +2,8 @@
 
 Every route but `POST /api/session` inherits the session guard from its router,
 so a route added later cannot ship unguarded. `tenant` is a query parameter here,
-and never on /mcp, where an agent names no scope of its own. `search`, `grep` and
-the single-concept read require it, because a path is unique only within a
+and never on /mcp, where an agent names no scope of its own. `search`, `grep`,
+`graph` and the single-concept read require it, because a path is unique only within a
 tenant. The rest default to `None`, which the store routes to `admin_scope()`.
 """
 
@@ -25,6 +25,11 @@ _SESSION_TTL = 12 * 60 * 60
 
 # concept-detail takes no `limit` of its own; this bounds its revision history.
 _HISTORY_LIMIT = 50
+
+# Past a few hundred nodes a force layout is unreadable anyway.
+_GRAPH_LIMIT = 500
+# Separate from the node cap: one concept can link to thousands of targets.
+_GRAPH_EDGE_LIMIT = 5000
 
 
 class Credentials(BaseModel):
@@ -92,6 +97,20 @@ class HitOut(BaseModel):
 class GrepHit(BaseModel):
     path: str
     snippet: str
+
+
+class GraphNode(BaseModel):
+    path: str
+    type: str
+    title: str
+    # A link target no concept holds: named by an agent, never written.
+    missing: bool = False
+
+
+class Graph(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[tuple[str, str]]
+    truncated: bool
 
 
 class DailyWrite(BaseModel):
@@ -213,6 +232,33 @@ def grep(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [GrepHit(path=path, snippet=snippet) for path, snippet in rows]
+
+
+@guarded.get("/graph")
+def graph(store: _Store, tenant: UUID) -> Graph:
+    rows = store.graph(tenant, _GRAPH_LIMIT + 1)
+    truncated = len(rows) > _GRAPH_LIMIT
+    rows = rows[:_GRAPH_LIMIT]
+    nodes = {
+        path: GraphNode(path=path, type=t, title=title) for path, t, title, _ in rows
+    }
+    # Past the row cap, an absent target may just be a concept that did not fit.
+    rows_cut = truncated
+    edges = []
+    for path, _, _, links in rows:
+        for target in links:
+            if len(edges) >= _GRAPH_EDGE_LIMIT:
+                truncated = True
+                break
+            if target not in nodes:
+                if rows_cut:
+                    continue
+                if len(nodes) >= _GRAPH_LIMIT:
+                    truncated = True
+                    continue
+                nodes[target] = GraphNode(path=target, type="", title="", missing=True)
+            edges.append((path, target))
+    return Graph(nodes=list(nodes.values()), edges=edges, truncated=truncated)
 
 
 @guarded.get("/activity")

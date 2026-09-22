@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ActivityActivityGetData, ActivityActivityGetErrors, ActivityActivityGetResponses, ConceptDetailConceptsPathGetData, ConceptDetailConceptsPathGetErrors, ConceptDetailConceptsPathGetResponses, GrepGrepGetData, GrepGrepGetErrors, GrepGrepGetResponses, ListConceptsConceptsGetData, ListConceptsConceptsGetErrors, ListConceptsConceptsGetResponses, LoginSessionPostData, LoginSessionPostErrors, LoginSessionPostResponses, LogoutSessionDeleteData, LogoutSessionDeleteResponses, OpenapiSchemaOpenapiJsonGetData, OpenapiSchemaOpenapiJsonGetResponses, SearchSearchGetData, SearchSearchGetErrors, SearchSearchGetResponses, StatsStatsGetData, StatsStatsGetErrors, StatsStatsGetResponses, StatsTimeseriesStatsTimeseriesGetData, StatsTimeseriesStatsTimeseriesGetErrors, StatsTimeseriesStatsTimeseriesGetResponses, TenantsTenantsGetData, TenantsTenantsGetResponses } from './types.gen';
+import type { ActivityActivityGetData, ActivityActivityGetErrors, ActivityActivityGetResponses, ConceptDetailConceptsPathGetData, ConceptDetailConceptsPathGetErrors, ConceptDetailConceptsPathGetResponses, GraphGraphGetData, GraphGraphGetErrors, GraphGraphGetResponses, GrepGrepGetData, GrepGrepGetErrors, GrepGrepGetResponses, ListConceptsConceptsGetData, ListConceptsConceptsGetErrors, ListConceptsConceptsGetResponses, LoginSessionPostData, LoginSessionPostErrors, LoginSessionPostResponses, LogoutSessionDeleteData, LogoutSessionDeleteResponses, OpenapiSchemaOpenapiJsonGetData, OpenapiSchemaOpenapiJsonGetResponses, SearchSearchGetData, SearchSearchGetErrors, SearchSearchGetResponses, StatsStatsGetData, StatsStatsGetErrors, StatsStatsGetResponses, StatsTimeseriesStatsTimeseriesGetData, StatsTimeseriesStatsTimeseriesGetErrors, StatsTimeseriesStatsTimeseriesGetResponses, TenantsTenantsGetData, TenantsTenantsGetResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -74,6 +74,11 @@ export const searchSearchGet = <ThrowOnError extends boolean = false>(options: O
  * Grep
  */
 export const grepGrepGet = <ThrowOnError extends boolean = false>(options: Options<GrepGrepGetData, ThrowOnError>): RequestResult<GrepGrepGetResponses, GrepGrepGetErrors, ThrowOnError> => (options.client ?? client).get<GrepGrepGetResponses, GrepGrepGetErrors, ThrowOnError>({ url: '/grep', ...options });
+
+/**
+ * Graph
+ */
+export const graphGraphGet = <ThrowOnError extends boolean = false>(options: Options<GraphGraphGetData, ThrowOnError>): RequestResult<GraphGraphGetResponses, GraphGraphGetErrors, ThrowOnError> => (options.client ?? client).get<GraphGraphGetResponses, GraphGraphGetErrors, ThrowOnError>({ url: '/graph', ...options });
 
 /**
  * Activity

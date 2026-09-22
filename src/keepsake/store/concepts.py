@@ -417,6 +417,17 @@ class ConceptStore:
             ).fetchall()
         return [(r[0], int(r[1])) for r in rows]
 
+    def graph(
+        self, tenant_id: UUID, limit: int
+    ) -> list[tuple[str, str, str, list[str]]]:
+        """`(path, type, title, links)` for the first `limit` concepts by path."""
+        with self._store.scope(tenant_id) as conn:
+            rows = conn.execute(
+                "SELECT path, type, title, links FROM concept ORDER BY path LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return [(str(r[0]), str(r[1]), str(r[2]), list(r[3])) for r in rows]
+
     def tenants(self) -> list[tuple[UUID, int]]:
         """Every tenant holding at least one concept, and its count. Admin-only:
         there is no tenant registry besides this table."""

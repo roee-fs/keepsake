@@ -52,6 +52,16 @@ function RootLayout() {
         >
           Browse
         </Link>
+        <Link
+          to="/graph"
+          // The graph needs a tenant, so it keeps the one already selected.
+          search={true}
+          className={NAV_LINK}
+          activeProps={NAV_ACTIVE}
+          inactiveProps={NAV_INACTIVE}
+        >
+          Graph
+        </Link>
         <button
           type="button"
           onClick={logout}

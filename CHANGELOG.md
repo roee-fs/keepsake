@@ -23,6 +23,9 @@ otherwise.
   links, backlinks and revision history. Helm generates the password at
   install into a `<release>-admin` Secret; the session cookie's signing key
   derives from it, so changing the password invalidates every open session.
+- A link graph of one tenant's concepts in the console, backed by
+  `GET /api/graph`. It draws up to 500 concepts and marks link targets no
+  concept holds.
 
 ### Security
 

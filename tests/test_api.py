@@ -387,3 +387,78 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             assert not content_type.startswith("text/html")
     finally:
         built.state.store.close()
+
+
+def _link(app: Starlette, tenant: uuid.UUID, path: str, *links: str) -> None:
+    ConceptStore(app.state.store).create(
+        tenant, Concept(path=path, type="Concept", title=path, links=links), "test"
+    )
+
+
+def test_graph_returns_edges_and_marks_a_missing_target(
+    app: Starlette, logged_in: TestClient, tenant: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    _link(app, tenant, "a", "b", "ghost")
+    _link(app, tenant, "b", "a")
+
+    response = logged_in.get("/api/graph", params={"tenant": str(tenant)})
+    assert response.status_code == 200
+    body = response.json()
+    nodes = {n["path"]: n["missing"] for n in body["nodes"]}
+    # other/thing belongs to other_tenant and MUST NOT appear.
+    assert nodes == {"a": False, "b": False, "ghost": True}
+    assert sorted(map(tuple, body["edges"])) == [("a", "b"), ("a", "ghost"), ("b", "a")]
+    assert body["truncated"] is False
+
+
+def test_graph_past_the_cap_drops_edges_it_cannot_place(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keepsake.server.api._GRAPH_LIMIT", 1)
+    _link(app, tenant, "a", "b")
+    _link(app, tenant, "b")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    # "b" exists past the cap, so it MUST NOT come back as a missing node.
+    assert [n["path"] for n in body["nodes"]] == ["a"]
+    assert body["edges"] == []
+    assert body["truncated"] is True
+
+
+def test_graph_caps_missing_targets_at_the_node_limit(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One concept can name thousands of targets nobody wrote."""
+    monkeypatch.setattr("keepsake.server.api._GRAPH_LIMIT", 3)
+    _link(app, tenant, "a", "g1", "g2", "g3", "g4")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert [n["path"] for n in body["nodes"]] == ["a", "g1", "g2"]
+    assert body["edges"] == [["a", "g1"], ["a", "g2"]]
+    assert body["truncated"] is True
+
+
+def test_graph_caps_edges(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keepsake.server.api._GRAPH_EDGE_LIMIT", 2)
+    _link(app, tenant, "a", "b", "c")
+    _link(app, tenant, "b", "a", "c")
+    _link(app, tenant, "c")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert len(body["edges"]) == 2
+    assert body["truncated"] is True
+
+
+def test_graph_requires_a_tenant(logged_in: TestClient) -> None:
+    assert logged_in.get("/api/graph").status_code == 422
