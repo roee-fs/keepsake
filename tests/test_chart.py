@@ -162,6 +162,21 @@ def test_the_server_reads_the_variables_the_cli_reads() -> None:
     assert _container(_only(docs, "Job"))["command"] == ["keepsake", "migrate"]
 
 
+@pytest.mark.parametrize(
+    ("enabled", "rendered"), [("true", "true"), ("false", "false")]
+)
+def test_ui_enabled_renders_as_the_string_ui_enabled_accepts(
+    enabled: str, rendered: str
+) -> None:
+    """ui.enabled is a YAML boolean; ui_enabled() only recognizes the literal string
+    "true". An unquoted render would emit a bare `true`, which Kubernetes rejects as
+    an env value."""
+    docs = _render(dict(MANAGED, **{"ui.enabled": enabled}))
+    value = _env(_only(docs, "Deployment"))["KEEPSAKE_UI"]["value"]
+    assert value == rendered
+    assert isinstance(value, str)
+
+
 def test_the_service_type_and_node_port_are_configurable() -> None:
     default = _only(_render(MANAGED), "Service")
     assert default["spec"]["type"] == "ClusterIP"

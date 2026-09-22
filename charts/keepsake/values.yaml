@@ -29,6 +29,8 @@ securityContext:
     drop: ["ALL"]
 
 service:
+  # Carries the authenticated console alongside the unauthenticated MCP endpoint.
+  # Keep this ClusterIP. Reach it with `kubectl port-forward svc/<release> 8000:8000`.
   type: ClusterIP
   port: 8000
   nodePort: null # only honoured when type is NodePort or LoadBalancer
@@ -36,6 +38,11 @@ service:
 auth:
   mode: none # the only mode implemented; proxy and token are not built yet
   fixedTenantId: "00000000-0000-0000-0000-000000000001"
+
+ui:
+  # Disabled skips both the static mount and the /api mount; /mcp and /readyz are
+  # unaffected. Rendered as KEEPSAKE_UI, which ui_enabled() only accepts as "true".
+  enabled: true
 
 admin:
   # Generated at install and printed by NOTES.txt. Read it with:
