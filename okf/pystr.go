@@ -40,7 +40,7 @@ func pyRepr(v any) string {
 		}
 		return "False"
 	case string:
-		return pyReprString(v)
+		return PyReprString(v)
 	case int:
 		return strconv.Itoa(v)
 	case json.Number:
@@ -60,7 +60,7 @@ func pyRepr(v any) string {
 	case *Map:
 		parts := make([]string, 0, v.Len())
 		for _, k := range v.keys {
-			parts = append(parts, pyReprString(k)+": "+pyRepr(v.vals[k]))
+			parts = append(parts, PyReprString(k)+": "+pyRepr(v.vals[k]))
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
@@ -94,8 +94,8 @@ func pyFloatRepr(f float64) string {
 	return s
 }
 
-// pyReprString is Python's repr(str): single quotes unless only double quotes avoid escaping.
-func pyReprString(s string) string {
+// PyReprString is Python's repr(str): single quotes unless only double quotes avoid escaping.
+func PyReprString(s string) string {
 	q := byte('\'')
 	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
 		q = '"'

@@ -7,8 +7,8 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
-	"unicode"
+
+	"github.com/roee-fs/keepsake/okf"
 )
 
 var schemaName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
@@ -16,7 +16,7 @@ var schemaName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
 // ValidatedSchema rejects anything not a bare identifier: the name is formatted into DDL.
 func ValidatedSchema(name string) (string, error) {
 	if !schemaName.MatchString(name) {
-		return "", fmt.Errorf("not a usable schema name: %s", pyReprString(name))
+		return "", fmt.Errorf("not a usable schema name: %s", okf.PyReprString(name))
 	}
 	return name, nil
 }
@@ -55,7 +55,7 @@ func PoolSize() (int, error) {
 	}
 	n, err := strconv.Atoi(value)
 	if err != nil || n < 1 || !isDecimal(value) {
-		return 0, fmt.Errorf("KEEPSAKE_POOL_SIZE must be a positive integer: %s", pyReprString(value))
+		return 0, fmt.Errorf("KEEPSAKE_POOL_SIZE must be a positive integer: %s", okf.PyReprString(value))
 	}
 	return n, nil
 }
@@ -71,37 +71,4 @@ func isDecimal(s string) bool {
 		}
 	}
 	return true
-}
-
-// pyReprString is Python's repr(str): single quotes unless only double quotes avoid escaping.
-func pyReprString(s string) string {
-	q := byte('\'')
-	if strings.Contains(s, "'") && !strings.Contains(s, `"`) {
-		q = '"'
-	}
-	var b strings.Builder
-	b.WriteByte(q)
-	for _, r := range s {
-		switch {
-		case r == rune(q) || r == '\\':
-			b.WriteByte('\\')
-			b.WriteRune(r)
-		case r == '\t':
-			b.WriteString(`\t`)
-		case r == '\n':
-			b.WriteString(`\n`)
-		case r == '\r':
-			b.WriteString(`\r`)
-		case unicode.IsPrint(r):
-			b.WriteRune(r)
-		case r < 0x100:
-			fmt.Fprintf(&b, `\x%02x`, r)
-		case r < 0x10000:
-			fmt.Fprintf(&b, `\u%04x`, r)
-		default:
-			fmt.Fprintf(&b, `\U%08x`, r)
-		}
-	}
-	b.WriteByte(q)
-	return b.String()
 }

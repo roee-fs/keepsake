@@ -70,6 +70,11 @@ func Head() string {
 // Up applies every migration after schema's current alembic_version, in a single
 // transaction, the way Alembic applies them. Run again at head, it changes nothing.
 func Up(ctx context.Context, dsn, schema string) error {
+	schema, err := store.ValidatedSchema(schema)
+	if err != nil {
+		return err
+	}
+
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return err

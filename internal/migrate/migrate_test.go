@@ -340,6 +340,18 @@ func TestATenantCannotReadOrWriteAnotherTenantsRows(t *testing.T) {
 	tx3.Commit(ctx)
 }
 
+// schema.go's own comment explains why: the name is formatted into DDL, never bound.
+func TestUpRejectsAnInvalidSchemaName(t *testing.T) {
+	err := Up(context.Background(), "postgres://unreachable-host:5432/nope", "okf; DROP TABLE x")
+	if err == nil {
+		t.Fatal("Up did not reject an invalid schema name")
+	}
+	want := "not a usable schema name: 'okf; DROP TABLE x'"
+	if err.Error() != want {
+		t.Fatalf("err = %q, want %q (Up must validate before it ever connects)", err.Error(), want)
+	}
+}
+
 // Ported from tests/test_schema_name.py::test_a_non_default_schema_migrates_and_serves, the
 // migration half: the ConceptStore/Store half has no Go port yet (a later task).
 func TestANonDefaultSchemaMigrates(t *testing.T) {
