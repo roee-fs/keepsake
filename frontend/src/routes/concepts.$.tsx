@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useSearch } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import { conceptDetailConceptsPathGet } from '../client'
+import { BodyLink } from '../components/BodyLink'
 import { Frontmatter } from '../components/Frontmatter'
 import { RevisionList } from '../components/RevisionList'
-import { isExternal, resolveLink } from '../lib/links'
 import { HttpError } from '../lib/session'
 
 export const Route = createFileRoute('/concepts/$')({
@@ -32,19 +31,6 @@ function LinkList({ title, paths, tenant }: { title: string; paths: string[]; te
         </ul>
       )}
     </div>
-  )
-}
-
-function BodyLink({ href, children, source, tenant }: { href?: string; children?: ReactNode; source: string; tenant: string }) {
-  if (href?.startsWith('#') || (href && isExternal(href))) {
-    return <a href={href} className="text-link hover:underline">{children}</a>
-  }
-  const target = href ? resolveLink(href, source) : null
-  if (!target) return <span>{children}</span>
-  return (
-    <Link to="/concepts/$" params={{ _splat: target }} search={{ tenant }} className="text-link hover:underline">
-      {children}
-    </Link>
   )
 }
 
@@ -116,7 +102,13 @@ function Detail() {
           the trust boundary, not a styling choice. */}
       <div className="markdown max-w-[68ch]">
         <Markdown
-          components={{ a: ({ href, children }) => <BodyLink href={href} source={path} tenant={tenant}>{children}</BodyLink> }}
+          components={{
+            a: ({ href, title, children }) => (
+              <BodyLink href={href} title={title} source={path} tenant={tenant}>
+                {children}
+              </BodyLink>
+            ),
+          }}
         >
           {concept.body}
         </Markdown>
