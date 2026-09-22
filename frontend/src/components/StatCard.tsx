@@ -1,7 +1,7 @@
 type StatCardProps = {
   label: string
   value: number | undefined
-  /** 'warning' calls out a positive value (e.g. orphans) without hiding it as just another tile. */
+  /** 'warning' calls out a positive value, e.g. orphans. */
   tone?: 'default' | 'warning'
 }
 

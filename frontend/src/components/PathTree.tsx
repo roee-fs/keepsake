@@ -48,9 +48,8 @@ type PathTreeProps = {
 }
 
 /**
- * Built client-side from whatever paths the caller fetched -- there is no
- * "list distinct prefixes" endpoint, so the tree's depth is bounded by that
- * fetch's page size, not the whole tenant's corpus.
+ * Built client-side from whatever paths the caller fetched, so the tree covers that
+ * fetch's page rather than the whole tenant's corpus.
  */
 export function PathTree({ paths, selectedPrefix, onSelect }: PathTreeProps) {
   const tree = buildTree(paths ?? [])
@@ -92,12 +91,9 @@ function TreeItem({
     </button>
   )
 
-  // Derived on every render, not just at mount: the tree's job is to show
-  // where the current selection sits in the hierarchy, so an ancestor of the
-  // selected prefix stays open because it IS an ancestor right now, not
-  // because it was one when this node first mounted. Trade-off: this also
-  // re-closes a folder the user opened manually once the selection moves
-  // away from it -- the tree tracks the selection, not manual expand state.
+  // Derived every render, not at mount: a folder is open because it is an ancestor
+  // of the selection right now. Trade-off: the tree tracks the selection, so a
+  // manually opened folder re-closes once the selection moves away.
   const isAncestorOfSelection = selectedPrefix.startsWith(node.prefix)
   const detailsRef = useRef<HTMLDetailsElement>(null)
   useEffect(() => {

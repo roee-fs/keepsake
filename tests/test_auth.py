@@ -1,9 +1,4 @@
-"""The admin session: password check, signed cookie, and the startup gate.
-
-No server-side session state exists — the signing key is derived from the
-password, so these tests also cover the revocation path: changing the
-password must invalidate every cookie issued under the old one.
-"""
+"""The admin session: password check, signed cookie, and the startup gate."""
 
 from types import SimpleNamespace
 
@@ -41,8 +36,7 @@ def test_a_freshly_issued_cookie_is_accepted(auth: Auth) -> None:
 
 
 def test_a_cookie_signed_with_another_password_is_rejected(auth: Auth) -> None:
-    # The signing key is derived from the password, so this is the revocation path:
-    # changing the password MUST invalidate sessions issued under the old one.
+    # The key derives from the password, so a password change MUST revoke old cookies.
     assert not Auth("old-password").valid(auth.issue(ttl=3600))
 
 

@@ -32,8 +32,7 @@ describe('buildTree', () => {
   })
 
   it('drops a single path with no directory into no tree at all', () => {
-    // The leaf segment is dropped, so a root-level file contributes zero
-    // directory segments -- there is nothing to branch on.
+    // The leaf segment is dropped, so a root-level file contributes no segments.
     expect(buildTree(['readme.md'])).toEqual([])
   })
 

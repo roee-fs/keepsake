@@ -7,8 +7,7 @@ type WritesChartProps = {
 }
 
 // Recharts writes SVG presentation attributes and inline styles, both of which
-// resolve CSS custom properties -- so the chart reads the same palette as
-// everything else instead of carrying its own copy of the hex values.
+// resolve CSS custom properties, so the chart reads the same palette as the rest.
 const AXIS_TICK = { fontSize: 11, fill: 'var(--color-fg-muted)' }
 const AXIS_LINE = { stroke: 'var(--color-line)' }
 const TOOLTIP_CONTENT = {
@@ -19,8 +18,8 @@ const TOOLTIP_CONTENT = {
   padding: '6px 10px',
 }
 
-/** `data` arrives already bucketed and zero-filled by the backend; an all-zero
- * window (fresh install) is rendered as an empty state, not an axis with a flat line. */
+/** `data` arrives bucketed and zero-filled by the backend; an all-zero window
+ * renders as an empty state, not an axis with a flat line. */
 export function WritesChart({ data, isLoading }: WritesChartProps) {
   if (isLoading) {
     return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />

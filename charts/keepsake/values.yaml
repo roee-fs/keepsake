@@ -40,8 +40,8 @@ auth:
   fixedTenantId: "00000000-0000-0000-0000-000000000001"
 
 ui:
-  # Disabled skips both the static mount and the /api mount; /mcp and /readyz are
-  # unaffected. Rendered as KEEPSAKE_UI, which ui_enabled() only accepts as "true".
+  # Disabled skips both the static mount and the /api mount. Rendered as
+  # KEEPSAKE_UI; /mcp and /readyz are unaffected either way.
   enabled: true
 
 admin:
@@ -50,10 +50,9 @@ admin:
   # Change it by editing this Secret and restarting the Deployment, which also
   # invalidates every open session.
   existingSecret: "" # required for GitOps; see below
-  # `lookup` (which keeps the password stable across upgrades) returns nothing
-  # under `helm template` and `--dry-run` — how Argo CD and `helm template |
-  # kubectl apply` render this chart — so the password regenerates on every
-  # sync. Set existingSecret above when deploying that way, or risk lockout.
+  # `lookup`, which keeps the password stable across upgrades, returns nothing under
+  # `helm template` or `--dry-run` — how Argo CD renders this chart — so the password
+  # regenerates on every sync. Set existingSecret when deploying that way.
 
 postgres:
   mode: managed # managed | existing

@@ -12,8 +12,8 @@ const PAGE_SIZE = 50
 // largest page the API allows and is incomplete beyond that many concepts.
 const TREE_SAMPLE_SIZE = 200
 
-// A whole column of tinted paths would fight the row hover for attention, so a
-// path reads as primary text and only reveals the link tint under the cursor.
+// A whole column of tinted paths would fight the row hover, so the link tint only
+// appears under the cursor.
 const PATH_LINK = 'text-fg transition-colors hover:text-link hover:underline'
 const SKELETON = 'mt-3 h-48 animate-pulse rounded-md border border-line bg-surface'
 const EMPTY = 'mt-3 text-fg-muted'
@@ -71,8 +71,8 @@ function Browse() {
     enabled: mode === 'browse',
   })
 
-  // search/grep require a concrete tenant -- the `!` is safe because `enabled`
-  // below keeps the query from running until `tenant` is set.
+  // search/grep require a concrete tenant; the `!` is safe because `enabled` below
+  // keeps the query from running until one is set.
   const searchResults = useQuery({
     queryKey: ['concepts-search', tenant, q],
     queryFn: async () =>

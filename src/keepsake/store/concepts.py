@@ -29,14 +29,12 @@ from okf_core import Concept
 _FIELDS = ("type", "title", "description", "body", "frontmatter", "links")
 _READ_COLS = ", ".join(("path", *_FIELDS, "version"))
 
-# Deliberately not derived from _FIELDS: Summary is its own fixed shape, not a
-# Concept subset, so slicing _FIELDS positionally would couple its column order
-# to a tuple whose order is free to change for round-trip reasons.
+# Not derived from _FIELDS: Summary is its own fixed shape, and _FIELDS' order is
+# free to change for round-trip reasons.
 _SUMMARY_COLS = "path, type, title, description, version, updated_at, tenant_id"
 
-# Shared so `count()` and `page()` can't drift onto two different notions of
-# "under this prefix". starts_with, not LIKE: an underscore is legal in a path and
-# a wildcard in a pattern.
+# Shared so `count()` and `page()` cannot drift apart. starts_with, not LIKE: an
+# underscore is legal in a path and a wildcard in a pattern.
 _STARTS_WITH = "starts_with(path, %s)"
 
 # Anything outside a word is dropped rather than escaped, which is what keeps caller
@@ -93,9 +91,11 @@ class Hit:
 
 @dataclass(frozen=True, slots=True)
 class Summary:
-    """One row in the admin console's concept table. `Hit` without the score, plus
-    `tenant_id`: a `tenant_id=None` page mixes tenants, and the table is how an
-    admin tells them apart."""
+    """One row in the admin console's concept table.
+
+    `Hit` without the score, plus `tenant_id`: a `tenant_id=None` page mixes
+    tenants, and the table is how an admin tells them apart.
+    """
 
     path: str
     type: str
@@ -108,8 +108,6 @@ class Summary:
 
 @dataclass(frozen=True, slots=True)
 class Totals:
-    """Corpus-wide counts for the admin console's summary tiles."""
-
     concepts: int
     by_type: dict[str, int]
     revisions: int
@@ -283,8 +281,10 @@ class ConceptStore:
 
     @contextmanager
     def _connect(self, tenant_id: UUID | None) -> Iterator[psycopg.Connection]:
-        """The one place `tenant_id=None` is dispatched to `admin_scope()` instead of
-        `scope()`. Centralised so a per-method copy cannot get the two backwards."""
+        """Dispatch `tenant_id=None` to `admin_scope()`, any other value to `scope()`.
+
+        Centralised so a per-method copy cannot get the two backwards.
+        """
         with (
             self._store.admin_scope()
             if tenant_id is None
@@ -295,8 +295,8 @@ class ConceptStore:
     def page(
         self, tenant_id: UUID | None, prefix: str, limit: int, offset: int
     ) -> list[Summary]:
-        """A path-ordered page of concepts under `prefix`, for the admin console's
-        table. `tenant_id=None` mixes every tenant."""
+        """A path-ordered page of concepts under `prefix`. `tenant_id=None` mixes
+        every tenant."""
         if limit <= 0:
             return []
         with self._connect(tenant_id) as conn:
@@ -352,8 +352,7 @@ class ConceptStore:
         )
 
     def activity(self, tenant_id: UUID | None, limit: int) -> list[Revision]:
-        """The most recent `limit` revisions, newest first: a live feed, not a log
-        rendered top-to-bottom like `revisions()`."""
+        """The most recent `limit` revisions, newest first, unlike `revisions()`."""
         if limit <= 0:
             return []
         with self._connect(tenant_id) as conn:
@@ -393,8 +392,8 @@ class ConceptStore:
         ]
 
     def daily_writes(self, tenant_id: UUID | None, days: int) -> list[tuple[date, int]]:
-        """Concept-revision counts for each of the last `days` days, oldest first,
-        zero-filled so a quiet day doesn't just vanish from the chart."""
+        """Concept-revision counts for the last `days` days, oldest first and
+        zero-filled so a quiet day does not vanish from the chart."""
         if days <= 0:
             return []
         with self._connect(tenant_id) as conn:
@@ -410,8 +409,8 @@ class ConceptStore:
         return [(r[0], int(r[1])) for r in rows]
 
     def tenants(self) -> list[tuple[UUID, int]]:
-        """Every tenant holding at least one concept, and its count. Admin-only: the
-        switcher's source, and there is no tenant registry besides this table."""
+        """Every tenant holding at least one concept, and its count. Admin-only:
+        there is no tenant registry besides this table."""
         with self._store.admin_scope() as conn:
             rows = conn.execute(
                 "SELECT tenant_id, count(*) FROM concept "

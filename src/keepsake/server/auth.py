@@ -16,12 +16,12 @@ class MisconfiguredAdmin(RuntimeError):
 
 
 def ui_enabled() -> bool:
-    """Whether the admin console is on. Later tasks gate their route/static mounts on this."""
+    """Whether the admin console is on. Defaults to on."""
     return os.environ.get("KEEPSAKE_UI", "true").lower() == "true"
 
 
 def admin_password() -> str:
-    """Read KEEPSAKE_ADMIN_PASSWORD, refusing to start if the console needs one and lacks it."""
+    """Read KEEPSAKE_ADMIN_PASSWORD, refusing to start if the console is on without one."""
     password = os.environ.get("KEEPSAKE_ADMIN_PASSWORD", "")
     if ui_enabled() and not password:
         raise MisconfiguredAdmin(
@@ -36,15 +36,13 @@ class Auth:
     def __init__(self, password: str) -> None:
         self._password = password
         # Derived rather than a second secret: changing the password changes the key,
-        # so every outstanding cookie stops verifying. Argo CD spends an
-        # admin.passwordMtime field to get the same effect.
+        # so every outstanding cookie stops verifying.
         self._key = hmac.new(
             password.encode(), b"keepsake-session", hashlib.sha256
         ).digest()
 
     def check_password(self, supplied: str) -> bool:
-        # compare_digest, not ==: the obvious comparison leaks the length of the
-        # matching prefix through timing.
+        # compare_digest, not ==: == leaks the matching prefix length through timing.
         return hmac.compare_digest(supplied, self._password)
 
     def issue(self, ttl: int) -> str:

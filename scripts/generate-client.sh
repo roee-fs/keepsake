@@ -5,10 +5,9 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# create_api(concepts, auth) never touches either argument while registering
-# routes -- they're only read from request.app.state at request time -- so
-# placeholders build the real schema with no database. If that stops being
-# true, this script breaks for a reason unrelated to client drift.
+# create_api() never touches either argument while registering routes; they are only
+# read from request.app.state at request time. So placeholders build the real schema
+# with no database.
 uv run python -c '
 import json
 

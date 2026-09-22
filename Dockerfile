@@ -1,6 +1,5 @@
 # --platform=$BUILDPLATFORM, not the target: the release builds linux/amd64 and
-# linux/arm64, and without this the bundle is built twice, the second time under
-# emulation, for output that is identical either way.
+# linux/arm64, so without this the identical bundle is built twice, once emulated.
 FROM --platform=$BUILDPLATFORM oven/bun:1 AS ui
 WORKDIR /ui
 COPY frontend/package.json frontend/bun.lock ./

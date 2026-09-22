@@ -4,8 +4,8 @@ type RevisionListProps = {
   revisions: RevisionOut[]
 }
 
-// The path is fixed by the caller (one concept's history), so unlike
-// ActivityList's cross-path feed, there's no Path column to show.
+// One concept's history, so unlike ActivityList's cross-path feed there is no
+// Path column.
 export function RevisionList({ revisions }: RevisionListProps) {
   if (revisions.length === 0) {
     return <p className="text-fg-muted">No revisions.</p>

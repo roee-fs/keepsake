@@ -13,10 +13,9 @@ type SearchBoxProps = {
 export function SearchBox({ value, onChange }: SearchBoxProps) {
   const [text, setText] = useState(value)
 
-  // The URL can change from outside (back/forward, clearing the prefix tree
-  // selection elsewhere) -- follow it rather than fighting it. Adjusting
-  // during render (not in an effect) avoids an extra commit on every prop
-  // change.
+  // The URL can change from outside (back/forward, a prefix cleared elsewhere), so
+  // follow it. Adjusting during render rather than in an effect avoids an extra
+  // commit on every prop change.
   const [prevValue, setPrevValue] = useState(value)
   if (value !== prevValue) {
     setPrevValue(value)

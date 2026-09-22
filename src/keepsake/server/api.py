@@ -1,12 +1,10 @@
 """The read-only JSON API the admin console calls, mounted at /api.
 
-Every route but `POST /api/session` carries the session guard as a router-level
-dependency rather than a per-route decorator, so a route added later cannot ship
-unguarded. `tenant` is a query parameter here — never on /mcp, where an agent names
-no scope identifier of its own. `search`, `grep` and the single-concept read take a
-required `tenant`, matching the store methods they call: a path is only unique
-within a tenant, so "every tenant" is not a meaningful scope for them. The rest
-default to `None`, which the store already routes to `admin_scope()`.
+Every route but `POST /api/session` inherits the session guard from its router,
+so a route added later cannot ship unguarded. `tenant` is a query parameter here,
+and never on /mcp, where an agent names no scope of its own. `search`, `grep` and
+the single-concept read require it, because a path is unique only within a
+tenant. The rest default to `None`, which the store routes to `admin_scope()`.
 """
 
 from dataclasses import asdict
@@ -22,12 +20,10 @@ from pydantic import BaseModel
 from keepsake.server.auth import COOKIE_NAME, Auth, require_session
 from keepsake.store.concepts import ConceptStore
 
-# Long enough to outlast a port-forward session; short enough that a leaked cookie
-# does not stay valid indefinitely.
+# Long enough to outlast a port-forward session, short enough to bound a leaked cookie.
 _SESSION_TTL = 12 * 60 * 60
 
-# concept-detail has no `limit` of its own; this bounds how many of one
-# concept's own revisions come back.
+# concept-detail takes no `limit` of its own; this bounds its revision history.
 _HISTORY_LIMIT = 50
 
 
@@ -122,7 +118,7 @@ def _set_session_cookie(response: Response, cookie: str, request: Request) -> No
     )
 
 
-# Unguarded: this is the one route that establishes the session the rest depend on.
+# Unguarded: this router establishes the session every other route depends on.
 public = APIRouter()
 
 
@@ -134,7 +130,6 @@ def login(credentials: Credentials, request: Request, response: Response) -> Non
     _set_session_cookie(response, auth.issue(_SESSION_TTL), request)
 
 
-# Every other route lives here, so the guard cannot be forgotten per-route.
 guarded = APIRouter(dependencies=[Depends(require_session)])
 
 
@@ -143,8 +138,6 @@ def logout(response: Response) -> None:
     response.delete_cookie(COOKIE_NAME)
 
 
-# The brief's Produces line names /api/openapi.json; docs_url=None only turned off
-# FastAPI's own unguarded copies, so the schema still needs a guarded route of its own.
 @guarded.get("/openapi.json")
 def openapi_schema(request: Request) -> dict[str, Any]:
     return request.app.openapi()
@@ -232,9 +225,11 @@ def activity(
 
 
 def create_api(concepts: ConceptStore, auth: Auth) -> FastAPI:
-    """The FastAPI app to mount at /api. FastAPI's own docs/redoc/openapi routes
-    are disabled since they ship unguarded; `openapi_schema`/`docs` above serve
-    the same content behind the session guard instead."""
+    """Build the FastAPI app to mount at /api.
+
+    FastAPI's own docs/redoc/openapi routes ship unguarded, so they are disabled
+    and `openapi_schema`/`docs` above serve the same content behind the guard.
+    """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.concepts = concepts
     app.state.auth = auth

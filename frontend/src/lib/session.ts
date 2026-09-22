@@ -26,11 +26,10 @@ client.interceptors.error.use((error, response) => new HttpError(response?.statu
 
 const LOGIN_PATH = '/login'
 
-// Prefix checks don't model URL parsing -- e.g. "/\evil.com" isn't caught by
-// startsWith('//'), because WHATWG URL parsing normalizes the backslash to a
-// slash and resolves it off-origin. Parse and compare origins instead. The
-// try/catch matters: a malformed candidate must fail closed to '/', not throw
-// and take the login page down with it.
+// Prefix checks don't model URL parsing: "/\evil.com" slips past startsWith('//'),
+// because WHATWG parsing normalizes the backslash and resolves it off-origin. Parse
+// and compare origins instead. The try/catch makes a malformed candidate fail closed
+// to '/' rather than take the login page down.
 export function safeRedirectTarget(candidate: string | undefined): string {
   if (!candidate) return '/'
   try {
@@ -48,16 +47,14 @@ function goToLogin(): void {
 }
 
 // The session cookie is HttpOnly, so a 401 is the only signal the session ended.
-// Handling it here -- once, for every query -- means no query has to check for
-// it itself. Mutations (login, logout) deliberately go through their own error
-// handling instead, since a failed login must show inline, not bounce to /login.
+// Handling it here means no query checks for it itself. Mutations (login, logout)
+// keep their own handling: a failed login must show inline, not bounce to /login.
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A 4xx means the request itself is wrong -- 401 the session is gone, 422 bad
-      // params, 404 no such concept -- and retrying can't turn it into a success.
-      // Without this, the default 3 retries delay a 401's redirect by ~7s of
-      // exponential backoff. Keep retrying everything else (5xx, dropped connections).
+      // A 4xx means the request itself is wrong, and retrying cannot fix it. Without
+      // this, the default 3 retries delay a 401's redirect by ~7s of backoff. 5xx and
+      // dropped connections still retry.
       retry: (failureCount, error) =>
         error instanceof HttpError && error.status >= 400 && error.status < 500
           ? false

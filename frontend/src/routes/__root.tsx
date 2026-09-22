@@ -10,8 +10,7 @@ export const Route = createRootRoute({
 })
 
 async function logout() {
-  // Best-effort: an already-expired session 401s here, but the destination is
-  // /login either way, so the response isn't worth branching on.
+  // Best-effort: an expired session 401s here, but the destination is /login anyway.
   await logoutSessionDelete()
   window.location.assign('/login')
 }
@@ -25,7 +24,7 @@ const NAV_INACTIVE = { className: 'text-fg-muted hover:text-fg' }
 
 function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  // /login is the one unauthenticated route -- it has nothing to navigate to yet.
+  // /login is the one unauthenticated route, with nothing to navigate to yet.
   if (pathname === '/login') return <Outlet />
 
   return (

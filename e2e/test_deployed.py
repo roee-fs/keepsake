@@ -44,9 +44,8 @@ TOOL_NAMES = {
 # below reinstalls it, and the secret/login tests read its Secret by name.
 RELEASE = "keepsake"
 
-# The install args `run.sh` used, replayed verbatim by the upgrade test. Same values
-# in means any password change can only come from the `lookup` guard misfiring, not
-# from a config drift the test introduced itself.
+# The install args `run.sh` used, replayed verbatim by the upgrade test: with the
+# same values in, a password change can only come from the `lookup` guard misfiring.
 _INSTALL_ARGS = [
     "--set",
     "image.repository=keepsake",
@@ -252,10 +251,9 @@ def test_a_concept_round_trips_through_the_deployed_server() -> None:
 
 def test_console_serves_the_built_image_bundle() -> None:
     """GET / must come from the image's own /app/static, built by the Dockerfile's
-    `bun` stage, not a bundle `bun run build` produced on the test machine. A
-    dev-source reference (`/src/main.tsx`) here would mean the image shipped with
-    no bundle at all -- Starlette's SPA fallback still 200s an empty static dir's
-    absent index.html would not, so this also rules that out."""
+    `bun` stage, not from a bundle `bun run build` produced on the test machine. A
+    dev-source reference (`/src/main.tsx`) here would mean the image shipped with no
+    bundle at all."""
     with urllib.request.urlopen(f"{BASE}/", timeout=30) as response:
         assert response.status == 200
         assert "text/html" in response.headers["Content-Type"]
@@ -264,17 +262,15 @@ def test_console_serves_the_built_image_bundle() -> None:
 
 
 def test_console_api_rejects_an_unauthenticated_request() -> None:
-    """A deployed instance's API must not be open. `require_session` is a router-level
-    dependency, but nothing short of a real HTTP request over the network proves it
-    actually guards the mounted route."""
+    """A deployed instance's API must not be open. Only a real request over the
+    network proves the router-level `require_session` guards the mounted route."""
     status, _ = _api_get("/api/stats")
     assert status == 401
 
 
 def test_the_generated_password_logs_in_and_reads_the_seeded_totals() -> None:
-    """First use, ever, of a chart-generated password: every earlier test picked its
-    own. Reads it the way an operator would (`kubectl get secret ... | base64 -d`),
-    logs in, and confirms the session it grants sees real data -- not just a 200."""
+    """The first use of a chart-generated password: every other test picks its own.
+    The session it grants must see real data, not just answer 200."""
     cookie = _login(_admin_password())
     status, before = _api_get("/api/stats", cookie)
     assert status == 200
@@ -296,15 +292,12 @@ def test_the_generated_password_logs_in_and_reads_the_seeded_totals() -> None:
 
 
 def test_helm_upgrade_leaves_the_admin_password_unchanged() -> None:
-    """Closes a debt from Task 1: the `lookup` guard in admin-secret.yaml is what
-    makes the password survive an upgrade, and it is the single most likely thing
-    about that template to regress silently. A broken guard would rotate the
-    password on every sync and lock the operator out of a running install.
+    """A real `helm upgrade`, then a login with the password read before it.
 
-    This runs a real `helm upgrade` against the live release -- not a second read of
-    the same Secret -- and then logs in with the *old* password against the
-    *upgraded* release, so a guard that silently rotated the value would fail the
-    login rather than just an equality check against a stale local variable.
+    The `lookup` guard in admin-secret.yaml is what makes the password survive an
+    upgrade; a broken guard would rotate it on every sync and lock the operator out
+    of a running install. Logging in afterwards catches a silent rotation that an
+    equality check against a stale local variable would miss.
     """
     before = _admin_password()
 

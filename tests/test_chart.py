@@ -110,11 +110,9 @@ def test_secrets_are_installed_before_the_hooks_that_read_them() -> None:
     release = "keepsake"
     docs = _render(MANAGED, release=release)
     weight = int(_only(docs, "Job")["metadata"]["annotations"]["helm.sh/hook-weight"])
-    # The admin Secret is excluded by name, not by an "if it has hook annotations"
-    # filter: nothing in the hook phase reads it, only the Deployment does, so it is
-    # correctly an ordinary resource with none. A property filter would silently pass
-    # any future hook-read Secret that forgets its annotations too — the exact bug
-    # this test exists to catch.
+    # Excluded by name, not by "has hook annotations": only the Deployment reads this
+    # Secret, so it correctly has none. A property filter would also pass a future
+    # hook-read Secret that forgot its annotations, which is the bug this test catches.
     for secret in (
         d
         for d in docs
@@ -168,9 +166,10 @@ def test_the_server_reads_the_variables_the_cli_reads() -> None:
 def test_ui_enabled_renders_as_the_string_ui_enabled_accepts(
     enabled: str, rendered: str
 ) -> None:
-    """ui.enabled is a YAML boolean; ui_enabled() only recognizes the literal string
-    "true". An unquoted render would emit a bare `true`, which Kubernetes rejects as
-    an env value."""
+    """ui.enabled is a YAML boolean, and ui_enabled() only accepts the string "true".
+
+    An unquoted render emits a bare `true`, which Kubernetes rejects as an env value.
+    """
     docs = _render(dict(MANAGED, **{"ui.enabled": enabled}))
     value = _env(_only(docs, "Deployment"))["KEEPSAKE_UI"]["value"]
     assert value == rendered

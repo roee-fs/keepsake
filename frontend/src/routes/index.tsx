@@ -30,8 +30,6 @@ function Index() {
   })
 
   const totals = stats.data
-  // by_type arrives already grouped; counting its keys isn't re-aggregating
-  // the counts, just reading how many groups came back.
   const typeCount = totals ? Object.keys(totals.by_type).length : undefined
 
   return (

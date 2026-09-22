@@ -13,10 +13,9 @@ from keepsake.store import ADMIN_GUC, POOL_SIZE, SCHEMA, TENANT_GUC, validated_s
 _SET_SEARCH_PATH = "SELECT set_config('search_path', %s, true)"
 
 # The two policies OR into one expression, and tenant_isolation casts TENANT_GUC to
-# uuid whichever way that OR is planned: Postgres does not promise short-circuiting
-# and says outright not to rely on it to avoid an error. An unset GUC reads NULL or
-# '', and ''::uuid raises. This value casts cleanly, matches nothing, and so leaves
-# admin_read to supply the true.
+# uuid whichever way that OR is planned: Postgres does not promise short-circuiting.
+# An unset GUC reads NULL or '', and ''::uuid raises. This value casts cleanly and
+# matches nothing, leaving admin_read to supply the true.
 _NIL_TENANT = "00000000-0000-0000-0000-000000000000"
 
 
@@ -92,12 +91,11 @@ class Store:
         """Yield a connection that reads every tenant, for the admin console only.
 
         Read-only, and the policy behind it is FOR SELECT: an admin has no write
-        path into a tenant it did not name. The read is gated far more weakly —
-        okf.admin is self-asserted, so anything holding the app DSN can set it and
-        read every tenant, with or without this method. That follows from gating on
-        a GUC with no TO clause, which is what keeps the policy working in
-        postgres.mode: existing, where the role has a name we do not know.
-        Authentication therefore happens above this method and never inside it.
+        path into a tenant it did not name. The read is gated far more weakly.
+        `okf.admin` is self-asserted, so anything holding the app DSN can set it
+        with or without this method. The policy has no TO clause, which is what
+        keeps it working under `postgres.mode: existing`, where the role has a name
+        we do not know. Authentication happens above this method, never inside it.
         """
         with self._pool.connection() as conn, conn.transaction():
             conn.execute("SET TRANSACTION READ ONLY")

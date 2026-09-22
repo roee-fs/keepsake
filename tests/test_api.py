@@ -1,8 +1,8 @@
 """The read-only JSON API the admin console calls.
 
-Every route but `POST /api/session` requires a session cookie, and the test that
-checks that drives itself from the mounted app's own route table so a route added
-later stays covered without anyone remembering to list it here.
+Every route but `POST /api/session` requires a session cookie. The test that checks
+that drives itself from the mounted app's own route table, so a route added later
+stays covered.
 """
 
 import re
@@ -69,8 +69,8 @@ def seeded(app: Starlette, tenant: uuid.UUID) -> uuid.UUID:
 
 @pytest.fixture
 def other_tenant(app: Starlette) -> uuid.UUID:
-    """A second tenant, seeded through the app's own store — distinguishes
-    `admin_scope()` mixing every tenant from just re-reading `seeded` alone."""
+    """A second tenant, so an admin-scope read is distinguishable from re-reading
+    `seeded` alone."""
     tid = uuid.uuid4()
     concepts = ConceptStore(app.state.store)
     concepts.create(
@@ -93,8 +93,8 @@ def test_every_route_except_login_requires_a_session(
     client: TestClient, app: Starlette
 ) -> None:
     routes = list(_leaf_routes(app))
-    # A future FastAPI change to `app.routes`'s shape could make this iterate zero
-    # routes and pass vacuously without checking anything; this floor catches that.
+    # A FastAPI change to `app.routes`'s shape could make this iterate zero routes
+    # and pass vacuously; the floor catches that.
     assert len(routes) >= 10
     for route in routes:
         for method in route.methods:
@@ -363,21 +363,20 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             index = c.get("/")
             assert index.status_code == 200
             assert index.text == "<html>console shell</html>"
-            # A route the client-side router owns, not a real file: this must render
-            # the shell, not 404, or a reload on a deep link breaks.
+            # A client-side route, not a real file: it must render the shell, or a
+            # deep-link reload breaks.
             deep_link = c.get("/concepts/notes%2Fa.md")
             assert deep_link.status_code == 200
             assert deep_link.text == "<html>console shell</html>"
             assert c.get("/readyz").status_code == 200
             login = c.post("/api/session", json={"password": PASSWORD})
             assert login.status_code == 204
-            # Route presence doesn't prove dispatch order — a mount ahead of /mcp in
-            # the route table would still swallow this request too. POST, not a bare
-            # GET: GET opens the transport's SSE stream, which stays open forever and
-            # would hang this in-process client. No handshake or session header,
-            # matching what a Service in front of it sends (see
-            # test_the_endpoint_answers_a_plain_json_post in test_tools.py). This
-            # doesn't pin a status, only that the catch-all didn't answer instead.
+            # Route presence doesn't prove dispatch order, so the request has to be
+            # made. POST, not GET: GET opens the transport's SSE stream, which stays
+            # open forever and would hang this in-process client. No handshake header,
+            # matching what a Service sends (test_tools.py's
+            # test_the_endpoint_answers_a_plain_json_post). The assertions pin no
+            # status, only that the catch-all did not answer.
             mcp_response = c.post(
                 "/mcp",
                 json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},

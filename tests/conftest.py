@@ -117,8 +117,8 @@ def tenant() -> uuid.UUID:
 
 @pytest.fixture(autouse=True)
 def _admin_password(monkeypatch: pytest.MonkeyPatch) -> None:
-    """KEEPSAKE_UI defaults on, so build_app() now refuses to start without a
-    password. Tests exercising the unset/disabled paths override this themselves."""
+    """KEEPSAKE_UI defaults on, so build_app() refuses to start without a password.
+    Tests covering the unset or disabled paths override this themselves."""
     monkeypatch.setenv("KEEPSAKE_ADMIN_PASSWORD", "test-admin-password")
 
 

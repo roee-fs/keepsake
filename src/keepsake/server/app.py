@@ -40,9 +40,10 @@ _DEFAULT_STATIC_DIR = "/app/static"
 
 
 class _ConsoleStaticFiles(StaticFiles):
-    """Serves the built console. Any path matching no file falls back to
-    index.html, so a client-side route (e.g. a deep-link reload) gets the SPA
-    shell instead of a 404."""
+    """Serve the built console, falling back to index.html for unmatched paths.
+
+    A client-side route reloaded as a deep link gets the SPA shell, not a 404.
+    """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
@@ -50,8 +51,7 @@ class _ConsoleStaticFiles(StaticFiles):
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
-            # A stale asset URL (e.g. a hashed filename from a prior build) also 200s
-            # as the HTML shell here. Deliberate SPA-routing tradeoff, not a bug.
+            # A stale hashed asset URL also 200s as the shell. That is the tradeoff.
             return await super().get_response("index.html", scope)
 
 
@@ -81,8 +81,8 @@ def build_app(config: Config) -> Starlette:
     Raises MisconfiguredDatabase when the database does not isolate tenants. That
     exception MUST reach the caller: crashing is the check.
     """
-    # Read before the pool opens: a misconfigured console should fail fast, not after
-    # the database is already holding connections open.
+    # Read before the pool opens, so a misconfigured console fails before the
+    # database is holding connections open.
     password = admin_password()
 
     store = Store(config.dsn, schema=config.schema)
@@ -112,10 +112,8 @@ def build_app(config: Config) -> Starlette:
     app.router.add_route("/readyz", _readyz, methods=["GET"])
     if ui_enabled():
         app.mount("/api", create_api(concepts, Auth(password)))
-        # Mounted last and matching every path: any earlier position would swallow
-        # /api and /mcp requests instead of the console's own routes. Not behind the
-        # session guard — it carries no data, and gating it would break the login
-        # page itself.
+        # Mounted last: it matches every path, so an earlier position would swallow
+        # /api and /mcp. Unguarded because gating it would break the login page.
         static_dir = os.environ.get("KEEPSAKE_STATIC_DIR", _DEFAULT_STATIC_DIR)
         if os.path.isdir(static_dir):
             app.mount("/", _ConsoleStaticFiles(directory=static_dir, html=True))

@@ -1,11 +1,11 @@
 """Let a connection that declares itself an admin read every tenant.
 
 A recorded exception to "no caller-supplied scope identifiers, in any mode, ever".
-That rule governs the agent surface and still holds there: on /mcp an agent names no
-tenant and reads only the one bound to its session. The authenticated admin console
-is a new actor class the rule did not contemplate, and its tenant switcher is a
-caller-supplied scope identifier by design. What contains the exception is that the
-policy below is FOR SELECT, so it never reaches a write.
+That rule governs the agent surface and still holds there: on /mcp an agent reads
+only the tenant bound to its session. The authenticated admin console is a new actor
+class, and its tenant switcher is a caller-supplied scope identifier by design. What
+contains the exception is that the policy below is FOR SELECT, so it never reaches a
+write.
 
 Revision ID: 0003
 Revises: 0002
@@ -31,9 +31,8 @@ def upgrade() -> None:
         # SELECT matches on the tenant or on the admin GUC.
         #
         # No TO clause. 0001 grants by name only when okf_app exists, because an
-        # operator in postgres.mode: existing wires their own role by hand. A policy
-        # pinned to a role name would never apply to them, and their cross-tenant
-        # reads would return nothing at all. The GUC is the gate.
+        # operator in postgres.mode: existing wires their own role by hand, and a
+        # policy pinned to a role name would never apply to them.
         op.execute(f"""
             CREATE POLICY {ADMIN_POLICY} ON {SCHEMA}.{table} FOR SELECT
               USING (current_setting('{ADMIN_GUC}', true) = 'on')

@@ -285,8 +285,6 @@ def test_page_respects_limit_and_offset(
 def test_page_of_a_negative_limit_is_empty_not_invalid(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    """Negative, not zero: Postgres answers LIMIT 0 with no rows by itself, so only a
-    negative limit reaches the guard."""
     _seed(concepts, tenant)
     assert concepts.page(tenant, "", limit=-1, offset=0) == []
 
@@ -325,11 +323,9 @@ def test_page_of_every_tenant_returns_both(
 def test_page_of_every_tenant_breaks_a_tied_path_by_tenant_id(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    """Two tenants can hold the same path, so under admin_scope() `path` alone is
-    not a total order. A test seeding distinct paths across tenants wouldn't catch
-    a missing tie-breaker: this one seeds the same path twice and pages one row at
-    a time, so a non-total order would return the same row on both pages, or skip
-    one of them, instead of covering both exactly once."""
+    """Two tenants can hold the same path, so under admin_scope() `path` alone is not
+    a total order. Paging the same path one row at a time is what catches a missing
+    tie-breaker: distinct paths across tenants would not."""
     other = uuid.uuid4()
     path = "decisions/retry-policy"
     concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
@@ -371,9 +367,8 @@ def test_activity_of_every_tenant_tags_each_row_with_its_own_tenant(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
     """A path is only unique within a tenant, so two tenants can both write
-    `decisions/policy`. Without `tenant_id` on each row, an all-tenants feed
-    would render both writes as the same concept; a test using distinct paths
-    across tenants wouldn't catch that."""
+    `decisions/policy`. Without `tenant_id` on each row, an all-tenants feed would
+    render both writes as the same concept."""
     other = uuid.uuid4()
     concepts.create(tenant, Concept(path="decisions/policy", type="Concept"), "seed")
     concepts.create(other, Concept(path="decisions/policy", type="Concept"), "seed")
@@ -388,9 +383,8 @@ def test_activity_of_every_tenant_tags_each_row_with_its_own_tenant(
 def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:
-    """`activity()`'s cap is tenant-wide, so a quiet concept can fall off it even
-    with a perfectly good history of its own. `revisions_for` filters in SQL by
-    path, so noise on other paths can never push a concept's own history out."""
+    """`activity()`'s cap is tenant-wide, so a quiet concept can fall off it.
+    `revisions_for` filters by path in SQL, so other paths cannot crowd it out."""
     concepts.create(
         tenant, Concept(path="detect/dormant", type="Concept", title="v1"), "seed"
     )

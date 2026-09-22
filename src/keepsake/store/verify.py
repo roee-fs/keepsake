@@ -61,7 +61,7 @@ def _policy_fault(policy: str, cmd: str, expressions: list[str]) -> str | None:
     """Why a policy fails to confine the rows it admits, or None if it does.
 
     The sentence is read off a crash-looping pod, so each case names the clause
-    that actually failed rather than the one checked first.
+    that actually failed.
     """
     if not expressions:
         return "applies no expression, so it admits every row"
@@ -69,9 +69,9 @@ def _policy_fault(policy: str, cmd: str, expressions: list[str]) -> str | None:
         return None
     if policy != ADMIN_POLICY:
         return f"does not read {TENANT_GUC}, so it does not restrict rows to one tenant"
-    # The single exemption, for the admin console's cross-tenant read. Pinned to all
-    # three of the name, the command and the GUC: widen any one of them and a policy
-    # that admits another tenant's rows to a write starts passing this check.
+    # The single exemption, for the admin console's cross-tenant read. Pinned to the
+    # name, the command and the GUC: widen any one and a policy that admits another
+    # tenant's rows to a write starts passing this check.
     if cmd != _SELECT_ONLY:
         return (
             f"is the {ADMIN_POLICY} exemption but is not FOR SELECT, so it would "

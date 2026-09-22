@@ -6,9 +6,9 @@ import { tenantPrefix } from './TenantId'
 const ALL_TENANTS = ''
 
 /**
- * The selected tenant lives in the `tenant` search param, not component state,
- * so any URL that includes it reproduces the same view. Every other query
- * reads the same param instead of tracking its own copy of the selection.
+ * The selected tenant lives in the `tenant` search param, not component state, so
+ * any URL that includes it reproduces the same view. Every other query reads it
+ * from there.
  */
 export function TenantSwitcher() {
   const { tenant } = useSearch({ strict: false })

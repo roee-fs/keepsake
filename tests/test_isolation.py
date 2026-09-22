@@ -172,13 +172,13 @@ def test_admin_scope_reads_every_tenant(store: Store) -> None:
 
 
 def test_admin_scope_cannot_write(store: Store) -> None:
-    """The admin policy is FOR SELECT, so it is never consulted for an UPDATE and
-    an admin's write stays scoped to the nil tenant.
+    """An admin connection cannot write at all.
 
-    That alone would match no rows silently, which reads to a caller as a write that
-    succeeded and changed nothing. The read-only transaction is what raises here, so
-    the class is pinned: a bare Error also catches the UndefinedColumn a renamed
-    `title` would raise, and would stay green with READ ONLY gone.
+    The policy is FOR SELECT, so an admin UPDATE stays scoped to the nil tenant and
+    matches no rows silently, which reads as a write that changed nothing. The
+    read-only transaction is what raises instead. The class is pinned because a bare
+    Error would also catch the UndefinedColumn a renamed `title` raises, and would
+    stay green with READ ONLY gone.
     """
     with (
         store.admin_scope() as c,

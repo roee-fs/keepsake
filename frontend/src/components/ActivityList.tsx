@@ -4,8 +4,8 @@ import { TenantId } from './TenantId'
 type ActivityListProps = {
   revisions: RevisionOut[] | undefined
   isLoading: boolean
-  // A path is unique only within a tenant, so two tenants can write the same
-  // path -- the column only earns its place once rows can span tenants.
+  // A path is unique only within a tenant, so the column earns its place only once
+  // rows can span tenants.
   showTenant: boolean
 }
 
