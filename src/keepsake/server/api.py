@@ -7,14 +7,17 @@ and never on /mcp, where an agent names no scope of its own. `search`, `grep`,
 tenant. The rest default to `None`, which the store routes to `admin_scope()`.
 """
 
+from collections.abc import AsyncIterator
 from dataclasses import asdict
 from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
+from anyio import CapacityLimiter
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse
+from mcp.server.transport_security import RequestBodyLimitMiddleware
 from pydantic import BaseModel
 
 from keepsake.server.auth import COOKIE_NAME, Auth, require_session
@@ -22,6 +25,9 @@ from keepsake.store.concepts import ConceptStore
 
 # Long enough to outlast a port-forward session, short enough to bound a leaked cookie.
 _SESSION_TTL = 12 * 60 * 60
+
+# The only body is a login. Uncapped, one unauthenticated POST is buffered whole.
+_MAX_BODY = 64 * 1024
 
 # concept-detail takes no `limit` of its own; this bounds its revision history.
 _HISTORY_LIMIT = 50
@@ -149,7 +155,14 @@ def login(credentials: Credentials, request: Request, response: Response) -> Non
     _set_session_cookie(response, auth.issue(_SESSION_TTL), request)
 
 
-guarded = APIRouter(dependencies=[Depends(require_session)])
+async def _console_slot(request: Request) -> AsyncIterator[None]:
+    """Hold the console's one slot on the pool the MCP tools draw from."""
+    async with request.app.state.console_slot:
+        yield
+
+
+# After require_session, so a request refused with a 401 never queues for the slot.
+guarded = APIRouter(dependencies=[Depends(require_session), Depends(_console_slot)])
 
 
 @guarded.delete("/session", status_code=204)
@@ -279,6 +292,10 @@ def create_api(concepts: ConceptStore, auth: Auth) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.concepts = concepts
     app.state.auth = auth
+    # One: the tools' limiter assumes it owns the pool, and a slow console read must
+    # not hold the connections an agent is waiting on.
+    app.state.console_slot = CapacityLimiter(1)
+    app.add_middleware(RequestBodyLimitMiddleware, max_body_size=_MAX_BODY)
     app.include_router(public)
     app.include_router(guarded)
     return app
