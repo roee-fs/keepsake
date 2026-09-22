@@ -52,6 +52,14 @@ function RootLayout() {
         >
           Browse
         </Link>
+        <Link
+          to="/graph"
+          className={NAV_LINK}
+          activeProps={NAV_ACTIVE}
+          inactiveProps={NAV_INACTIVE}
+        >
+          Graph
+        </Link>
         <button
           type="button"
           onClick={logout}
