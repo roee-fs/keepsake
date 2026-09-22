@@ -322,6 +322,28 @@ def test_page_of_every_tenant_returns_both(
     assert other in tenants_seen
 
 
+def test_page_of_every_tenant_breaks_a_tied_path_by_tenant_id(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """Two tenants can hold the same path, so under admin_scope() `path` alone is
+    not a total order. A test seeding distinct paths across tenants wouldn't catch
+    a missing tie-breaker: this one seeds the same path twice and pages one row at
+    a time, so a non-total order would return the same row on both pages, or skip
+    one of them, instead of covering both exactly once."""
+    other = uuid.uuid4()
+    path = "decisions/retry-policy"
+    concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
+    concepts.create(other, Concept(path=path, type="Concept"), "seed")
+
+    first = concepts.page(None, path, limit=1, offset=0)
+    second = concepts.page(None, path, limit=1, offset=1)
+
+    assert [s.path for s in first] == [path]
+    assert [s.path for s in second] == [path]
+    assert first[0].tenant_id != second[0].tenant_id
+    assert {first[0].tenant_id, second[0].tenant_id} == {tenant, other}
+
+
 def test_totals_counts_concepts_types_revisions_links_and_orphans(
     concepts: ConceptStore, tenant: uuid.UUID
 ) -> None:

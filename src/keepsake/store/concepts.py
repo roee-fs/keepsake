@@ -321,8 +321,10 @@ class ConceptStore:
             return []
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
+                # path alone is not a total order under admin_scope(): two tenants can
+                # share a path, so tenant_id breaks the tie the same way both ways.
                 f"SELECT {_SUMMARY_COLS} FROM concept WHERE {_STARTS_WITH} "
-                "ORDER BY path LIMIT %s OFFSET %s",
+                "ORDER BY path, tenant_id LIMIT %s OFFSET %s",
                 (prefix, limit, offset),
             ).fetchall()
         return [
