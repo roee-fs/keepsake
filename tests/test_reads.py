@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from keepsake.store import TENANT_GUC
 from keepsake.store import concepts as concepts_module
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
@@ -378,6 +379,57 @@ def test_activity_of_every_tenant_tags_each_row_with_its_own_tenant(
     same_path = [r for r in revs if r.path == "decisions/policy"]
     assert len(same_path) == 2
     assert {r.tenant_id for r in same_path} == {tenant, other}
+
+
+def test_totals_counts_an_orphan_per_tenant_rather_than_across_tenants(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """A path is unique only within a tenant, so a link held by one tenant must not
+    un-orphan the same path in another. Both directions are asserted: a fix that only
+    correlated one side of the anti-join would still pass half of this."""
+    other = uuid.uuid4()
+    path = "orphans/shared-path"
+    before = concepts.totals(None).orphans
+
+    concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
+    concepts.create(
+        tenant, Concept(path="orphans/linker", type="Concept", links=(path,)), "seed"
+    )
+    concepts.create(other, Concept(path=path, type="Concept"), "seed")
+
+    # Linked from inside its own tenant, so only the linker is orphaned here.
+    assert concepts.totals(tenant).orphans == 1
+    # The other tenant's copy of that path is linked from nowhere in its own tenant.
+    assert concepts.totals(other).orphans == 1
+    # Two new orphans across every tenant; one, if a foreign link can un-orphan.
+    assert concepts.totals(None).orphans == before + 2
+
+
+def test_activity_of_every_tenant_breaks_a_tied_revision_by_tenant_id(
+    concepts: ConceptStore, store: Store, tenant: uuid.UUID
+) -> None:
+    """`created_at, path, version` is not a total order under admin_scope(): two
+    tenants can hold one path at one version, and a bulk write shares a clock reading.
+    Both rows go in one transaction so now() ties created_at exactly — distinct
+    timestamps would order themselves and prove nothing."""
+    low, high = sorted((tenant, uuid.uuid4()))
+    path = "activity/tied"
+    insert = (
+        "INSERT INTO concept_revision (tenant_id, path, version, op, snapshot) "
+        "VALUES (%s, %s, 1, 'create', '{}'::jsonb)"
+    )
+    with store.scope(low) as conn:
+        # Lowest tenant first: an untied LIMIT keeps the row it scanned first, which
+        # is the one a descending tie-break must not return.
+        conn.execute(insert, (low, path))
+        conn.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, str(high)))
+        conn.execute(insert, (high, path))
+
+    newest = concepts.activity(None, limit=1)
+
+    assert [r.path for r in newest] == [path]
+    assert newest[0].tenant_id == high
+    assert concepts.activity(None, limit=1) == newest
 
 
 def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(

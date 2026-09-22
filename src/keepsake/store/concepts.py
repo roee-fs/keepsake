@@ -334,13 +334,17 @@ class ConceptStore:
             revisions = _row(
                 conn.execute("SELECT count(*) FROM concept_revision").fetchone()
             )[0]
-            # An orphan is a concept no other concept's links array names. Sequential
-            # like `_BACKLINKS`, and for the same reason: the GIN index only serves
-            # `@>`, and arraycontains is not leakproof under FORCE ROW LEVEL SECURITY.
+            # An orphan is a concept no concept of its own tenant links to. The
+            # anti-join correlates on tenant_id as well as path: under admin_scope()
+            # one tenant's link would otherwise hide another tenant's orphan, since a
+            # path is unique only within a tenant. Sequential like `_BACKLINKS`, and
+            # for the same reason: the GIN index only serves `@>`, and arraycontains is
+            # not leakproof under FORCE ROW LEVEL SECURITY.
             orphans = _row(
                 conn.execute(
-                    "SELECT count(*) FROM concept c WHERE NOT EXISTS "
-                    "(SELECT 1 FROM concept b WHERE c.path = ANY(b.links))"
+                    "SELECT count(*) FROM concept c WHERE NOT EXISTS ("
+                    "  SELECT 1 FROM concept b"
+                    "  WHERE b.tenant_id = c.tenant_id AND c.path = ANY(b.links))"
                 ).fetchone()
             )[0]
         return Totals(
@@ -357,10 +361,15 @@ class ConceptStore:
             return []
         with self._connect(tenant_id) as conn:
             rows = conn.execute(
+                # Under admin_scope() two tenants can hold the same path at the same
+                # version and timestamp, so tenant_id is what makes the order total —
+                # without it a LIMITed feed picks arbitrarily between them. Descending
+                # like every column before it.
                 "SELECT path, version, op, coalesce(updated_by, ''), created_at, "
                 "tenant_id "
                 "FROM concept_revision "
-                "ORDER BY created_at DESC, path DESC, version DESC LIMIT %s",
+                "ORDER BY created_at DESC, path DESC, version DESC, tenant_id DESC "
+                "LIMIT %s",
                 (limit,),
             ).fetchall()
         return [
