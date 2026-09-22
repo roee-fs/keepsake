@@ -11,8 +11,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-if [ ! -d frontend/dist ]; then
-  (cd frontend && bun install --frozen-lockfile && bun run build)
-fi
+# Always rebuilt, not just when frontend/dist is absent -- a stale bundle from
+# a prior run would silently serve old UI to every spec (and, in Task 15, old
+# screenshots) with no failure to flag it.
+(cd frontend && bun install --frozen-lockfile && bun run build)
 
 exec uv run python3 scripts/ui_fixture.py

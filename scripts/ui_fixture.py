@@ -4,17 +4,25 @@ seeded bundle imported into two tenants, then `keepsake serve`.
 Run standalone (`uv run python3 scripts/ui_fixture.py`) or via
 `scripts/ui-fixture.sh`, which builds the console bundle first. Prints
 `PORT=<port>` once the server is ready, then blocks until killed. SIGTERM/SIGINT
-reach this process directly (the shell wrapper `exec`s into it) so uvicorn's own
-signal handling shuts the server down and the `with` block below stops the
-container on the way out.
+reach this process directly (the shell wrapper `exec`s into it). Once
+`uvicorn.run()` is running, its own signal handling shuts the server down and
+the `with` block below stops the container on the way out. Before that --
+while Postgres is starting, or the bundle is importing -- nothing has
+installed a SIGTERM handler yet, and Python's default action for SIGTERM is to
+kill the process without running `with`/`finally` blocks. `_reraise_sigterm`
+below closes that window; SIGINT needs no such handler, since Python's default
+SIGINT action already raises KeyboardInterrupt, which unwinds `with` blocks
+normally.
 """
 
 from __future__ import annotations
 
 import os
+import signal
 import socket
 import tempfile
 from pathlib import Path
+from types import FrameType
 from uuid import UUID
 
 import psycopg
@@ -163,9 +171,18 @@ def _create_roles(admin_dsn: str, dbname: str) -> None:
         )
 
 
+def _reraise_sigterm(signum: int, frame: FrameType | None) -> None:
+    raise SystemExit(0)
+
+
 def main() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     port = int(os.environ.get("UI_FIXTURE_PORT", "0")) or _free_port()
+
+    # Installed before the container starts: a SIGTERM during Postgres
+    # startup or seeding must unwind the `with` below too, not just once
+    # uvicorn.run() (which installs its own handler) is running.
+    signal.signal(signal.SIGTERM, _reraise_sigterm)
 
     with PostgresContainer("postgres:17", driver=None) as pg:
         admin_dsn = _dsn(pg, pg.username, pg.password)
