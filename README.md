@@ -73,7 +73,7 @@ kubectl port-forward svc/<release> 8000:8000
 
 Then log in at `http://localhost:8000` with that password.
 
-![Console overview](frontend/tests/__screenshots__/overview-one-tenant.png)
+![Console overview](https://github.com/roee-fs/keepsake/blob/pr-assets/overview-one-tenant.png?raw=true)
 
 ## Roadmap
 

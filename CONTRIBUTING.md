@@ -61,10 +61,9 @@ bun run dev
 
 Vite proxies `/api` and `/mcp` to `localhost:8000` — the session cookie is
 `SameSite=Strict`, so a cross-origin dev server never gets it back. Point that
-port at a real server: `scripts/ui-fixture.sh` brings up a disposable Postgres
-via testcontainers, migrates it, seeds two tenants and runs `keepsake serve`;
-or run `uv run keepsake migrate` and `uv run keepsake serve` yourself against a
-database you already have, with `KEEPSAKE_DSN` and `KEEPSAKE_ADMIN_PASSWORD` set.
+port at a real server: run `uv run keepsake migrate` and `uv run keepsake serve`
+against a database you already have, with `KEEPSAKE_DSN` and
+`KEEPSAKE_ADMIN_PASSWORD` set.
 
 After any backend response-model change, regenerate the generated client:
 
@@ -76,41 +75,10 @@ This assumes `frontend/node_modules` is already populated. On a fresh clone,
 run `cd frontend && bun install` first — otherwise the `bunx` call inside the
 script crashes in a way that looks like client drift and isn't.
 
-### Regenerating screenshot baselines
+### Screenshots
 
-`frontend/tests/__screenshots__/` holds the baselines `toHaveScreenshot()`
-diffs against in CI; `frontend/screenshots/` (gitignored) is the same run's
-plain screenshots for a person to look at. Both are only ever generated inside
-a Linux container running the Playwright version pinned in
-`frontend/package.json` — fonts and rasterization differ enough on a
-developer's own machine that a baseline captured there fails the diff for
-everyone else. Run it inside that container, mounting the repo and the Docker
-socket (the webServer brings up Postgres via testcontainers). The container
-talks to a *sibling* Postgres container through the host's daemon, not a child
-of its own network namespace, so testcontainers needs to be told to reach it
-at `host.docker.internal` rather than the `localhost` it assumes by default:
-
-```bash
-docker run --rm -it \
-  -v "$PWD:/work" -w /work/frontend \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
-  --add-host=host.docker.internal:host-gateway \
-  mcr.microsoft.com/playwright:v1.63.0-noble bash -c '
-    apt-get update -qq && apt-get install -qq -y unzip >/dev/null
-    curl -fsSL https://bun.sh/install | bash && export PATH="$HOME/.bun/bin:$PATH"
-    curl -LsSf https://astral.sh/uv/install.sh | sh && export PATH="$HOME/.local/bin:$PATH"
-    bun install && bunx playwright test --update-snapshots
-  '
-```
-
-`v1.63.0-noble` must track `frontend/package.json`'s `@playwright/test` version —
-bump both together. `bun install` runs again inside the container even though
-the host already ran it: `node_modules`' platform-specific binaries (esbuild,
-oxlint) need Linux builds, not whatever the host installed. `unzip` isn't in
-the base image; bun's installer needs it.
-
-Then commit the changed files under `tests/__screenshots__/`.
+The console screenshots in the README live on the `pr-assets` branch, not in
+this tree. They're refreshed by hand and aren't part of CI.
 
 ## What a good change looks like
 
