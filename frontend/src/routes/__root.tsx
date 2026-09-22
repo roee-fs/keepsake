@@ -10,9 +10,13 @@ export const Route = createRootRoute({
 })
 
 async function logout() {
-  // Best-effort: an expired session 401s here, but the destination is /login anyway.
-  await logoutSessionDelete()
-  window.location.assign('/login')
+  try {
+    await logoutSessionDelete()
+  } finally {
+    // `throwOnError` is global, so an expired session's 401 rejects here. The
+    // destination is /login either way, so navigation cannot hang off success.
+    window.location.assign('/login')
+  }
 }
 
 // Colour lives only in the active/inactive halves: TanStack concatenates them
