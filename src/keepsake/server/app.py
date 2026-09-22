@@ -17,7 +17,7 @@ from starlette.applications import Starlette
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.staticfiles import PathLike, StaticFiles
+from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
 from keepsake.server.api import create_api
@@ -56,7 +56,7 @@ class _ConsoleStaticFiles(StaticFiles):
 
     def file_response(
         self,
-        full_path: PathLike,
+        full_path: str | os.PathLike[str],
         stat_result: os.stat_result,
         scope: Scope,
         status_code: int = 200,
