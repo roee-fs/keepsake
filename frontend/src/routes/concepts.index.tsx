@@ -122,16 +122,27 @@ function Browse() {
           <BrowseTable
             page={page.data}
             isLoading={page.isLoading}
+            isError={page.isError}
             offset={offset}
             onOffset={setOffset}
             showTenant={showTenant}
           />
         )}
         {mode === 'search' && tenant && (
-          <SearchTable hits={searchResults.data} isLoading={searchResults.isLoading} tenant={tenant} />
+          <SearchTable
+            hits={searchResults.data}
+            isLoading={searchResults.isLoading}
+            isError={searchResults.isError}
+            tenant={tenant}
+          />
         )}
         {mode === 'grep' && tenant && (
-          <GrepTable hits={grepResults.data} isLoading={grepResults.isLoading} tenant={tenant} />
+          <GrepTable
+            hits={grepResults.data}
+            isLoading={grepResults.isLoading}
+            isError={grepResults.isError}
+            tenant={tenant}
+          />
         )}
       </div>
     </div>
@@ -141,23 +152,31 @@ function Browse() {
 function BrowseTable({
   page,
   isLoading,
+  isError,
   offset,
   onOffset,
   showTenant,
 }: {
   page: ConceptPage | undefined
   isLoading: boolean
+  isError: boolean
   offset: number
   onOffset: (offset: number) => void
   showTenant: boolean
 }) {
   if (isLoading) return <div className={SKELETON} />
-  if (!page || page.items.length === 0) {
+  // A failed query settles with no data, which would otherwise render as a store
+  // that holds nothing.
+  if (isError) return <p className={EMPTY}>Could not load concepts.</p>
+  // An offset past the end keeps the pager: the early return strips Prev, and with
+  // the offset in the URL a bookmarked page would have no way back.
+  if (!page || (page.items.length === 0 && offset === 0)) {
     return <p className={EMPTY}>No concepts.</p>
   }
   return (
     <div className="mt-3">
-      <div className={TABLE_SHELL}>
+      {page.items.length === 0 && <p className="text-fg-muted">No concepts on this page.</p>}
+      <div className={TABLE_SHELL} hidden={page.items.length === 0}>
         <table className="tbl">
           <thead>
             <tr>
@@ -207,7 +226,8 @@ function BrowseTable({
           Prev
         </button>
         <span className="tabular-nums">
-          {offset + 1}-{Math.min(offset + PAGE_SIZE, page.total)} of {page.total}
+          {page.items.length === 0 ? '0' : `${offset + 1}-${offset + page.items.length}`} of{' '}
+          {page.total}
         </span>
         <button
           disabled={offset + PAGE_SIZE >= page.total}
@@ -224,13 +244,16 @@ function BrowseTable({
 function SearchTable({
   hits,
   isLoading,
+  isError,
   tenant,
 }: {
   hits: HitOut[] | undefined
   isLoading: boolean
+  isError: boolean
   tenant: string
 }) {
   if (isLoading) return <div className={SKELETON} />
+  if (isError) return <p className={EMPTY}>Could not run the search.</p>
   if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
     <div className={`mt-3 ${TABLE_SHELL}`}>
@@ -272,13 +295,18 @@ function SearchTable({
 function GrepTable({
   hits,
   isLoading,
+  isError,
   tenant,
 }: {
   hits: GrepHit[] | undefined
   isLoading: boolean
+  isError: boolean
   tenant: string
 }) {
   if (isLoading) return <div className={SKELETON} />
+  // A 400 from an uncompilable pattern lands here too, and "No matches." would read
+  // as a pattern that simply found nothing.
+  if (isError) return <p className={EMPTY}>Could not run the pattern.</p>
   if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
     <div className={`mt-3 ${TABLE_SHELL}`}>

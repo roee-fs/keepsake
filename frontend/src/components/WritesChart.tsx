@@ -4,6 +4,7 @@ import type { DailyWrite } from '../client'
 type WritesChartProps = {
   data: DailyWrite[] | undefined
   isLoading: boolean
+  isError: boolean
 }
 
 // Recharts writes SVG presentation attributes and inline styles, both of which
@@ -20,15 +21,17 @@ const TOOLTIP_CONTENT = {
 
 /** `data` arrives bucketed and zero-filled by the backend; an all-zero window
  * renders as an empty state, not an axis with a flat line. */
-export function WritesChart({ data, isLoading }: WritesChartProps) {
+export function WritesChart({ data, isLoading, isError }: WritesChartProps) {
   if (isLoading) {
     return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />
   }
   const hasWrites = data !== undefined && data.some((d) => d.count > 0)
-  if (!hasWrites) {
+  if (isError || !hasWrites) {
     return (
       <div className="flex h-48 items-center justify-center rounded-md border border-line bg-surface text-fg-muted">
-        No writes in this window.
+        {/* A failed query settles with no data, which is indistinguishable from a
+            quiet window unless the error state is checked first. */}
+        {isError ? 'Could not load writes.' : 'No writes in this window.'}
       </div>
     )
   }

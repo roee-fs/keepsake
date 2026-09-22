@@ -4,19 +4,27 @@ import { TenantId } from './TenantId'
 type ActivityListProps = {
   revisions: RevisionOut[] | undefined
   isLoading: boolean
+  isError: boolean
   // A path is unique only within a tenant, so the column earns its place only once
   // rows can span tenants.
   showTenant: boolean
 }
 
-export function ActivityList({ revisions, isLoading, showTenant }: ActivityListProps) {
+export function ActivityList({
+  revisions,
+  isLoading,
+  isError,
+  showTenant,
+}: ActivityListProps) {
   if (isLoading) {
     return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />
   }
-  if (!revisions || revisions.length === 0) {
+  if (isError || !revisions || revisions.length === 0) {
     return (
       <div className="rounded-md border border-line bg-surface p-4 text-fg-muted">
-        No activity yet.
+        {/* A failed query settles with no data, which would otherwise report a
+            corpus nothing has ever been written to. */}
+        {isError ? 'Could not load activity.' : 'No activity yet.'}
       </div>
     )
   }

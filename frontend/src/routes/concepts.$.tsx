@@ -4,6 +4,7 @@ import Markdown from 'react-markdown'
 import { conceptDetailConceptsPathGet } from '../client'
 import { Frontmatter } from '../components/Frontmatter'
 import { RevisionList } from '../components/RevisionList'
+import { HttpError } from '../lib/session'
 
 export const Route = createFileRoute('/concepts/$')({
   component: Detail,
@@ -67,6 +68,18 @@ function Detail() {
 
   if (detail.isLoading) {
     return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />
+  }
+
+  // `throwOnError` is global, so a genuine 404 arrives as an error like any other.
+  // Only that one is a missing concept; everything else is a failed read, and
+  // reporting it as "Not found." would describe the store rather than the request.
+  if (detail.isError) {
+    const missing = detail.error instanceof HttpError && detail.error.status === 404
+    return (
+      <div className="text-fg-muted">
+        {missing ? 'Not found.' : 'Could not load this concept.'}
+      </div>
+    )
   }
 
   const concept = detail.data

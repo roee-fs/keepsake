@@ -45,7 +45,11 @@ function Index() {
 
       <div>
         <h2 className="mb-3 text-md font-semibold tracking-tight">Writes per day</h2>
-        <WritesChart data={timeseries.data} isLoading={timeseries.isLoading} />
+        <WritesChart
+          data={timeseries.data}
+          isLoading={timeseries.isLoading}
+          isError={timeseries.isError}
+        />
       </div>
 
       <div>
@@ -53,6 +57,7 @@ function Index() {
         <ActivityList
           revisions={activity.data}
           isLoading={activity.isLoading}
+          isError={activity.isError}
           showTenant={tenant === undefined}
         />
       </div>
