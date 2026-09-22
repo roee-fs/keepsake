@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 export type TreeNode = {
   name: string
@@ -89,13 +89,17 @@ function TreeItem({
     </button>
   )
 
-  // Computed once at mount: expanding to show the initially-selected prefix
-  // shouldn't fight a later manual toggle when an unrelated render happens.
-  const [initialOpen] = useState(() => selectedPrefix.startsWith(node.prefix))
+  // Derived on every render, not just at mount: the tree's job is to show
+  // where the current selection sits in the hierarchy, so an ancestor of the
+  // selected prefix stays open because it IS an ancestor right now, not
+  // because it was one when this node first mounted. Trade-off: this also
+  // re-closes a folder the user opened manually once the selection moves
+  // away from it -- the tree tracks the selection, not manual expand state.
+  const isAncestorOfSelection = selectedPrefix.startsWith(node.prefix)
   const detailsRef = useRef<HTMLDetailsElement>(null)
   useEffect(() => {
-    if (detailsRef.current) detailsRef.current.open = initialOpen
-  }, [initialOpen])
+    if (detailsRef.current) detailsRef.current.open = isAncestorOfSelection
+  }, [isAncestorOfSelection])
 
   if (node.children.length === 0) {
     return <div className="ml-3">{label}</div>

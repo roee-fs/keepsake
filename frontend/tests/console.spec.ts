@@ -35,15 +35,12 @@ test('the path tree filters the browse table', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'auth/login', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'billing/customer', exact: true })).toHaveCount(0)
 
-  // Documented, not guessed: clicking a folder's label calls onSelect with
-  // event.stopPropagation(), which blocks the native <summary> toggle, and the
-  // <details> element's open state is computed once at mount (PathTree.tsx's
-  // `initialOpen`). So a click-driven prefix change does not auto-expand nested
-  // children -- "security" stays hidden even though the table above did filter.
-  await expect(page.getByRole('button', { name: 'security (2)' })).not.toBeVisible()
+  // Clicking "auth" selects a descendant prefix, so "auth" is its own
+  // ancestor here -- PathTree.tsx derives open state from selectedPrefix on
+  // every render, so "security" auto-expands along with the table filtering.
+  await expect(page.getByRole('button', { name: 'security (2)' })).toBeVisible()
 
-  // A fresh load with the prefix already in the URL computes `initialOpen` from
-  // it at mount, so this is where the tree does self-heal.
+  // Also true starting from a fresh load with the prefix already in the URL.
   await page.goto(`/concepts?tenant=${TENANT_A}&prefix=auth%2Fsecurity%2F`)
   await expect(page.getByRole('button', { name: 'security (2)' })).toBeVisible()
 })
