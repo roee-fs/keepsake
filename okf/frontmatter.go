@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"regexp"
@@ -35,13 +36,20 @@ func split(text string) (*Map, string, error) {
 		return NewMap(), text, nil
 	}
 	var doc yaml.Node
-	if err := yaml.Unmarshal([]byte(m[1]), &doc); err != nil {
+	dec := yaml.NewDecoder(strings.NewReader(m[1]))
+	switch err := dec.Decode(&doc); {
+	case errors.Is(err, io.EOF):
+		return NewMap(), m[2], nil
+	case err != nil:
 		return nil, "", YAMLError{err.Error()}
+	}
+	if err := dec.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
+		return nil, "", YAMLError{"expected a single document in the frontmatter"}
 	}
 	if len(doc.Content) == 0 {
 		return NewMap(), m[2], nil
 	}
-	c := converter{budget: maxNodes}
+	c := converter{budget: maxNodes, active: map[*yaml.Node]bool{}}
 	root, err := c.value(doc.Content[0])
 	if err != nil {
 		return nil, "", err
@@ -60,18 +68,37 @@ func split(text string) (*Map, string, error) {
 	return nil, "", YAMLError{"frontmatter is not a mapping"}
 }
 
-// maxNodes bounds alias expansion, which grows exponentially in a billion-laughs document.
-const maxNodes = 1_000_000
+const (
+	// maxNodes bounds alias expansion, which grows exponentially in a billion-laughs document.
+	maxNodes = 1_000_000
+	// maxDepth is near Python's recursion limit and keeps deep nesting off the goroutine stack limit.
+	maxDepth = 1000
+)
 
 // converter turns yaml.v3 nodes into the value domain with ruamel's YAML 1.2 round-trip semantics.
-type converter struct{ budget int }
+type converter struct {
+	budget, depth int
+	// active holds the collections being converted, so an alias back into one is caught.
+	active map[*yaml.Node]bool
+}
 
 func (c *converter) value(n *yaml.Node) (any, error) {
 	if c.budget--; c.budget < 0 {
 		return nil, YAMLError{"frontmatter expands to too many values"}
 	}
+	if c.depth++; c.depth > maxDepth {
+		return nil, YAMLError{"frontmatter nests too deeply"}
+	}
+	defer func() { c.depth-- }()
 	for n.Kind == yaml.AliasNode {
 		n = n.Alias
+	}
+	if c.active[n] {
+		return nil, YAMLError{"frontmatter contains itself through an alias"}
+	}
+	if n.Kind == yaml.MappingNode || n.Kind == yaml.SequenceNode {
+		c.active[n] = true
+		defer delete(c.active, n)
 	}
 	tag := ""
 	if n.Style&yaml.TaggedStyle != 0 && n.Tag != "!" {

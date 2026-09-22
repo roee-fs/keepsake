@@ -343,3 +343,23 @@ func TestAliasBombIsRefused(t *testing.T) {
 		t.Fatal("a billion-laughs document was expanded")
 	}
 }
+
+func TestRecursiveStructuresAreRefusedNotOverflowed(t *testing.T) {
+	for name, fm := range map[string]string{
+		"self-merge":    "v: &v\n  <<: *v\n",
+		"sequence":      "v: &a [1, *a]\n",
+		"mapping":       "v: &a {k: *a}\n",
+		"deep nesting":  "v: " + strings.Repeat("[", 5000) + strings.Repeat("]", 5000) + "\n",
+		"deep mappings": "v: " + strings.Repeat("{a: ", 5000) + "1" + strings.Repeat("}", 5000) + "\n",
+	} {
+		if _, err := Parse("---\n"+fm+"---\n", "p"); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestASecondDocumentInTheFrontmatterIsRefused(t *testing.T) {
+	if _, err := Parse("---\na: 1\n--- \nb: 2\n---\nbody\n", "p"); err == nil {
+		t.Fatal("the second document was dropped silently")
+	}
+}
