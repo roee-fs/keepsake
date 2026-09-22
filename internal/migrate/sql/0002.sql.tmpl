@@ -1,0 +1,19 @@
+-- Neither GIN index can ever be used. `ts_match_vq` and `arraycontains` are not
+-- leakproof, so under FORCE ROW LEVEL SECURITY the planner refuses to promote
+-- either to an index condition — measured on postgres 17 at 10,000 rows, the app
+-- role gets a sequential scan every time while `row_security = off` gets a bitmap
+-- index scan. They only buy write amplification (~11% on a 2000-row insert) and
+-- disk. They come back if the isolation model ever changes.
+DROP INDEX {{.SCHEMA}}.concept_search_idx;
+DROP INDEX {{.SCHEMA}}.concept_links_idx;
+
+-- `op` is written by this codebase alone, so the check is a guard against a
+-- future writer, not against a caller.
+ALTER TABLE {{.SCHEMA}}.concept_revision
+  ADD CONSTRAINT concept_revision_op_check CHECK (op IN ('create', 'update'));
+
+-- What `revisions()` orders by. Leading with tenant_id because the policy adds
+-- that predicate to every query; the rest matches the ORDER BY exactly, and a
+-- btree scans backwards, so it serves the newest-first read too.
+CREATE INDEX concept_revision_log_idx ON {{.SCHEMA}}.concept_revision
+  (tenant_id, created_at, path, version);

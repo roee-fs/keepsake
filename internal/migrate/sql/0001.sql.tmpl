@@ -1,0 +1,77 @@
+CREATE SCHEMA IF NOT EXISTS {{.SCHEMA}};
+
+-- to_tsvector needs its regconfig argument: the one-argument form is only
+-- STABLE, and Postgres rejects it in a generated column.
+CREATE TABLE {{.SCHEMA}}.concept (
+  tenant_id   uuid        NOT NULL,
+  path        text        NOT NULL,
+  type        text        NOT NULL,
+  title       text        NOT NULL DEFAULT '',
+  description text        NOT NULL DEFAULT '',
+  body        text        NOT NULL DEFAULT '',
+  frontmatter jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  links       text[]      NOT NULL DEFAULT '{}',
+  search      tsvector GENERATED ALWAYS AS (
+                setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+                setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
+                setweight(to_tsvector('english', coalesce(body, '')), 'C')
+              ) STORED,
+  version     int         NOT NULL DEFAULT 1,
+  updated_by  text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, path)
+);
+
+CREATE TABLE {{.SCHEMA}}.concept_revision (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   uuid        NOT NULL,
+  path        text        NOT NULL,
+  version     int         NOT NULL,
+  op          text        NOT NULL,
+  snapshot    jsonb       NOT NULL,
+  updated_by  text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, path, version)
+);
+
+CREATE INDEX ON {{.SCHEMA}}.concept USING gin (search);
+CREATE INDEX ON {{.SCHEMA}}.concept USING gin (links);
+
+ALTER TABLE {{.SCHEMA}}.concept ENABLE ROW LEVEL SECURITY;
+-- FORCE subjects the table owner to the policy as well.
+ALTER TABLE {{.SCHEMA}}.concept FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON {{.SCHEMA}}.concept
+  USING      (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid)
+  WITH CHECK (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid);
+
+ALTER TABLE {{.SCHEMA}}.concept_revision ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{.SCHEMA}}.concept_revision FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON {{.SCHEMA}}.concept_revision
+  USING      (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid)
+  WITH CHECK (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid);
+
+-- The function is subject to the policy like every other caller, so it can only
+-- purge the scoped tenant. The returned count is of concepts, not of revisions.
+CREATE FUNCTION {{.SCHEMA}}.purge_tenant(t uuid) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+DECLARE n bigint;
+BEGIN
+  IF t <> current_setting('{{.TENANT_GUC}}')::uuid THEN
+    RAISE EXCEPTION 'purge_tenant(%) requires the session scoped to that tenant', t;
+  END IF;
+  DELETE FROM {{.SCHEMA}}.concept_revision WHERE tenant_id = t;
+  DELETE FROM {{.SCHEMA}}.concept WHERE tenant_id = t;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+
+-- Granted by name: a sweep would also grant whatever a later migration adds.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{.APP_ROLE}}') THEN
+    GRANT USAGE ON SCHEMA {{.SCHEMA}} TO {{.APP_ROLE}};
+    GRANT SELECT, INSERT, UPDATE, DELETE
+      ON {{.SCHEMA}}.concept, {{.SCHEMA}}.concept_revision TO {{.APP_ROLE}};
+  END IF;
+END $$;

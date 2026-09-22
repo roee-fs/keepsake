@@ -1,7 +1,6 @@
 package keepsake_test
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -24,10 +23,6 @@ func TestOkfIsALeaf(t *testing.T) {
 }
 
 func TestStoreDoesNotImportTheServer(t *testing.T) {
-	// internal/store does not exist until a later task; the contract is vacuous until then.
-	if _, err := os.Stat("internal/store"); os.IsNotExist(err) {
-		t.Skip("internal/store not created yet")
-	}
 	for _, d := range deps(t, "./internal/store") {
 		if strings.Contains(d, "/internal/server") || strings.Contains(d, "/internal/cli") {
 			t.Errorf("internal/store imports %s", d)
