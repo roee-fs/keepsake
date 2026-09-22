@@ -33,6 +33,11 @@ export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   retries: 0,
+  // Baselines committed under tests/__screenshots__/, with no platform/project
+  // suffix: they're only ever generated in the one Linux container that matches
+  // CI's rendering, so there's no second platform's snapshots to keep separate.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}{ext}',
+  reporter: [['html', { open: 'never' }]],
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
@@ -51,6 +56,21 @@ export default defineConfig({
       name: 'console-specs',
       testMatch: /console\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], storageState: 'tests/.auth/state.json' },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'screenshots',
+      testMatch: /screenshots\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'tests/.auth/state.json',
+        viewport: { width: 1440, height: 900 },
+        // toLocaleString() output depends on the runtime's locale/timezone, not
+        // just the frozen Date value -- pin both so a baseline generated in one
+        // environment still matches one checked in another.
+        timezoneId: 'UTC',
+        locale: 'en-US',
+      },
       dependencies: ['setup'],
     },
   ],

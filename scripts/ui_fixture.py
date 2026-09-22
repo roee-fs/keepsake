@@ -21,6 +21,7 @@ import os
 import signal
 import socket
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import FrameType
 from uuid import UUID
@@ -136,6 +137,42 @@ _REVISED_LOGIN_BODY = (
     "failed attempts.\n"
 )
 
+# Every timestamp `import_bundle` writes defaults to `now()`, which would make the
+# Task 15 screenshot suite diff on wall-clock drift every run. Pin them instead.
+# ponytail: a fixed past date, not "N days before whenever this runs" -- pixel-diffed
+# screenshots need identical text on every run, and `daily_writes`' 30-day window is
+# measured against Postgres's real `current_date`. Comfortably outside that window
+# for the foreseeable future; bump it if it ever drifts inside (the writes-per-day
+# chart would stop showing its "No writes in this window" empty state).
+_SEED_TIME = datetime(2024, 1, 8, 9, 0, tzinfo=UTC)
+
+
+def _freeze_timestamps(store: Store) -> None:
+    paths = [p.removesuffix(".md") for p in _BUNDLE]
+    for tenant_id in (TENANT_A, TENANT_B):
+        with store.scope(tenant_id) as conn:
+            for i, path in enumerate(paths):
+                ts = _SEED_TIME + timedelta(hours=i)
+                conn.execute(
+                    "UPDATE concept SET created_at=%s, updated_at=%s WHERE path=%s",
+                    (ts, ts, path),
+                )
+                conn.execute(
+                    "UPDATE concept_revision SET created_at=%s WHERE path=%s AND version=1",
+                    (ts, path),
+                )
+    # The revised auth/login (v2, tenant A only) is the one row with real history --
+    # a later fixed time keeps its revision list ordered sensibly.
+    revised_at = _SEED_TIME + timedelta(days=1)
+    with store.scope(TENANT_A) as conn:
+        conn.execute(
+            "UPDATE concept SET updated_at=%s WHERE path='auth/login'", (revised_at,)
+        )
+        conn.execute(
+            "UPDATE concept_revision SET created_at=%s WHERE path='auth/login' AND version=2",
+            (revised_at,),
+        )
+
 
 def _write_bundle(root: Path, files: dict[str, tuple[str, str, str, str]]) -> None:
     for path, (type_, title, description, body) in files.items():
@@ -214,6 +251,8 @@ def main() -> None:
                     },
                 )
                 import_bundle(concepts, TENANT_A, revised_root)
+
+            _freeze_timestamps(store)
         finally:
             store.close()
 
