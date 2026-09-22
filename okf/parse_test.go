@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"slices"
@@ -361,5 +362,56 @@ func TestRecursiveStructuresAreRefusedNotOverflowed(t *testing.T) {
 func TestASecondDocumentInTheFrontmatterIsRefused(t *testing.T) {
 	if _, err := Parse("---\na: 1\n--- \nb: 2\n---\nbody\n", "p"); err == nil {
 		t.Fatal("the second document was dropped silently")
+	}
+}
+
+// ruamel reads YAML 1.2, where a flow plain scalar may start with ':' and contain '?'. libyaml's
+// YAML 1.1 scanner refuses both, so an exported bundle would not re-import.
+func TestFlowPlainScalarsWithIndicatorsRoundTrip(t *testing.T) {
+	fm := NewMap()
+	fm.Set("l", []any{":x", json.Number("1")})
+	if got, _ := Serialize(Concept{Type: "C", Frontmatter: fm}); got != "---\ntype: C\nl: [:x, 1]\n---\n" {
+		t.Fatalf("the emitter no longer writes this class plain: %q", got)
+	}
+	for _, v := range []string{":x", "::x", ":?", ":#", ":-", ":x:a", `:"`, ":'a", "a?", "a?x", "a ?", "$?", "-?", "x?:y", `a?"`} {
+		shapes := []string{
+			`{"l": [%s, 1]}`,
+			`{"n": [[%s]], "o": [{"k": %[1]s, "j": [1]}]}`,
+			`{"m": {"k": %s}}`,
+		}
+		// Python's own export of a flow mapping key led by ':' does not re-import, so it is no contract.
+		if v[0] != ':' {
+			shapes = append(shapes, `{"m": {%s: 1}}`)
+		}
+		q, _ := json.Marshal(v)
+		for _, shape := range shapes {
+			want := []byte(fmt.Sprintf(shape, q))
+			var in Map
+			if err := json.Unmarshal(want, &in); err != nil {
+				t.Fatal(err)
+			}
+			text, err := Serialize(Concept{Type: "C", Frontmatter: &in})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c, err := Parse(text, "p")
+			if err != nil {
+				t.Errorf("%q: %v", text, err)
+				continue
+			}
+			if got, _ := json.Marshal(c.Frontmatter); !jsonEqualOrdered(got, want) {
+				t.Errorf("%q: got %s", text, got)
+			}
+		}
+	}
+}
+
+func TestAnEmptyFlowKeyIsNull(t *testing.T) {
+	c, err := Parse("---\nm: {:\": :\"}\n---\n", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := json.Marshal(c.Frontmatter); string(got) != `{"m":{"null":": :"}}` {
+		t.Fatalf("%s", got)
 	}
 }

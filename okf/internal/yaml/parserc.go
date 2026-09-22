@@ -1109,6 +1109,10 @@ func yaml_parser_parse_flow_mapping_key(parser *yaml_parser_t, event *yaml_event
 				parser.state = yaml_PARSE_FLOW_MAPPING_VALUE_STATE
 				return yaml_parser_process_empty_scalar(parser, event, token.start_mark)
 			}
+		} else if token.typ == yaml_VALUE_TOKEN {
+			// keepsake: YAML 1.2, as ruamel's parse_flow_mapping_key, reads `{: v}` as an empty key.
+			parser.state = yaml_PARSE_FLOW_MAPPING_VALUE_STATE
+			return yaml_parser_process_empty_scalar(parser, event, token.end_mark)
 		} else if token.typ != yaml_FLOW_MAPPING_END_TOKEN {
 			parser.states = append(parser.states, yaml_PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE)
 			return yaml_parser_parse_node(parser, event, false, false)

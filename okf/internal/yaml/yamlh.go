@@ -610,7 +610,8 @@ type yaml_parser_t struct {
 	stream_start_produced bool // Have we started to scan the input stream?
 	stream_end_produced   bool // Have we reached the end of the input stream?
 
-	flow_level int // The number of unclosed '[' and '{' indicators.
+	flow_level int    // The number of unclosed '[' and '{' indicators.
+	flow_kinds []byte // keepsake: the unclosed '[' and '{' indicators, innermost last.
 
 	tokens          []yaml_token_t // The tokens queue.
 	tokens_head     int            // The head of the tokens queue.

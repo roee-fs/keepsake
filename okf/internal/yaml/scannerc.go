@@ -798,7 +798,7 @@ func yaml_parser_fetch_next_token(parser *yaml_parser_t) (ok bool) {
 	}
 
 	// Is it the value indicator?
-	if parser.buffer[parser.buffer_pos] == ':' && (parser.flow_level > 0 || is_blankz(parser.buffer, parser.buffer_pos+1)) {
+	if parser.buffer[parser.buffer_pos] == ':' && yaml_parser_check_value(parser) {
 		return yaml_parser_fetch_value(parser)
 	}
 
@@ -868,6 +868,8 @@ func yaml_parser_fetch_next_token(parser *yaml_parser_t) (ok bool) {
 		parser.buffer[parser.buffer_pos] == '"' || parser.buffer[parser.buffer_pos] == '%' ||
 		parser.buffer[parser.buffer_pos] == '@' || parser.buffer[parser.buffer_pos] == '`') ||
 		(parser.buffer[parser.buffer_pos] == '-' && !is_blank(parser.buffer, parser.buffer_pos+1)) ||
+		// keepsake: YAML 1.2, as ruamel's check_plain, lets a flow plain scalar start with ':' before a non-space.
+		(parser.flow_level > 0 && parser.buffer[parser.buffer_pos] == ':' && !is_blank(parser.buffer, parser.buffer_pos+1)) ||
 		(parser.flow_level == 0 &&
 			(parser.buffer[parser.buffer_pos] == '?' || parser.buffer[parser.buffer_pos] == ':') &&
 			!is_blankz(parser.buffer, parser.buffer_pos+1)) {
@@ -979,6 +981,7 @@ func yaml_parser_increase_flow_level(parser *yaml_parser_t) bool {
 func yaml_parser_decrease_flow_level(parser *yaml_parser_t) bool {
 	if parser.flow_level > 0 {
 		parser.flow_level--
+		parser.flow_kinds = parser.flow_kinds[:len(parser.flow_kinds)-1]
 		last := len(parser.simple_keys) - 1
 		delete(parser.simple_keys_by_tok, parser.simple_keys[last].token_number)
 		parser.simple_keys = parser.simple_keys[:last]
@@ -1196,6 +1199,20 @@ func yaml_parser_fetch_document_indicator(parser *yaml_parser_t, typ yaml_token_
 	return true
 }
 
+// yaml_parser_check_value is ruamel's YAML 1.2 check_value (keepsake). In a flow
+// sequence, or right after a value indicator in a flow mapping, ':' before a
+// non-space starts a plain scalar instead of being a value indicator.
+func yaml_parser_check_value(parser *yaml_parser_t) bool {
+	if parser.flow_level == 0 {
+		return is_blankz(parser.buffer, parser.buffer_pos+1)
+	}
+	afterValue := len(parser.tokens) > parser.tokens_head && parser.tokens[len(parser.tokens)-1].typ == yaml_VALUE_TOKEN
+	if parser.flow_kinds[len(parser.flow_kinds)-1] == '[' || afterValue {
+		return is_blankz(parser.buffer, parser.buffer_pos+1)
+	}
+	return true
+}
+
 // Produce the FLOW-SEQUENCE-START or FLOW-MAPPING-START token.
 func yaml_parser_fetch_flow_collection_start(parser *yaml_parser_t, typ yaml_token_type_t) bool {
 
@@ -1208,6 +1225,7 @@ func yaml_parser_fetch_flow_collection_start(parser *yaml_parser_t, typ yaml_tok
 	if !yaml_parser_increase_flow_level(parser) {
 		return false
 	}
+	parser.flow_kinds = append(parser.flow_kinds, parser.buffer[parser.buffer_pos])
 
 	// A simple key may follow the indicators '[' and '{'.
 	parser.simple_key_allowed = true
@@ -2726,9 +2744,10 @@ func yaml_parser_scan_plain_scalar(parser *yaml_parser_t, token *yaml_token_t) b
 
 			// Check for indicators that may end a plain scalar.
 			if (parser.buffer[parser.buffer_pos] == ':' && is_blankz(parser.buffer, parser.buffer_pos+1)) ||
+				// keepsake: YAML 1.2, as ruamel's scan_plain, does not end a flow plain scalar at '?'.
 				(parser.flow_level > 0 &&
 					(parser.buffer[parser.buffer_pos] == ',' ||
-						parser.buffer[parser.buffer_pos] == '?' || parser.buffer[parser.buffer_pos] == '[' ||
+						parser.buffer[parser.buffer_pos] == '[' ||
 						parser.buffer[parser.buffer_pos] == ']' || parser.buffer[parser.buffer_pos] == '{' ||
 						parser.buffer[parser.buffer_pos] == '}')) {
 				break
