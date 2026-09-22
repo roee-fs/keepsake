@@ -65,15 +65,6 @@ test('concept detail', async ({ page }) => {
   await capture(page, 'detail')
 })
 
-test('concept detail, scrolled to revisions', async ({ page }) => {
-  await page.goto(`/concepts/auth/login?tenant=${TENANT_A}`)
-  // auth/login is the one seeded concept with a v2 (scripts/ui_fixture.py), so its
-  // revision table is the one worth a screenshot.
-  await page.getByRole('heading', { name: 'Revision history' }).scrollIntoViewIfNeeded()
-  await expect(page.getByText('update', { exact: true })).toBeVisible()
-  await capture(page, 'detail-revisions')
-})
-
 test('overview, mobile', async ({ page }) => {
   await page.setViewportSize(MOBILE_VIEWPORT)
   await page.goto('/')

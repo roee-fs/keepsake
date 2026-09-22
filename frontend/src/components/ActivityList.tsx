@@ -31,7 +31,11 @@ export function ActivityList({ revisions, isLoading, showTenant }: ActivityListP
         {revisions.map((r) => (
           <tr key={`${r.tenant_id}:${r.path}:${r.version}`} className="border-t">
             <td className="py-1 pr-2 font-mono">{r.path}</td>
-            {showTenant && <td className="py-1 pr-2 font-mono">{r.tenant_id}</td>}
+            {showTenant && (
+              <td className="py-1 pr-2 font-mono" title={r.tenant_id}>
+                {r.tenant_id.slice(0, 8)}
+              </td>
+            )}
             <td className="py-1 pr-2">{r.version}</td>
             <td className="py-1 pr-2">{r.op}</td>
             <td className="py-1 pr-2">{r.updated_by}</td>
