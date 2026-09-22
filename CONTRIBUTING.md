@@ -48,6 +48,38 @@ concurrency, resilience, a real agent — and is deliberately **not** checked in
 If you need it, ask; it is kept out of the repository because it is a working
 tool rather than a gate.
 
+## The console
+
+The frontend needs [bun](https://bun.sh) (matches CI) and a running backend to
+talk to:
+
+```bash
+cd frontend
+bun install
+bun run dev
+```
+
+Vite proxies `/api` and `/mcp` to `localhost:8000` — the session cookie is
+`SameSite=Strict`, so a cross-origin dev server never gets it back. Point that
+port at a real server: run `uv run keepsake migrate` and `uv run keepsake serve`
+against a database you already have, with `KEEPSAKE_DSN` and
+`KEEPSAKE_ADMIN_PASSWORD` set.
+
+After any backend response-model change, regenerate the generated client:
+
+```bash
+bash scripts/generate-client.sh
+```
+
+This assumes `frontend/node_modules` is already populated. On a fresh clone,
+run `cd frontend && bun install` first — otherwise the `bunx` call inside the
+script crashes in a way that looks like client drift and isn't.
+
+### Screenshots
+
+The console screenshots in the README live on the `pr-assets` branch, not in
+this tree. They're refreshed by hand and aren't part of CI.
+
 ## What a good change looks like
 
 - **Tests assert behaviour, not structure.** A test that would pass against a

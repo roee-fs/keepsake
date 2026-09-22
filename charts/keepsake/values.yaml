@@ -29,6 +29,8 @@ securityContext:
     drop: ["ALL"]
 
 service:
+  # Carries the authenticated console alongside the unauthenticated MCP endpoint.
+  # Keep this ClusterIP. Reach it with `kubectl port-forward svc/<release> 8000:8000`.
   type: ClusterIP
   port: 8000
   nodePort: null # only honoured when type is NodePort or LoadBalancer
@@ -36,6 +38,21 @@ service:
 auth:
   mode: none # the only mode implemented; proxy and token are not built yet
   fixedTenantId: "00000000-0000-0000-0000-000000000001"
+
+ui:
+  # Disabled skips both the static mount and the /api mount. Rendered as
+  # KEEPSAKE_UI; /mcp and /readyz are unaffected either way.
+  enabled: true
+
+admin:
+  # Generated at install and printed by NOTES.txt. Read it with:
+  #   kubectl get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d
+  # Change it by editing this Secret and restarting the Deployment, which also
+  # invalidates every open session.
+  existingSecret: "" # required for GitOps; see below
+  # `lookup`, which keeps the password stable across upgrades, returns nothing under
+  # `helm template` or `--dry-run` — how Argo CD renders this chart — so the password
+  # regenerates on every sync. Set existingSecret when deploying that way.
 
 postgres:
   mode: managed # managed | existing

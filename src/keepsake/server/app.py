@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -12,18 +14,45 @@ from anyio import to_thread
 from mcp.server.lowlevel import Server
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
+from keepsake.server.api import create_api
+from keepsake.server.auth import Auth, admin_password, ui_enabled
 from keepsake.server.tools import Tools, register
 from keepsake.store import SCHEMA
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
 from keepsake.store.verify import verify
 
+logger = logging.getLogger(__name__)
+
 # Every request is the one configured tenant, so the revision log records the server
 # rather than a caller it has no way to identify.
 _ACTOR = "mcp"
+
+# Where the Dockerfile bakes the built console (`COPY --from=ui /ui/dist /app/static`).
+# Overridable so a source checkout can point it at a local `frontend/dist`.
+_DEFAULT_STATIC_DIR = "/app/static"
+
+
+class _ConsoleStaticFiles(StaticFiles):
+    """Serve the built console, falling back to index.html for unmatched paths.
+
+    A client-side route reloaded as a deep link gets the SPA shell, not a 404.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            # A stale hashed asset URL also 200s as the shell. That is the tradeoff.
+            return await super().get_response("index.html", scope)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +81,10 @@ def build_app(config: Config) -> Starlette:
     Raises MisconfiguredDatabase when the database does not isolate tenants. That
     exception MUST reach the caller: crashing is the check.
     """
+    # Read before the pool opens, so a misconfigured console fails before the
+    # database is holding connections open.
+    password = admin_password()
+
     store = Store(config.dsn, schema=config.schema)
     try:
         verify(store, config.schema)
@@ -59,8 +92,9 @@ def build_app(config: Config) -> Starlette:
         store.close()
         raise
 
+    concepts = ConceptStore(store)
     server: Server[Any] = Server("keepsake")
-    register(server, Tools(ConceptStore(store), config.tenant_id, _ACTOR))
+    register(server, Tools(concepts, config.tenant_id, _ACTOR))
     app = server.streamable_http_app(
         streamable_http_path="/mcp",
         json_response=True,
@@ -76,6 +110,15 @@ def build_app(config: Config) -> Starlette:
     # The pool outlives any one request, so the app owns it.
     app.state.store = store
     app.router.add_route("/readyz", _readyz, methods=["GET"])
+    if ui_enabled():
+        app.mount("/api", create_api(concepts, Auth(password)))
+        # Mounted last: it matches every path, so an earlier position would swallow
+        # /api and /mcp. Unguarded because gating it would break the login page.
+        static_dir = os.environ.get("KEEPSAKE_STATIC_DIR", _DEFAULT_STATIC_DIR)
+        if os.path.isdir(static_dir):
+            app.mount("/", _ConsoleStaticFiles(directory=static_dir, html=True))
+        else:
+            logger.info("no console bundle at %s; serving API and MCP only", static_dir)
     # Process exit covers this in a pod, but not in a test or an embedding host, where
     # a pool left open holds its connections until the interpreter goes.
     # Wrapped rather than passed in: the MCP app builds its own lifespan, which runs

@@ -49,12 +49,23 @@ def test_policies_read_the_okf_guc(migrated: bool, pg_dsn: str) -> None:
     """A policy on the wrong GUC satisfies every structural check and isolates nothing."""
     with psycopg.connect(pg_dsn) as conn:
         rows = conn.execute(
-            "SELECT tablename, policyname, qual, with_check FROM pg_policies "
+            "SELECT tablename, policyname, cmd, qual, with_check FROM pg_policies "
             "WHERE schemaname = 'okf'"
         ).fetchall()
-    tables = {row[0] for row in rows}
-    assert tables == {"concept", "concept_revision"}
-    for table, policy, qual, with_check in rows:
+    assert {(row[0], row[1]) for row in rows} == {
+        (table, policy)
+        for table in ("concept", "concept_revision")
+        for policy in ("tenant_isolation", "admin_read")
+    }
+    for table, policy, cmd, qual, with_check in rows:
+        if policy == "admin_read":
+            # The one cross-tenant policy, so what keeps it off the write path is
+            # that it applies to no other command.
+            assert cmd == "SELECT", f"{table}.{policy} also applies to {cmd}"
+            assert "current_setting('okf.admin'" in qual, (
+                f"{table}.{policy} does not read okf.admin: {qual}"
+            )
+            continue
         for clause, expression in (("USING", qual), ("WITH CHECK", with_check)):
             where = f"{table}.{policy} {clause}"
             # A null expression is one Postgres does not apply: WITH CHECK absent is

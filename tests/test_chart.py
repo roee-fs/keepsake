@@ -107,9 +107,17 @@ def test_the_database_is_created_before_the_migration_runs() -> None:
 
 
 def test_secrets_are_installed_before_the_hooks_that_read_them() -> None:
-    docs = _render(MANAGED)
+    release = "keepsake"
+    docs = _render(MANAGED, release=release)
     weight = int(_only(docs, "Job")["metadata"]["annotations"]["helm.sh/hook-weight"])
-    for secret in (d for d in docs if d["kind"] == "Secret"):
+    # Excluded by name, not by "has hook annotations": only the Deployment reads this
+    # Secret, so it correctly has none. A property filter would also pass a future
+    # hook-read Secret that forgot its annotations, which is the bug this test catches.
+    for secret in (
+        d
+        for d in docs
+        if d["kind"] == "Secret" and d["metadata"]["name"] != f"{release}-admin"
+    ):
         annotations = secret["metadata"]["annotations"]
         assert "pre-install" in annotations["helm.sh/hook"]
         assert int(annotations["helm.sh/hook-weight"]) < weight
@@ -150,6 +158,21 @@ def test_the_server_reads_the_variables_the_cli_reads() -> None:
     assert _env(_only(docs, "Job"))["KEEPSAKE_SCHEMA"]["value"] == "okf_other"
     assert _container(_only(docs, "Deployment"))["command"] == ["keepsake", "serve"]
     assert _container(_only(docs, "Job"))["command"] == ["keepsake", "migrate"]
+
+
+@pytest.mark.parametrize(
+    ("enabled", "rendered"), [("true", "true"), ("false", "false")]
+)
+def test_ui_enabled_renders_as_the_string_ui_enabled_accepts(
+    enabled: str, rendered: str
+) -> None:
+    """ui.enabled is a YAML boolean, and ui_enabled() only accepts the string "true".
+
+    An unquoted render emits a bare `true`, which Kubernetes rejects as an env value.
+    """
+    docs = _render(dict(MANAGED, **{"ui.enabled": enabled}))
+    value = _env(_only(docs, "Deployment"))["KEEPSAKE_UI"]["value"]
+    assert value == rendered
 
 
 def test_the_service_type_and_node_port_are_configurable() -> None:

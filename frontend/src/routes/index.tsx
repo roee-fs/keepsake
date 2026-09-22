@@ -1,0 +1,66 @@
+import { useQuery } from '@tanstack/react-query'
+import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { activityActivityGet, statsStatsGet, statsTimeseriesStatsTimeseriesGet } from '../client'
+import { ActivityList } from '../components/ActivityList'
+import { StatCard } from '../components/StatCard'
+import { TenantSwitcher } from '../components/TenantSwitcher'
+import { WritesChart } from '../components/WritesChart'
+
+export const Route = createFileRoute('/')({
+  component: Index,
+})
+
+function Index() {
+  const { tenant } = useSearch({ strict: false })
+
+  const stats = useQuery({
+    queryKey: ['stats', tenant],
+    queryFn: async () => (await statsStatsGet({ query: { tenant }, throwOnError: true })).data,
+  })
+
+  const timeseries = useQuery({
+    queryKey: ['stats-timeseries', tenant],
+    queryFn: async () =>
+      (await statsTimeseriesStatsTimeseriesGet({ query: { tenant }, throwOnError: true })).data,
+  })
+
+  const activity = useQuery({
+    queryKey: ['activity', tenant],
+    queryFn: async () => (await activityActivityGet({ query: { tenant }, throwOnError: true })).data,
+  })
+
+  const totals = stats.data
+  const typeCount = totals ? Object.keys(totals.by_type).length : undefined
+
+  return (
+    <div className="flex flex-col gap-8">
+      <TenantSwitcher />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Concepts" value={totals?.concepts} />
+        <StatCard label="Types" value={typeCount} />
+        <StatCard label="Revisions" value={totals?.revisions} />
+        <StatCard label="Orphans" value={totals?.orphans} tone="warning" />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-md font-semibold tracking-tight">Writes per day</h2>
+        <WritesChart
+          data={timeseries.data}
+          isLoading={timeseries.isLoading}
+          isError={timeseries.isError}
+        />
+      </div>
+
+      <div>
+        <h2 className="mb-3 text-md font-semibold tracking-tight">Recent activity</h2>
+        <ActivityList
+          revisions={activity.data}
+          isLoading={activity.isLoading}
+          isError={activity.isError}
+          showTenant={tenant === undefined}
+        />
+      </div>
+    </div>
+  )
+}

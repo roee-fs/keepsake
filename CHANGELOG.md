@@ -9,6 +9,38 @@ SBOM. `pyproject.toml`, `Chart.yaml`'s `version` and its `appVersion` must all
 agree with the tag — a test enforces it and the release workflow refuses
 otherwise.
 
+## Unreleased
+
+### Added
+
+- An `admin_read` policy on every tenant table, letting a connection that sets
+  `okf.admin` read across tenants. It is `FOR SELECT`, so writes stay scoped to
+  one tenant even for an admin.
+- An admin console, served by the same pod and port as `/mcp` (one image, no
+  second Service, no CORS): login, an overview (concepts, types, revisions,
+  orphans, a writes-per-day chart, recent activity), browse with a path tree
+  and search/grep, and concept detail with rendered markdown, frontmatter,
+  links, backlinks and revision history. Helm generates the password at
+  install into a `<release>-admin` Secret; the session cookie's signing key
+  derives from it, so changing the password invalidates every open session.
+
+### Security
+
+- The admin console has a single account and no login throttling — see
+  [`SECURITY.md`](SECURITY.md) for the threat model. Keep the Service
+  `ClusterIP` and reach the console by `kubectl port-forward`.
+
+### Upgrading
+
+- The migration adds a policy that an earlier release's startup check does not
+  recognise. During `helm upgrade` the migration hook runs before the new pods
+  roll, so running pods are unaffected — but an old pod that restarts inside that
+  window crash-loops until the rollout reaches it. It is minutes wide and
+  self-resolving.
+- A GitOps install (Argo CD, or `helm template | kubectl apply`) must set
+  `admin.existingSecret`. `lookup` returns nothing under `helm template`, so an
+  unguarded install regenerates the admin password on every sync.
+
 ## 0.1.0 — 2026-09-15
 
 ### Added

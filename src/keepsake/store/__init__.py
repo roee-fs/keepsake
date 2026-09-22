@@ -15,9 +15,14 @@ def validated_schema(name: str) -> str:
 
 SCHEMA = validated_schema(os.environ.get("KEEPSAKE_SCHEMA", "okf"))
 
-# The one GUC a policy may key on. The policy, the connection that sets it and the
-# startup check that asserts the policy reads it must all name the same one.
+# The only GUCs a policy may key on. The policy, the connection that sets one and the
+# startup check that asserts the policy reads it must all name the same string.
 TENANT_GUC = "okf.current_tenant"
+ADMIN_GUC = "okf.admin"
+
+# The one policy the startup check exempts from reading TENANT_GUC. The migration
+# creating it and the check recognising it must agree on the name.
+ADMIN_POLICY = "admin_read"
 
 
 def _pool_size() -> int:

@@ -21,8 +21,9 @@ MASKED_ROLE = "okf_masked"
 NOINHERIT_ROLE = "okf_noinherit"
 NOINHERIT_PASSWORD = "noinherit"
 
-# The migration's policy, restated so the tests that drop or rewrite it restore it.
+# The migration's policies, restated so the tests that rewrite them restore them.
 TENANT_QUAL = "tenant_id = current_setting('okf.current_tenant')::uuid"
+ADMIN_QUAL = "current_setting('okf.admin', true) = 'on'"
 RESTORE_POLICY = (
     f"CREATE POLICY tenant_isolation ON okf.concept "
     f"USING ({TENANT_QUAL}) WITH CHECK ({TENANT_QUAL})"
@@ -252,6 +253,48 @@ def test_rejects_a_permissive_with_check(
         _execute(
             owner_dsn,
             f"ALTER POLICY tenant_isolation ON okf.concept WITH CHECK ({TENANT_QUAL})",
+        )
+
+
+def test_rejects_a_widened_admin_policy(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """The exemption is for one policy shape, not for "any second policy"."""
+    _execute(owner_dsn, "ALTER POLICY admin_read ON okf.concept USING (true)")
+    try:
+        # The message must name the clause that failed, not the first one checked.
+        with pytest.raises(
+            MisconfiguredDatabase, match="reads neither .* nor okf.admin"
+        ):
+            _verify(pg_dsn)
+    finally:
+        _execute(
+            owner_dsn, f"ALTER POLICY admin_read ON okf.concept USING ({ADMIN_QUAL})"
+        )
+
+
+def test_rejects_an_admin_policy_that_covers_writes(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """FOR ALL on the admin GUC would let an admin write into any tenant.
+
+    Recreated rather than altered: ALTER POLICY cannot change which commands a
+    policy applies to.
+    """
+    _execute(
+        owner_dsn,
+        "DROP POLICY admin_read ON okf.concept_revision",
+        f"CREATE POLICY admin_read ON okf.concept_revision USING ({ADMIN_QUAL})",
+    )
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="is not FOR SELECT"):
+            _verify(pg_dsn)
+    finally:
+        _execute(
+            owner_dsn,
+            "DROP POLICY admin_read ON okf.concept_revision",
+            f"CREATE POLICY admin_read ON okf.concept_revision "
+            f"FOR SELECT USING ({ADMIN_QUAL})",
         )
 
 

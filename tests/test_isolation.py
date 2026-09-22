@@ -26,10 +26,26 @@ def _insert(conn: psycopg.Connection, tenant: uuid.UUID, path: str) -> None:
     )
 
 
+def _owners(conn: psycopg.Connection, paths: list[str]) -> set[uuid.UUID]:
+    """The tenants owning `paths` that this connection can actually see."""
+    rows = conn.execute(
+        "SELECT tenant_id FROM okf.concept WHERE path = ANY(%s)", (paths,)
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
 def _assert_no_leftover_scope(conn: psycopg.Connection) -> None:
-    """missing_ok: an unset GUC reads NULL, and one reset by SET LOCAL reads ''."""
-    left = conn.execute("SELECT current_setting('okf.current_tenant', true)").fetchone()
-    assert left in {(None,), ("",)}, f"scope outlived its transaction: {left}"
+    """missing_ok: an unset GUC reads NULL, and one reset by SET LOCAL reads ''.
+
+    Both GUCs: okf.admin riding a recycled connection to the next caller is a
+    cross-tenant read exactly as okf.current_tenant leaking is.
+    """
+    left = conn.execute(
+        "SELECT current_setting('okf.current_tenant', true),"
+        "       current_setting('okf.admin', true)"
+    ).fetchone()
+    assert left is not None, "the probe read no row"
+    assert set(left) <= {None, ""}, f"scope outlived its transaction: {left}"
 
 
 def _probe_until_a_scoped_connection_returns(store: Store, scoped: set[int]) -> None:
@@ -134,3 +150,64 @@ def test_raw_is_read_only_and_not_merely_documented(store: Store) -> None:
     """
     with pytest.raises(psycopg.errors.ReadOnlySqlTransaction), store.raw() as c:
         c.execute("CREATE TABLE okf.should_never_exist (x int)")
+
+
+def test_admin_scope_reads_every_tenant(store: Store) -> None:
+    one, two = uuid.uuid4(), uuid.uuid4()
+    paths = [f"admin/{one}", f"admin/{two}"]
+    for tenant, path in zip((one, two), paths, strict=True):
+        with store.scope(tenant) as c:
+            _insert(c, tenant, path)
+
+    # The positive control: the same query under a tenant scope sees one of the two.
+    with store.scope(one) as c:
+        assert _owners(c, paths) == {one}
+
+    scoped: set[int] = set()
+    with store.admin_scope() as c:
+        scoped.add(id(c))
+        assert _owners(c, paths) == {one, two}
+    # Both GUCs are SET LOCAL, so neither may ride this connection back out.
+    _probe_until_a_scoped_connection_returns(store, scoped)
+
+
+def test_admin_scope_cannot_write(store: Store) -> None:
+    """An admin connection cannot write at all.
+
+    The policy is FOR SELECT, so an admin UPDATE stays scoped to the nil tenant and
+    matches no rows silently, which reads as a write that changed nothing. The
+    read-only transaction is what raises instead. The class is pinned because a bare
+    Error would also catch the UndefinedColumn a renamed `title` raises, and would
+    stay green with READ ONLY gone.
+    """
+    with (
+        store.admin_scope() as c,
+        pytest.raises(psycopg.errors.ReadOnlySqlTransaction),
+    ):
+        c.execute("UPDATE okf.concept SET title = 'x'")
+
+
+def test_the_admin_guc_does_not_widen_a_write(store: Store) -> None:
+    """Pins the FOR SELECT half, which the test above cannot reach.
+
+    That one raises because the transaction is read-only, so it would still pass if
+    admin_read were widened to FOR ALL. This sets the admin GUC on an ordinary
+    writable connection, where only the policy's command scope stops the UPDATE.
+    """
+    one, two = uuid.uuid4(), uuid.uuid4()
+    paths = [f"write/{one}", f"write/{two}"]
+    for tenant, path in zip((one, two), paths, strict=True):
+        with store.scope(tenant) as c:
+            _insert(c, tenant, path)
+
+    with store.scope(one) as c:
+        c.execute("SELECT set_config('okf.admin', 'on', true)")
+        # No WHERE, so the count is exactly the rows the policies let it reach.
+        updated = c.execute("UPDATE okf.concept SET title = 'claimed'").rowcount
+
+    assert updated == 1, f"the admin GUC widened an UPDATE to {updated} rows"
+    with store.admin_scope() as c:
+        titles = c.execute(
+            "SELECT path, title FROM okf.concept WHERE path = ANY(%s)", (paths,)
+        ).fetchall()
+    assert dict(titles) == {paths[0]: "claimed", paths[1]: ""}

@@ -5,9 +5,11 @@
 
 import uuid
 from dataclasses import astuple
+from datetime import UTC, datetime
 
 import pytest
 
+from keepsake.store import TENANT_GUC
 from keepsake.store import concepts as concepts_module
 from keepsake.store.concepts import ConceptStore
 from keepsake.store.pool import Store
@@ -256,3 +258,221 @@ def test_list_treats_the_prefix_literally(
     for path in ("a_b/one", "axb/two"):
         concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
     assert [p for p, _ in concepts.list_(tenant, "a_b/")] == ["a_b/one"]
+
+
+# The admin console's read paths. `tenant_id=None` means every tenant and must take
+# `admin_scope()`; a concrete id must never fall through to it.
+
+
+def test_page_returns_summaries_under_prefix(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    page = concepts.page(tenant, "detect/", limit=10, offset=0)
+    assert [s.path for s in page] == ["detect/dormant"]
+    assert (page[0].type, page[0].title) == ("Concept", "Dormant Rule Identification")
+
+
+def test_page_respects_limit_and_offset(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    first = concepts.page(tenant, "", limit=2, offset=0)
+    second = concepts.page(tenant, "", limit=2, offset=2)
+    assert [s.path for s in first] == ["auth/flow", "detect/dormant"]
+    assert [s.path for s in second] == ["splunk/cursor"]
+
+
+def test_page_of_a_negative_limit_is_empty_not_invalid(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    assert concepts.page(tenant, "", limit=-1, offset=0) == []
+
+
+def test_count_matches_what_page_covers(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    assert concepts.count(tenant, "") == len(_SEED)
+    assert concepts.count(tenant, "detect/") == 1
+
+
+def test_page_of_one_tenant_never_returns_anothers_rows(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    other = uuid.uuid4()
+    _seed(concepts, tenant)
+    concepts.create(other, Concept(path="other/one", type="Concept"), "seed")
+    page = concepts.page(tenant, "", limit=10, offset=0)
+    assert "other/one" not in [s.path for s in page]
+    assert {s.tenant_id for s in page} == {tenant}
+
+
+def test_page_of_every_tenant_returns_both(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    other = uuid.uuid4()
+    _seed(concepts, tenant)
+    concepts.create(other, Concept(path="other/one", type="Concept"), "seed")
+    page = concepts.page(None, "", limit=1000, offset=0)
+    tenants_seen = {s.tenant_id for s in page}
+    assert tenant in tenants_seen
+    assert other in tenants_seen
+
+
+def test_page_of_every_tenant_breaks_a_tied_path_by_tenant_id(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """Two tenants can hold the same path, so under admin_scope() `path` alone is not
+    a total order. Paging the same path one row at a time is what catches a missing
+    tie-breaker: distinct paths across tenants would not."""
+    other = uuid.uuid4()
+    path = "decisions/retry-policy"
+    concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
+    concepts.create(other, Concept(path=path, type="Concept"), "seed")
+
+    first = concepts.page(None, path, limit=1, offset=0)
+    second = concepts.page(None, path, limit=1, offset=1)
+
+    assert [s.path for s in first] == [path]
+    assert [s.path for s in second] == [path]
+    assert first[0].tenant_id != second[0].tenant_id
+    assert {first[0].tenant_id, second[0].tenant_id} == {tenant, other}
+
+
+def test_totals_counts_concepts_types_revisions_links_and_orphans(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    totals = concepts.totals(tenant)
+    assert totals.concepts == len(_SEED)
+    assert totals.by_type == {"Concept": len(_SEED)}
+    assert totals.revisions == len(_SEED)
+    # Only splunk/cursor carries a link, to detect/dormant.
+    assert totals.links == 1
+    # detect/dormant has an inbound link; the other two don't.
+    assert totals.orphans == 2
+
+
+def test_activity_returns_recent_revisions_newest_first(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    revs = concepts.activity(tenant, limit=10)
+    # _seed writes dormant, then flow, then cursor: newest-first reverses that.
+    assert [r.path for r in revs] == ["splunk/cursor", "auth/flow", "detect/dormant"]
+
+
+def test_activity_of_every_tenant_tags_each_row_with_its_own_tenant(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """A path is only unique within a tenant, so two tenants can both write
+    `decisions/policy`. Without `tenant_id` on each row, an all-tenants feed would
+    render both writes as the same concept."""
+    other = uuid.uuid4()
+    concepts.create(tenant, Concept(path="decisions/policy", type="Concept"), "seed")
+    concepts.create(other, Concept(path="decisions/policy", type="Concept"), "seed")
+
+    revs = concepts.activity(None, limit=10)
+
+    same_path = [r for r in revs if r.path == "decisions/policy"]
+    assert len(same_path) == 2
+    assert {r.tenant_id for r in same_path} == {tenant, other}
+
+
+def test_totals_counts_an_orphan_per_tenant_rather_than_across_tenants(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """A path is unique only within a tenant, so a link held by one tenant must not
+    un-orphan the same path in another. Both directions are asserted: a fix that only
+    correlated one side of the anti-join would still pass half of this."""
+    other = uuid.uuid4()
+    path = "orphans/shared-path"
+    before = concepts.totals(None).orphans
+
+    concepts.create(tenant, Concept(path=path, type="Concept"), "seed")
+    concepts.create(
+        tenant, Concept(path="orphans/linker", type="Concept", links=(path,)), "seed"
+    )
+    concepts.create(other, Concept(path=path, type="Concept"), "seed")
+
+    # Linked from inside its own tenant, so only the linker is orphaned here.
+    assert concepts.totals(tenant).orphans == 1
+    # The other tenant's copy of that path is linked from nowhere in its own tenant.
+    assert concepts.totals(other).orphans == 1
+    # Two new orphans across every tenant; one, if a foreign link can un-orphan.
+    assert concepts.totals(None).orphans == before + 2
+
+
+def test_activity_of_every_tenant_breaks_a_tied_revision_by_tenant_id(
+    concepts: ConceptStore, store: Store, tenant: uuid.UUID
+) -> None:
+    """`created_at, path, version` is not a total order under admin_scope(): two
+    tenants can hold one path at one version, and a bulk write shares a clock reading.
+    Both rows go in one transaction so now() ties created_at exactly — distinct
+    timestamps would order themselves and prove nothing."""
+    low, high = sorted((tenant, uuid.uuid4()))
+    path = "activity/tied"
+    insert = (
+        "INSERT INTO concept_revision (tenant_id, path, version, op, snapshot) "
+        "VALUES (%s, %s, 1, 'create', '{}'::jsonb)"
+    )
+    with store.scope(low) as conn:
+        # Lowest tenant first: an untied LIMIT keeps the row it scanned first, which
+        # is the one a descending tie-break must not return.
+        conn.execute(insert, (low, path))
+        conn.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, str(high)))
+        conn.execute(insert, (high, path))
+
+    newest = concepts.activity(None, limit=1)
+
+    assert [r.path for r in newest] == [path]
+    assert newest[0].tenant_id == high
+    assert concepts.activity(None, limit=1) == newest
+
+
+def test_revisions_for_is_immune_to_other_paths_crowding_the_feed(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    """`activity()`'s cap is tenant-wide, so a quiet concept can fall off it.
+    `revisions_for` filters by path in SQL, so other paths cannot crowd it out."""
+    concepts.create(
+        tenant, Concept(path="detect/dormant", type="Concept", title="v1"), "seed"
+    )
+    concepts.update(
+        tenant, Concept(path="detect/dormant", type="Concept", title="v2"), "seed", 1
+    )
+    # More noisy revisions on other paths than the limit passed below: with a
+    # tenant-wide scan, these alone would crowd "detect/dormant" out entirely.
+    for i in range(5):
+        concepts.create(
+            tenant, Concept(path=f"noise/{i}", type="Concept", title="noise"), "seed"
+        )
+
+    revs = concepts.revisions_for(tenant, "detect/dormant", limit=3)
+
+    assert [r.version for r in revs] == [2, 1]
+    assert all(r.tenant_id == tenant for r in revs)
+
+
+def test_daily_writes_groups_by_day_and_zero_fills_gaps(
+    concepts: ConceptStore, tenant: uuid.UUID
+) -> None:
+    _seed(concepts, tenant)
+    writes = concepts.daily_writes(tenant, days=7)
+    assert len(writes) == 7
+    assert writes[-1] == (datetime.now(UTC).date(), len(_SEED))
+    assert all(count == 0 for _, count in writes[:-1])
+
+
+def test_tenants_lists_every_tenant_with_its_concept_count(
+    concepts: ConceptStore,
+) -> None:
+    a, b = uuid.uuid4(), uuid.uuid4()
+    concepts.create(a, Concept(path="a/one", type="Concept"), "seed")
+    concepts.create(a, Concept(path="a/two", type="Concept"), "seed")
+    concepts.create(b, Concept(path="b/one", type="Concept"), "seed")
+    counts = dict(concepts.tenants())
+    assert counts[a] == 2
+    assert counts[b] == 1

@@ -115,6 +115,13 @@ def tenant() -> uuid.UUID:
     return uuid.uuid4()
 
 
+@pytest.fixture(autouse=True)
+def _admin_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    """KEEPSAKE_UI defaults on, so build_app() refuses to start without a password.
+    Tests covering the unset or disabled paths override this themselves."""
+    monkeypatch.setenv("KEEPSAKE_ADMIN_PASSWORD", "test-admin-password")
+
+
 @pytest.fixture
 def store(migrated: bool, pg_dsn: str) -> Iterator[Store]:
     """A store on the unprivileged role. Its pool is closed, not leaked per test."""

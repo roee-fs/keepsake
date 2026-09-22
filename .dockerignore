@@ -8,3 +8,6 @@ charts/
 **/__pycache__/
 .*_cache/
 harness/
+# A local build would otherwise ride along and shadow the ui stage's clean one.
+frontend/node_modules/
+frontend/dist/

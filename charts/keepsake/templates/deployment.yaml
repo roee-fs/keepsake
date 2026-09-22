@@ -55,6 +55,15 @@ spec:
             # probe would otherwise depend on that default never moving.
             - name: KEEPSAKE_PORT
               value: {{ $port | quote }}
+            # ui_enabled() compares against the literal string "true"; an unquoted
+            # boolean renders bare and Kubernetes rejects it as an env value.
+            - name: KEEPSAKE_UI
+              value: {{ .Values.ui.enabled | quote }}
+            - name: KEEPSAKE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.existingSecret | default (printf "%s-admin" .Release.Name) }}
+                  key: password
           ports:
             - name: http
               containerPort: {{ $port }}

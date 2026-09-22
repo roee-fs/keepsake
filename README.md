@@ -60,6 +60,21 @@ Byte-for-byte has four known exceptions, each pinned by a test:
 - An unquoted YAML date (`2026-01-01`) comes back as a string.
 - A hand-written block-style list re-emits flow-style (`tags: [a, b]`).
 
+## Looking at what agents stored
+
+The chart serves a read-only admin console from the same pod and port as `/mcp`
+— one image, no second Service, no CORS. Helm generates the password at
+install, into a `<release>-admin` Secret:
+
+```bash
+kubectl get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d
+kubectl port-forward svc/<release> 8000:8000
+```
+
+Then log in at `http://localhost:8000` with that password.
+
+![Console overview](https://github.com/roee-fs/keepsake/blob/pr-assets/overview-one-tenant.png?raw=true)
+
 ## Roadmap
 
 **v1 — the substrate**
@@ -83,7 +98,7 @@ Byte-for-byte has four known exceptions, each pinned by a test:
 **Next**
 
 - [ ] `proxy` and `token` auth modes (v1 ships `none`)
-- [ ] A review UI over what agents believe — the thing `git diff` gave OKF for
+- [x] A review UI over what agents believe — the thing `git diff` gave OKF for
       free and every hosted memory product dropped
 - [ ] Semantic search (pgvector + reciprocal rank fusion over the lexical index)
 - [ ] Revision retention and pruning policy

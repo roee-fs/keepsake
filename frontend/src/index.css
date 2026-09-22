@@ -1,0 +1,184 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 11px;
+  --text-xs--line-height: 1.45;
+  --text-sm: 12px;
+  --text-sm--line-height: 1.5;
+  --text-base: 13px;
+  --text-base--line-height: 1.5;
+  --text-md: 14px;
+  --text-md--line-height: 1.45;
+  --text-lg: 15px;
+  --text-lg--line-height: 1.4;
+  --text-xl: 22px;
+  --text-xl--line-height: 1.2;
+
+  --color-base: #08090a;
+  --color-surface: #0f1011;
+  --color-hover: rgba(255, 255, 255, 0.04);
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-fg: #f7f8f8;
+  --color-fg-muted: #8a8f98;
+  --color-fg-faint: #62666d;
+  --color-accent: #5e6ad2;
+  /* Fills and rings use --color-accent directly; as 13px text it only reaches
+     4.1:1, so links get a lightened tint instead. */
+  --color-link: #8b93f8;
+  --color-warn: #d9a441;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+
+  /* On html, not just body, so overscroll and the pre-mount paint are dark too. */
+  html {
+    color-scheme: dark;
+    background-color: var(--color-base);
+  }
+
+  body {
+    background-color: var(--color-base);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  .tbl {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .tbl th,
+  .tbl td {
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .tbl thead th {
+    background-color: var(--color-surface);
+    color: var(--color-fg-muted);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .tbl tbody tr {
+    border-top: 1px solid var(--color-line);
+  }
+
+  .tbl tbody tr:hover {
+    background-color: var(--color-hover);
+  }
+
+  .markdown > * + * {
+    margin-top: 12px;
+  }
+
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4,
+  .markdown h5,
+  .markdown h6 {
+    font-size: var(--text-md);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .markdown h1 {
+    font-size: var(--text-lg);
+  }
+
+  .markdown > h1,
+  .markdown > h2,
+  .markdown > h3 {
+    margin-top: 24px;
+  }
+
+  .markdown a {
+    color: var(--color-link);
+  }
+
+  .markdown a:hover {
+    text-decoration: underline;
+  }
+
+  .markdown ul {
+    list-style: disc;
+    padding-left: 20px;
+  }
+
+  .markdown ol {
+    list-style: decimal;
+    padding-left: 20px;
+  }
+
+  .markdown li + li {
+    margin-top: 4px;
+  }
+
+  .markdown blockquote {
+    border-left: 2px solid var(--color-line);
+    padding-left: 12px;
+    color: var(--color-fg-muted);
+  }
+
+  .markdown hr {
+    border-top: 1px solid var(--color-line);
+  }
+
+  .markdown code {
+    background-color: var(--color-hover);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    padding: 0.1em 0.3em;
+  }
+
+  .markdown pre {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    overflow-x: auto;
+    padding: 12px;
+  }
+
+  .markdown pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  .markdown table {
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+    width: 100%;
+  }
+
+  .markdown th,
+  .markdown td {
+    border-top: 1px solid var(--color-line);
+    padding: 6px 10px;
+    text-align: left;
+  }
+}

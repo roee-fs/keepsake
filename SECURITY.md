@@ -34,6 +34,14 @@ it early than be right:
 
 Out of scope, because they are documented behaviour rather than defects:
 
+- The admin console reading across tenants. A console session sets the
+  `okf.admin` GUC, and an `admin_read` policy on every tenant table admits rows to
+  a connection that has set it. That policy is `FOR SELECT`, so no write crosses a
+  tenant boundary. The console authenticates with a password session of its own,
+  from `KEEPSAKE_ADMIN_PASSWORD`. That is a separate mechanism from `auth.mode`
+  below, which governs the `/mcp` surface alone and is unchanged by any of this:
+  an agent on `/mcp` still names no tenant and still reads only its own. A
+  cross-tenant read reached without a console session is in scope.
 - The round-trip fidelity ceilings in the README.
 - `okf_grep` accepting a regular expression. It is a deliberate capability,
   bounded by a 5s statement timeout.
@@ -42,6 +50,17 @@ Out of scope, because they are documented behaviour rather than defects:
   the README and the chart, and is a roadmap item rather than a bug — but if you
   have found a way to reach a keepsake that its operator believed was private,
   we want to know.
+- The admin console has no login throttling. One account, one password, no
+  lockout after failed attempts — that password is the whole perimeter, keep
+  the Service `ClusterIP` and reach it by `kubectl port-forward`. Fronting it
+  with anything else needs throttling added first.
+
+Worth knowing even though it's an operational footgun rather than a
+vulnerability: a GitOps install that omits `admin.existingSecret` regenerates
+the admin password on every sync, because `helm template` and `helm template |
+kubectl apply` — how Argo CD and similar tools render this chart — never
+evaluate `lookup`, which is what would otherwise keep it stable across
+upgrades. Set `admin.existingSecret` for any GitOps-managed install.
 
 ## Supported versions
 
