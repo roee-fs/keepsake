@@ -18,7 +18,7 @@ dependencies = [
     "jsonschema>=4.26.0",
     "psycopg[binary,pool]>=3.3.5",
     "ruamel-yaml>=0.19.1",
-    "sqlalchemy>=2.0",
+    "sqlalchemy>=2.0.54",
     "starlette>=1.6.0",
     "uvicorn>=0.53.0",
 ]
