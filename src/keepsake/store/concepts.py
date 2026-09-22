@@ -29,11 +29,10 @@ from okf_core import Concept
 _FIELDS = ("type", "title", "description", "body", "frontmatter", "links")
 _READ_COLS = ", ".join(("path", *_FIELDS, "version"))
 
-# Deliberately not derived from _FIELDS: Summary and Node are their own fixed
-# shapes, not a Concept subset, so slicing _FIELDS positionally would couple their
-# column order to a tuple whose order is free to change for round-trip reasons.
+# Deliberately not derived from _FIELDS: Summary is its own fixed shape, not a
+# Concept subset, so slicing _FIELDS positionally would couple its column order
+# to a tuple whose order is free to change for round-trip reasons.
 _SUMMARY_COLS = "path, type, title, description, version, updated_at, tenant_id"
-_GRAPH_COLS = "path, type, title, links"
 
 # Shared so `count()` and `page()` can't drift onto two different notions of
 # "under this prefix". starts_with, not LIKE: an underscore is legal in a path and
@@ -116,25 +115,6 @@ class Totals:
     revisions: int
     links: int
     orphans: int
-
-
-@dataclass(frozen=True, slots=True)
-class Node:
-    """One node in a `Graph`. `exists=False` marks a link target with no row."""
-
-    path: str
-    type: str
-    title: str
-    exists: bool
-
-
-@dataclass(frozen=True, slots=True)
-class Graph:
-    """A page of concepts and their links, for the admin console's graph view."""
-
-    nodes: list[Node]
-    edges: list[tuple[str, str]]
-    truncated: bool
 
 
 # The match position, not the matched text: substring(body from pattern) returns the
@@ -438,47 +418,6 @@ class ConceptStore:
                 "GROUP BY tenant_id ORDER BY tenant_id"
             ).fetchall()
         return [(r[0], int(r[1])) for r in rows]
-
-    def graph(self, tenant_id: UUID | None, prefix: str, limit: int) -> Graph:
-        """The concepts under `prefix`, capped at `limit`, and their links.
-
-        A link target outside the page is still a node: `exists` comes from a second
-        query over the whole table rather than from set difference against the page,
-        because a target missing from a capped page is not necessarily missing from
-        the table.
-        """
-        if limit <= 0:
-            return Graph([], [], False)
-        with self._connect(tenant_id) as conn:
-            rows = conn.execute(
-                f"SELECT {_GRAPH_COLS} FROM concept WHERE {_STARTS_WITH} "
-                "ORDER BY path LIMIT %s",
-                (prefix, limit + 1),
-            ).fetchall()
-            truncated = len(rows) > limit
-            rows = rows[:limit]
-
-            page_paths = {str(r[0]) for r in rows}
-            edges: list[tuple[str, str]] = []
-            outside: set[str] = set()
-            for r in rows:
-                src = str(r[0])
-                for target in r[3]:
-                    target = str(target)
-                    edges.append((src, target))
-                    if target not in page_paths:
-                        outside.add(target)
-
-            existing: set[str] = set()
-            if outside:
-                found = conn.execute(
-                    "SELECT path FROM concept WHERE path = ANY(%s)", (list(outside),)
-                ).fetchall()
-                existing = {str(f[0]) for f in found}
-
-        nodes = [Node(str(r[0]), str(r[1]), str(r[2]), True) for r in rows]
-        nodes.extend(Node(t, "", "", t in existing) for t in sorted(outside))
-        return Graph(nodes, edges, truncated)
 
     def search(
         self, tenant_id: UUID, query: str, limit: int, prefix: str | None

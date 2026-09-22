@@ -91,27 +91,6 @@ export type DailyWrite = {
 };
 
 /**
- * GraphOut
- */
-export type GraphOut = {
-    /**
-     * Nodes
-     */
-    nodes: Array<NodeOut>;
-    /**
-     * Edges
-     */
-    edges: Array<[
-        string,
-        string
-    ]>;
-    /**
-     * Truncated
-     */
-    truncated: boolean;
-};
-
-/**
  * GrepHit
  */
 export type GrepHit = {
@@ -159,28 +138,6 @@ export type HitOut = {
      * Score
      */
     score: number;
-};
-
-/**
- * NodeOut
- */
-export type NodeOut = {
-    /**
-     * Path
-     */
-    path: string;
-    /**
-     * Type
-     */
-    type: string;
-    /**
-     * Title
-     */
-    title: string;
-    /**
-     * Exists
-     */
-    exists: boolean;
 };
 
 /**
@@ -654,41 +611,3 @@ export type ActivityActivityGetResponses = {
 };
 
 export type ActivityActivityGetResponse = ActivityActivityGetResponses[keyof ActivityActivityGetResponses];
-
-export type GraphGraphGetData = {
-    body?: never;
-    path?: never;
-    query?: {
-        /**
-         * Tenant
-         */
-        tenant?: string | null;
-        /**
-         * Prefix
-         */
-        prefix?: string;
-        /**
-         * Limit
-         */
-        limit?: number;
-    };
-    url: '/graph';
-};
-
-export type GraphGraphGetErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GraphGraphGetError = GraphGraphGetErrors[keyof GraphGraphGetErrors];
-
-export type GraphGraphGetResponses = {
-    /**
-     * Successful Response
-     */
-    200: GraphOut;
-};
-
-export type GraphGraphGetResponse = GraphGraphGetResponses[keyof GraphGraphGetResponses];

@@ -430,36 +430,3 @@ def test_tenants_lists_every_tenant_with_its_concept_count(
     counts = dict(concepts.tenants())
     assert counts[a] == 2
     assert counts[b] == 1
-
-
-def test_graph_marks_a_missing_link_target_as_not_existing(
-    concepts: ConceptStore, tenant: uuid.UUID
-) -> None:
-    concepts.create(
-        tenant,
-        Concept(path="a/one", type="Concept", links=("missing/target",)),
-        "seed",
-    )
-    graph = concepts.graph(tenant, "", limit=10)
-    target = next(n for n in graph.nodes if n.path == "missing/target")
-    assert target.exists is False
-    assert ("a/one", "missing/target") in graph.edges
-
-
-def test_graph_reports_a_target_outside_a_capped_page_as_existing(
-    concepts: ConceptStore, tenant: uuid.UUID
-) -> None:
-    """The bug this design exists to prevent: a link target with a real row, just not
-    on the page a `limit` cap returned, must not be reported as missing."""
-    # "b/target" sorts after "a/one", so limit=1 pages in only "a/one".
-    concepts.create(tenant, Concept(path="b/target", type="Concept"), "seed")
-    concepts.create(
-        tenant,
-        Concept(path="a/one", type="Concept", links=("b/target",)),
-        "seed",
-    )
-    graph = concepts.graph(tenant, "", limit=1)
-    assert graph.truncated is True
-    assert [n.path for n in graph.nodes if n.path == "a/one"] == ["a/one"]
-    target = next(n for n in graph.nodes if n.path == "b/target")
-    assert target.exists is True

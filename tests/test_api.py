@@ -282,20 +282,11 @@ def test_activity_lists_the_seeded_revision(
     assert response.json()[0]["path"] == "detect/dormant"
 
 
-def test_graph_lists_the_seeded_node(logged_in: TestClient, seeded: uuid.UUID) -> None:
-    response = logged_in.get("/api/graph", params={"tenant": str(seeded)})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["nodes"][0]["path"] == "detect/dormant"
-    assert body["truncated"] is False
-
-
 @pytest.mark.parametrize(
     ("path", "extract"),
     [
         ("/api/concepts", lambda body: {i["path"] for i in body["items"]}),
         ("/api/activity", lambda body: {r["path"] for r in body}),
-        ("/api/graph", lambda body: {n["path"] for n in body["nodes"]}),
     ],
 )
 def test_admin_scope_mixes_every_tenant_when_none_is_named(

@@ -98,19 +98,6 @@ class GrepHit(BaseModel):
     snippet: str
 
 
-class NodeOut(BaseModel):
-    path: str
-    type: str
-    title: str
-    exists: bool
-
-
-class GraphOut(BaseModel):
-    nodes: list[NodeOut]
-    edges: list[tuple[str, str]]
-    truncated: bool
-
-
 class DailyWrite(BaseModel):
     date: date
     count: int
@@ -242,21 +229,6 @@ def activity(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[RevisionOut]:
     return [RevisionOut(**asdict(r)) for r in store.activity(tenant, limit)]
-
-
-@guarded.get("/graph")
-def graph(
-    store: _Store,
-    tenant: UUID | None = None,
-    prefix: str = "",
-    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
-) -> GraphOut:
-    g = store.graph(tenant, prefix, limit)
-    return GraphOut(
-        nodes=[NodeOut(**asdict(n)) for n in g.nodes],
-        edges=g.edges,
-        truncated=g.truncated,
-    )
 
 
 def create_api(concepts: ConceptStore, auth: Auth) -> FastAPI:
