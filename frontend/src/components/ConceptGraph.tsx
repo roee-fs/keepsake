@@ -130,12 +130,15 @@ export function ConceptGraph({ graph, tenant }: { graph: Graph; tenant: string }
                 onMouseEnter={() => setHovered(n.path)}
                 onMouseLeave={() => setHovered(null)}
               >
-                {/* A hit target larger than the mark. */}
-                <circle r={RADIUS * 2} fill="transparent" />
                 {n.missing ? (
-                  circle
+                  <>
+                    <circle r={RADIUS * 2} fill="transparent" />
+                    {circle}
+                  </>
                 ) : (
                   <Link to="/concepts/$" params={{ _splat: n.path }} search={{ tenant }}>
+                    {/* A hit target larger than the mark, inside the link so it navigates. */}
+                    <circle r={RADIUS * 2} fill="transparent" />
                     {circle}
                   </Link>
                 )}

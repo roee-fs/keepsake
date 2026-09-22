@@ -428,5 +428,37 @@ def test_graph_past_the_cap_drops_edges_it_cannot_place(
     assert body["truncated"] is True
 
 
+def test_graph_caps_missing_targets_at_the_node_limit(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One concept can name thousands of targets nobody wrote."""
+    monkeypatch.setattr("keepsake.server.api._GRAPH_LIMIT", 3)
+    _link(app, tenant, "a", "g1", "g2", "g3", "g4")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert [n["path"] for n in body["nodes"]] == ["a", "g1", "g2"]
+    assert body["edges"] == [["a", "g1"], ["a", "g2"]]
+    assert body["truncated"] is True
+
+
+def test_graph_caps_edges(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keepsake.server.api._GRAPH_EDGE_LIMIT", 2)
+    _link(app, tenant, "a", "b", "c")
+    _link(app, tenant, "b", "a", "c")
+    _link(app, tenant, "c")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert len(body["edges"]) == 2
+    assert body["truncated"] is True
+
+
 def test_graph_requires_a_tenant(logged_in: TestClient) -> None:
     assert logged_in.get("/api/graph").status_code == 422

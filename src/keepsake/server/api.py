@@ -28,6 +28,8 @@ _HISTORY_LIMIT = 50
 
 # Past a few hundred nodes a force layout is unreadable anyway.
 _GRAPH_LIMIT = 500
+# Separate from the node cap: one concept can link to thousands of targets.
+_GRAPH_EDGE_LIMIT = 5000
 
 
 class Credentials(BaseModel):
@@ -240,12 +242,19 @@ def graph(store: _Store, tenant: UUID) -> Graph:
     nodes = {
         path: GraphNode(path=path, type=t, title=title) for path, t, title, _ in rows
     }
+    # Past the row cap, an absent target may just be a concept that did not fit.
+    rows_cut = truncated
     edges = []
     for path, _, _, links in rows:
         for target in links:
+            if len(edges) >= _GRAPH_EDGE_LIMIT:
+                truncated = True
+                break
             if target not in nodes:
-                # Truncated, an absent target may just be past the cap.
-                if truncated:
+                if rows_cut:
+                    continue
+                if len(nodes) >= _GRAPH_LIMIT:
+                    truncated = True
                     continue
                 nodes[target] = GraphNode(path=target, type="", title="", missing=True)
             edges.append((path, target))

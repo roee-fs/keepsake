@@ -34,7 +34,9 @@ function GraphPage() {
       ) : (
         <>
           {graph.data.truncated && (
-            <div className="text-warn">Showing the first {graph.data.nodes.length} concepts by path. Links past them are hidden.</div>
+            <div className="text-warn">
+              The graph is cut off at {graph.data.nodes.length} nodes and {graph.data.edges.length} links. Concepts and links past that are hidden.
+            </div>
           )}
           <ConceptGraph graph={graph.data} tenant={tenant} />
         </>
