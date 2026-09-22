@@ -148,6 +148,16 @@ def test_docs_ui_is_served_behind_the_session_guard(logged_in: TestClient) -> No
     assert "text/html" in response.headers["content-type"]
 
 
+def test_mcp_refuses_a_browser_origin(client: TestClient) -> None:
+    """A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows."""
+    response = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        headers={"Accept": "application/json", "Origin": "http://evil.example:8000"},
+    )
+    assert response.status_code == 403
+
+
 def test_tenants_lists_every_tenant_with_a_concept(
     logged_in: TestClient, seeded: uuid.UUID
 ) -> None:

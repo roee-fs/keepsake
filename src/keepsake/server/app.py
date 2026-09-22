@@ -14,11 +14,12 @@ from anyio import to_thread
 from mcp.server.lowlevel import Server
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
+from starlette.datastructures import Headers
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.staticfiles import StaticFiles
-from starlette.types import Scope
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from keepsake.server.api import create_api
 from keepsake.server.auth import Auth, admin_password, ui_enabled
@@ -53,6 +54,27 @@ class _ConsoleStaticFiles(StaticFiles):
                 raise
             # A stale hashed asset URL also 200s as the shell. That is the tradeoff.
             return await super().get_response("index.html", scope)
+
+
+class _RefuseBrowsers:
+    """Refuse any /mcp request that carries an Origin header.
+
+    A browser sends Origin on every POST and an MCP client sends none, so this stops
+    a DNS-rebound page without a Host allowlist of the cluster's Service names.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] == "http"
+            and scope["path"] == "/mcp"
+            and "origin" in Headers(scope=scope)
+        ):
+            await Response(status_code=403)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,13 +122,13 @@ def build_app(config: Config) -> Starlette:
         json_response=True,
         # A session would pin an agent to one replica; several sit behind one Service.
         stateless_http=True,
-        # The Host header is a cluster Service name, and no browser can reach the pod,
-        # so the localhost-only default would reject every real request. Restore it when
-        # auth stops being `none`: this is a setting that outlives its justification.
+        # The Host header is a cluster Service name, so the localhost-only default
+        # would reject every real request. _RefuseBrowsers covers DNS rebinding.
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=False
         ),
     )
+    app.add_middleware(_RefuseBrowsers)
     # The pool outlives any one request, so the app owns it.
     app.state.store = store
     app.router.add_route("/readyz", _readyz, methods=["GET"])
