@@ -31,6 +31,19 @@ def test_a_wrong_password_is_rejected(auth: Auth) -> None:
     assert not auth.check_password("wrong")
 
 
+def test_a_non_ascii_password_is_rejected_rather_than_raising(auth: Auth) -> None:
+    """compare_digest raises TypeError on non-ASCII `str`, and `POST /api/session` does
+    not catch it: the one unauthenticated route would answer 500."""
+    assert not auth.check_password("pässwörd")
+
+
+def test_a_non_ascii_configured_password_still_authenticates() -> None:
+    """Otherwise a Unicode KEEPSAKE_ADMIN_PASSWORD locks the operator out for good."""
+    unicode_auth = Auth("pässwörd-Ω")
+    assert unicode_auth.check_password("pässwörd-Ω")
+    assert not unicode_auth.check_password("pässwörd")
+
+
 def test_a_freshly_issued_cookie_is_accepted(auth: Auth) -> None:
     assert auth.valid(auth.issue(ttl=3600))
 

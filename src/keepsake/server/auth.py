@@ -11,6 +11,15 @@ from starlette.requests import Request
 COOKIE_NAME = "keepsake_session"
 
 
+def _utf8(value: str) -> bytes:
+    """Encode for `compare_digest`, which raises TypeError on a non-ASCII `str`.
+
+    surrogatepass, so an unpaired surrogate out of a JSON body encodes rather than
+    raising on the one unauthenticated route.
+    """
+    return value.encode("utf-8", "surrogatepass")
+
+
 class MisconfiguredAdmin(RuntimeError):
     """Raised at startup. An enabled console with no password is worse than none."""
 
@@ -38,12 +47,12 @@ class Auth:
         # Derived rather than a second secret: changing the password changes the key,
         # so every outstanding cookie stops verifying.
         self._key = hmac.new(
-            password.encode(), b"keepsake-session", hashlib.sha256
+            _utf8(password), b"keepsake-session", hashlib.sha256
         ).digest()
 
     def check_password(self, supplied: str) -> bool:
         # compare_digest, not ==: == leaks the matching prefix length through timing.
-        return hmac.compare_digest(supplied, self._password)
+        return hmac.compare_digest(_utf8(supplied), _utf8(self._password))
 
     def issue(self, ttl: int) -> str:
         expiry = int(time.time()) + ttl
@@ -55,7 +64,10 @@ class Auth:
         if not expiry.isdecimal():
             return False
         expected = hmac.new(self._key, expiry.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(digest, expected) and int(expiry) >= time.time()
+        return (
+            hmac.compare_digest(_utf8(digest), _utf8(expected))
+            and int(expiry) >= time.time()
+        )
 
 
 def require_session(request: Request) -> None:
