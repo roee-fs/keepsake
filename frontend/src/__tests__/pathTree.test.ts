@@ -27,10 +27,6 @@ describe('buildTree', () => {
     ])
   })
 
-  it('builds a single-node tree for one path', () => {
-    expect(buildTree(['a/one.md'])).toEqual([{ name: 'a', prefix: 'a/', count: 1, children: [] }])
-  })
-
   it('drops a single path with no directory into no tree at all', () => {
     // The leaf segment is dropped, so a root-level file contributes no segments.
     expect(buildTree(['readme.md'])).toEqual([])

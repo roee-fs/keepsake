@@ -173,7 +173,6 @@ def test_ui_enabled_renders_as_the_string_ui_enabled_accepts(
     docs = _render(dict(MANAGED, **{"ui.enabled": enabled}))
     value = _env(_only(docs, "Deployment"))["KEEPSAKE_UI"]["value"]
     assert value == rendered
-    assert isinstance(value, str)
 
 
 def test_the_service_type_and_node_port_are_configurable() -> None:

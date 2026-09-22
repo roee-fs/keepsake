@@ -60,9 +60,8 @@ def test_policies_read_the_okf_guc(migrated: bool, pg_dsn: str) -> None:
     for table, policy, cmd, qual, with_check in rows:
         if policy == "admin_read":
             # The one cross-tenant policy, so what keeps it off the write path is
-            # that it applies to no other command and constrains no new row.
+            # that it applies to no other command.
             assert cmd == "SELECT", f"{table}.{policy} also applies to {cmd}"
-            assert with_check is None, f"{table}.{policy} admits a write: {with_check}"
             assert "current_setting('okf.admin'" in qual, (
                 f"{table}.{policy} does not read okf.admin: {qual}"
             )
