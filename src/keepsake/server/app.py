@@ -50,6 +50,8 @@ class _ConsoleStaticFiles(StaticFiles):
         except StarletteHTTPException as exc:
             if exc.status_code != 404:
                 raise
+            # A stale asset URL (e.g. a hashed filename from a prior build) also 200s
+            # as the HTML shell here. Deliberate SPA-routing tradeoff, not a bug.
             return await super().get_response("index.html", scope)
 
 

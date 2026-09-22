@@ -380,5 +380,20 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             assert c.get("/readyz").status_code == 200
             login = c.post("/api/session", json={"password": PASSWORD})
             assert login.status_code == 204
+            # Route presence doesn't prove dispatch order — a mount ahead of /mcp in
+            # the route table would still swallow this request too. POST, not a bare
+            # GET: GET opens the transport's SSE stream, which stays open forever and
+            # would hang this in-process client. No handshake or session header,
+            # matching what a Service in front of it sends (see
+            # test_the_endpoint_answers_a_plain_json_post in test_tools.py). This
+            # doesn't pin a status, only that the catch-all didn't answer instead.
+            mcp_response = c.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                headers={"Accept": "application/json"},
+            )
+            assert mcp_response.text != "<html>console shell</html>"
+            content_type = mcp_response.headers.get("content-type", "")
+            assert not content_type.startswith("text/html")
     finally:
         built.state.store.close()
