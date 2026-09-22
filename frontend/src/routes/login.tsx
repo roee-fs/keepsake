@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { loginSessionPost } from '../client'
-import { safeRedirectTarget } from '../lib/session'
+import { HttpError, safeRedirectTarget } from '../lib/session'
 
 export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
@@ -52,7 +52,15 @@ function LoginPage() {
         >
           Log in
         </button>
-        {mutation.isError && <p className="text-sm text-warn">Incorrect password.</p>}
+        {mutation.isError && (
+          <p className="text-sm text-warn">
+            {/* There is one account and no username field, so nothing is enumerable
+                and a 500 has no reason to read as a wrong password. */}
+            {mutation.error instanceof HttpError && mutation.error.status === 401
+              ? 'Incorrect password.'
+              : 'Login request failed. Try again.'}
+          </p>
+        )}
       </form>
     </div>
   )
