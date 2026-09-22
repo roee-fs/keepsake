@@ -36,7 +36,7 @@ export function SearchBox({ value, onChange }: SearchBoxProps) {
       value={text}
       onChange={(event) => setText(event.target.value)}
       placeholder="Search, or /pattern to grep"
-      className="w-full rounded border px-3 py-2 text-sm"
+      className="w-full rounded-md border border-line bg-surface px-3 py-1.5 text-fg placeholder:text-fg-faint"
     />
   )
 }

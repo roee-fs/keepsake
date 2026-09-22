@@ -35,10 +35,10 @@ function Index() {
   const typeCount = totals ? Object.keys(totals.by_type).length : undefined
 
   return (
-    <div className="flex flex-col gap-6 p-4">
+    <div className="flex flex-col gap-8">
       <TenantSwitcher />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Concepts" value={totals?.concepts} />
         <StatCard label="Types" value={typeCount} />
         <StatCard label="Revisions" value={totals?.revisions} />
@@ -46,12 +46,12 @@ function Index() {
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-gray-500">Writes per day</h2>
+        <h2 className="mb-3 text-md font-semibold tracking-tight">Writes per day</h2>
         <WritesChart data={timeseries.data} isLoading={timeseries.isLoading} />
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-gray-500">Recent activity</h2>
+        <h2 className="mb-3 text-md font-semibold tracking-tight">Recent activity</h2>
         <ActivityList
           revisions={activity.data}
           isLoading={activity.isLoading}

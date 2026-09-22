@@ -8,9 +8,11 @@ type StatCardProps = {
 export function StatCard({ label, value, tone = 'default' }: StatCardProps) {
   const warn = tone === 'warning' && !!value
   return (
-    <div className="rounded border p-4">
-      <div className="text-sm text-gray-500">{label}</div>
-      <div className={`text-2xl font-semibold ${warn ? 'text-amber-600' : ''}`}>
+    <div className="rounded-md border border-line bg-surface px-4 py-3">
+      <div className="text-sm text-fg-muted">{label}</div>
+      <div
+        className={`mt-1 text-xl font-semibold tabular-nums ${warn ? 'text-warn' : 'text-fg'}`}
+      >
         {value === undefined ? '—' : value.toLocaleString()}
       </div>
     </div>

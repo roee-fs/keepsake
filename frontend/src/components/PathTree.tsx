@@ -38,6 +38,9 @@ export function buildTree(paths: string[]): TreeNode[] {
   )
 }
 
+const NODE_CLASS = (selected: boolean) =>
+  selected ? 'bg-hover font-medium text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg'
+
 type PathTreeProps = {
   paths: string[] | undefined
   selectedPrefix: string
@@ -53,10 +56,10 @@ export function PathTree({ paths, selectedPrefix, onSelect }: PathTreeProps) {
   const tree = buildTree(paths ?? [])
 
   return (
-    <div className="text-sm">
+    <div>
       <button
         onClick={() => onSelect('')}
-        className={`block w-full rounded px-2 py-1 text-left ${selectedPrefix === '' ? 'bg-gray-200 font-medium' : 'hover:bg-gray-100'}`}
+        className={`block w-full rounded-md px-2 py-1 text-left transition-colors ${NODE_CLASS(selectedPrefix === '')}`}
       >
         All
       </button>
@@ -83,9 +86,9 @@ function TreeItem({
         event.stopPropagation()
         onSelect(node.prefix)
       }}
-      className={`rounded px-2 py-1 text-left ${isSelected ? 'bg-gray-200 font-medium' : 'hover:bg-gray-100'}`}
+      className={`rounded-md px-2 py-1 text-left font-mono transition-colors ${NODE_CLASS(isSelected)}`}
     >
-      {node.name} <span className="text-gray-400">({node.count})</span>
+      {node.name} <span className="text-fg-faint tabular-nums">({node.count})</span>
     </button>
   )
 

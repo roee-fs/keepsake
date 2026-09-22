@@ -11,6 +11,12 @@ const PAGE_SIZE = 50
 // largest page the API allows and is incomplete beyond that many concepts.
 const TREE_SAMPLE_SIZE = 200
 
+// A whole column of tinted paths would fight the row hover for attention, so a
+// path reads as primary text and only reveals the link tint under the cursor.
+const PATH_LINK = 'text-fg transition-colors hover:text-link hover:underline'
+const SKELETON = 'mt-3 h-48 animate-pulse rounded-md border border-line bg-surface'
+const EMPTY = 'mt-3 text-fg-muted'
+
 export const Route = createFileRoute('/concepts/')({
   validateSearch: (search: Record<string, unknown>): { prefix?: string; q?: string; offset?: number } => ({
     prefix: typeof search.prefix === 'string' ? search.prefix : undefined,
@@ -85,7 +91,7 @@ function Browse() {
   })
 
   return (
-    <div className="flex gap-6 p-4">
+    <div className="flex gap-8">
       <div className="w-56 flex-shrink-0">
         <TenantSwitcher />
         <div className="mt-4">
@@ -95,7 +101,7 @@ function Browse() {
             onSelect={setPrefix}
           />
           {tree.data && tree.data.total > TREE_SAMPLE_SIZE && (
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-3 px-2 text-xs text-fg-faint">
               Showing the first {TREE_SAMPLE_SIZE} of {tree.data.total} concepts.
             </p>
           )}
@@ -106,7 +112,7 @@ function Browse() {
         <SearchBox value={q} onChange={setQuery} />
 
         {mode !== 'browse' && !tenant && (
-          <p className="mt-3 text-sm text-gray-500">Select a tenant to search or grep.</p>
+          <p className={EMPTY}>Select a tenant to search or grep.</p>
         )}
 
         {mode === 'browse' && (
@@ -142,60 +148,64 @@ function BrowseTable({
   onOffset: (offset: number) => void
   showTenant: boolean
 }) {
-  if (isLoading) return <div className="mt-3 h-48 animate-pulse rounded border bg-gray-100" />
+  if (isLoading) return <div className={SKELETON} />
   if (!page || page.items.length === 0) {
-    return <p className="mt-3 text-sm text-gray-500">No concepts.</p>
+    return <p className={EMPTY}>No concepts.</p>
   }
   return (
     <div className="mt-3">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-gray-500">
-            <th className="py-1 pr-2 font-medium">Path</th>
-            <th className="py-1 pr-2 font-medium">Type</th>
-            <th className="py-1 pr-2 font-medium">Title</th>
-            {showTenant && <th className="py-1 pr-2 font-medium">Tenant</th>}
-            <th className="py-1 pr-2 font-medium">Version</th>
-            <th className="py-1 font-medium">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {page.items.map((item) => (
-            <tr key={`${item.tenant_id}:${item.path}`} className="border-t">
-              <td className="py-1 pr-2 font-mono">
-                <Link
-                  to="/concepts/$"
-                  params={{ _splat: item.path }}
-                  search={{ tenant: item.tenant_id }}
-                  className="text-blue-600 hover:underline"
-                >
-                  {item.path}
-                </Link>
-              </td>
-              <td className="py-1 pr-2">{item.type}</td>
-              <td className="py-1 pr-2">{item.title}</td>
-              {showTenant && <td className="py-1 pr-2 font-mono">{item.tenant_id}</td>}
-              <td className="py-1 pr-2">{item.version}</td>
-              <td className="py-1">{new Date(item.updated_at).toLocaleString()}</td>
+      <div className="overflow-x-auto rounded-md border border-line">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>Type</th>
+              <th>Title</th>
+              {showTenant && <th>Tenant</th>}
+              <th>Version</th>
+              <th>Updated</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-2 flex items-center gap-3 text-sm text-gray-500">
+          </thead>
+          <tbody>
+            {page.items.map((item) => (
+              <tr key={`${item.tenant_id}:${item.path}`}>
+                <td className="font-mono whitespace-nowrap">
+                  <Link
+                    to="/concepts/$"
+                    params={{ _splat: item.path }}
+                    search={{ tenant: item.tenant_id }}
+                    className={PATH_LINK}
+                  >
+                    {item.path}
+                  </Link>
+                </td>
+                <td className="text-fg-muted">{item.type}</td>
+                <td>{item.title}</td>
+                {showTenant && <td className="font-mono text-fg-muted">{item.tenant_id}</td>}
+                <td className="font-mono tabular-nums text-fg-muted">{item.version}</td>
+                <td className="tabular-nums whitespace-nowrap text-fg-muted">
+                  {new Date(item.updated_at).toLocaleString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-fg-muted">
         <button
           disabled={offset === 0}
           onClick={() => onOffset(Math.max(0, offset - PAGE_SIZE))}
-          className="rounded border px-2 py-1 disabled:opacity-50"
+          className="rounded-md border border-line px-2 py-1 transition-colors hover:bg-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent"
         >
           Prev
         </button>
-        <span>
+        <span className="tabular-nums">
           {offset + 1}-{Math.min(offset + PAGE_SIZE, page.total)} of {page.total}
         </span>
         <button
           disabled={offset + PAGE_SIZE >= page.total}
           onClick={() => onOffset(offset + PAGE_SIZE)}
-          className="rounded border px-2 py-1 disabled:opacity-50"
+          className="rounded-md border border-line px-2 py-1 transition-colors hover:bg-hover hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent"
         >
           Next
         </button>
@@ -213,40 +223,42 @@ function SearchTable({
   isLoading: boolean
   tenant: string
 }) {
-  if (isLoading) return <div className="mt-3 h-48 animate-pulse rounded border bg-gray-100" />
-  if (!hits || hits.length === 0) return <p className="mt-3 text-sm text-gray-500">No matches.</p>
+  if (isLoading) return <div className={SKELETON} />
+  if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
-    <table className="mt-3 w-full text-sm">
-      <thead>
-        <tr className="text-left text-gray-500">
-          <th className="py-1 pr-2 font-medium">Path</th>
-          <th className="py-1 pr-2 font-medium">Type</th>
-          <th className="py-1 pr-2 font-medium">Title</th>
-          <th className="py-1 pr-2 font-medium">Description</th>
-          <th className="py-1 font-medium">Score</th>
-        </tr>
-      </thead>
-      <tbody>
-        {hits.map((hit) => (
-          <tr key={hit.path} className="border-t">
-            <td className="py-1 pr-2 font-mono">
-              <Link
-                to="/concepts/$"
-                params={{ _splat: hit.path }}
-                search={{ tenant }}
-                className="text-blue-600 hover:underline"
-              >
-                {hit.path}
-              </Link>
-            </td>
-            <td className="py-1 pr-2">{hit.type}</td>
-            <td className="py-1 pr-2">{hit.title}</td>
-            <td className="py-1 pr-2 text-gray-500">{hit.description}</td>
-            <td className="py-1">{hit.score.toFixed(2)}</td>
+    <div className="mt-3 overflow-x-auto rounded-md border border-line">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Type</th>
+            <th>Title</th>
+            <th>Description</th>
+            <th>Score</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {hits.map((hit) => (
+            <tr key={hit.path}>
+              <td className="font-mono whitespace-nowrap">
+                <Link
+                  to="/concepts/$"
+                  params={{ _splat: hit.path }}
+                  search={{ tenant }}
+                  className={PATH_LINK}
+                >
+                  {hit.path}
+                </Link>
+              </td>
+              <td className="text-fg-muted">{hit.type}</td>
+              <td>{hit.title}</td>
+              <td className="text-fg-muted">{hit.description}</td>
+              <td className="tabular-nums text-fg-muted">{hit.score.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -259,33 +271,35 @@ function GrepTable({
   isLoading: boolean
   tenant: string
 }) {
-  if (isLoading) return <div className="mt-3 h-48 animate-pulse rounded border bg-gray-100" />
-  if (!hits || hits.length === 0) return <p className="mt-3 text-sm text-gray-500">No matches.</p>
+  if (isLoading) return <div className={SKELETON} />
+  if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
-    <table className="mt-3 w-full text-sm">
-      <thead>
-        <tr className="text-left text-gray-500">
-          <th className="py-1 pr-2 font-medium">Path</th>
-          <th className="py-1 font-medium">Snippet</th>
-        </tr>
-      </thead>
-      <tbody>
-        {hits.map((hit) => (
-          <tr key={hit.path} className="border-t">
-            <td className="py-1 pr-2 whitespace-nowrap font-mono">
-              <Link
-                to="/concepts/$"
-                params={{ _splat: hit.path }}
-                search={{ tenant }}
-                className="text-blue-600 hover:underline"
-              >
-                {hit.path}
-              </Link>
-            </td>
-            <td className="py-1 font-mono text-gray-500">{hit.snippet}</td>
+    <div className="mt-3 overflow-x-auto rounded-md border border-line">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Snippet</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {hits.map((hit) => (
+            <tr key={hit.path}>
+              <td className="font-mono whitespace-nowrap">
+                <Link
+                  to="/concepts/$"
+                  params={{ _splat: hit.path }}
+                  search={{ tenant }}
+                  className={PATH_LINK}
+                >
+                  {hit.path}
+                </Link>
+              </td>
+              <td className="font-mono text-fg-muted">{hit.snippet}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

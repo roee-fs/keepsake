@@ -25,30 +25,34 @@ function LoginPage() {
   })
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center px-4">
       <form
-        className="flex w-72 flex-col gap-3"
+        className="flex w-80 flex-col gap-3 rounded-md border border-line bg-surface p-6"
         onSubmit={(event) => {
           event.preventDefault()
           mutation.mutate(password)
         }}
       >
+        <div className="mb-1">
+          <div className="font-mono text-sm font-medium text-fg-faint">keepsake</div>
+          <h1 className="text-lg font-semibold tracking-tight">Admin console</h1>
+        </div>
         <input
           type="password"
           autoFocus
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Password"
-          className="rounded border px-3 py-2"
+          className="rounded-md border border-line bg-base px-3 py-2 text-fg placeholder:text-fg-faint"
         />
         <button
           type="submit"
           disabled={mutation.isPending || password === ''}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
+          className="rounded-md bg-accent px-3 py-2 font-medium text-fg transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           Log in
         </button>
-        {mutation.isError && <p className="text-sm text-red-600">Incorrect password.</p>}
+        {mutation.isError && <p className="text-sm text-warn">Incorrect password.</p>}
       </form>
     </div>
   )

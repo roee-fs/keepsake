@@ -9,17 +9,19 @@ export const Route = createFileRoute('/concepts/$')({
   component: Detail,
 })
 
+const SECTION_HEADING = 'mb-3 text-md font-semibold tracking-tight'
+
 function LinkList({ title, paths, tenant }: { title: string; paths: string[]; tenant: string }) {
   return (
     <div>
-      <h2 className="mb-2 text-sm font-medium text-gray-500">{title}</h2>
+      <h2 className={SECTION_HEADING}>{title}</h2>
       {paths.length === 0 ? (
-        <p className="text-sm text-gray-500">None.</p>
+        <p className="text-fg-muted">None.</p>
       ) : (
-        <ul className="text-sm">
+        <ul className="flex flex-col gap-1">
           {paths.map((path) => (
             <li key={path}>
-              <Link to="/concepts/$" params={{ _splat: path }} search={{ tenant }} className="font-mono text-blue-600 hover:underline">
+              <Link to="/concepts/$" params={{ _splat: path }} search={{ tenant }} className="font-mono text-link hover:underline">
                 {path}
               </Link>
             </li>
@@ -49,14 +51,14 @@ function Detail() {
   })
 
   if (!path) {
-    return <div className="p-4 text-sm text-gray-500">No concept path given.</div>
+    return <div className="text-fg-muted">No concept path given.</div>
   }
 
   if (!tenant) {
     return (
-      <div className="p-4 text-sm text-gray-500">
+      <div className="text-fg-muted">
         This concept has no tenant selected.{' '}
-        <Link to="/concepts" className="text-blue-600 hover:underline">
+        <Link to="/concepts" className="text-link hover:underline">
           Pick one from Browse.
         </Link>
       </div>
@@ -64,40 +66,42 @@ function Detail() {
   }
 
   if (detail.isLoading) {
-    return <div className="m-4 h-48 animate-pulse rounded border bg-gray-100" />
+    return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />
   }
 
   const concept = detail.data
   if (!concept) {
-    return <div className="p-4 text-sm text-gray-500">Not found.</div>
+    return <div className="text-fg-muted">Not found.</div>
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4">
+    <div className="flex flex-col gap-8">
       <div>
-        <div className="text-sm text-gray-500">
-          {concept.type} · v{concept.version} · <span className="font-mono">{path}</span>
+        <div className="font-mono text-sm text-fg-muted">
+          {concept.type} · v{concept.version} · <span className="text-fg-faint">{path}</span>
         </div>
-        <h1 className="text-xl font-semibold">{concept.title}</h1>
-        <p className="text-gray-600">{concept.description}</p>
+        <h1 className="mt-1 text-lg font-semibold tracking-tight">{concept.title}</h1>
+        <p className="mt-1 text-fg-muted">{concept.description}</p>
       </div>
 
-      <div className="prose prose-sm max-w-none">
+      {/* Raw HTML stays off: this body is agent-written, so the markdown AST is
+          the trust boundary, not a styling choice. */}
+      <div className="markdown max-w-[68ch]">
         <Markdown>{concept.body}</Markdown>
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-gray-500">Frontmatter</h2>
+        <h2 className={SECTION_HEADING}>Frontmatter</h2>
         <Frontmatter frontmatter={concept.frontmatter} />
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-8">
         <LinkList title="Links to" paths={concept.links} tenant={tenant} />
         <LinkList title="Linked from" paths={concept.backlinks} tenant={tenant} />
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-gray-500">Revision history</h2>
+        <h2 className={SECTION_HEADING}>Revision history</h2>
         <RevisionList revisions={concept.revisions} />
       </div>
     </div>

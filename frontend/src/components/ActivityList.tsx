@@ -10,39 +10,47 @@ type ActivityListProps = {
 
 export function ActivityList({ revisions, isLoading, showTenant }: ActivityListProps) {
   if (isLoading) {
-    return <div className="h-48 animate-pulse rounded border bg-gray-100" />
+    return <div className="h-48 animate-pulse rounded-md border border-line bg-surface" />
   }
   if (!revisions || revisions.length === 0) {
-    return <div className="rounded border p-4 text-sm text-gray-500">No activity yet.</div>
+    return (
+      <div className="rounded-md border border-line bg-surface p-4 text-fg-muted">
+        No activity yet.
+      </div>
+    )
   }
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-left text-gray-500">
-          <th className="py-1 pr-2 font-medium">Path</th>
-          {showTenant && <th className="py-1 pr-2 font-medium">Tenant</th>}
-          <th className="py-1 pr-2 font-medium">Version</th>
-          <th className="py-1 pr-2 font-medium">Op</th>
-          <th className="py-1 pr-2 font-medium">Updated by</th>
-          <th className="py-1 font-medium">When</th>
-        </tr>
-      </thead>
-      <tbody>
-        {revisions.map((r) => (
-          <tr key={`${r.tenant_id}:${r.path}:${r.version}`} className="border-t">
-            <td className="py-1 pr-2 font-mono">{r.path}</td>
-            {showTenant && (
-              <td className="py-1 pr-2 font-mono" title={r.tenant_id}>
-                {r.tenant_id.slice(0, 8)}
-              </td>
-            )}
-            <td className="py-1 pr-2">{r.version}</td>
-            <td className="py-1 pr-2">{r.op}</td>
-            <td className="py-1 pr-2">{r.updated_by}</td>
-            <td className="py-1">{new Date(r.created_at).toLocaleString()}</td>
+    <div className="overflow-x-auto rounded-md border border-line">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Path</th>
+            {showTenant && <th>Tenant</th>}
+            <th>Version</th>
+            <th>Op</th>
+            <th>Updated by</th>
+            <th>When</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {revisions.map((r) => (
+            <tr key={`${r.tenant_id}:${r.path}:${r.version}`}>
+              <td className="font-mono">{r.path}</td>
+              {showTenant && (
+                <td className="font-mono text-fg-muted" title={r.tenant_id}>
+                  {r.tenant_id.slice(0, 8)}
+                </td>
+              )}
+              <td className="font-mono tabular-nums text-fg-muted">{r.version}</td>
+              <td className="text-fg-muted">{r.op}</td>
+              <td className="text-fg-muted">{r.updated_by}</td>
+              <td className="tabular-nums whitespace-nowrap text-fg-muted">
+                {new Date(r.created_at).toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

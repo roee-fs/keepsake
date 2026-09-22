@@ -18,9 +18,11 @@ export function TenantSwitcher() {
     queryFn: async () => (await tenantsTenantsGet({ throwOnError: true })).data,
   })
 
+  // A UUID option is wider than the browse sidebar, so the select is capped
+  // rather than left to size itself by its longest option.
   return (
     <select
-      className="rounded border px-2 py-1"
+      className="w-full max-w-72 rounded-md border border-line bg-surface px-2 py-1.5 font-mono text-fg-muted transition-colors hover:text-fg"
       value={tenant ?? ALL_TENANTS}
       onChange={(event) => {
         const value = event.target.value || undefined
