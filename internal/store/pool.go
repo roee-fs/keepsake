@@ -1,0 +1,120 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// acquireTimeout mirrors psycopg_pool's default wait for a pooled connection.
+const acquireTimeout = 30 * time.Second
+
+// nilTenant is a value ”::uuid would raise on, chosen so it casts cleanly and
+// matches no tenant. tenant_isolation's USING clause casts TenantGUC to uuid
+// whichever way Postgres plans admin_read's OR, and Postgres does not promise
+// short-circuiting; this value gives that cast something to land on.
+const nilTenant = "00000000-0000-0000-0000-000000000000"
+
+// Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
+// set here and nowhere else. Ported from src/keepsake/store/pool.py.
+type Store struct {
+	pool       *pgxpool.Pool
+	searchPath string
+}
+
+// Open creates the pool for dsn, scoped to schema.
+func Open(ctx context.Context, dsn, schema string) (*Store, error) {
+	schema, err := ValidatedSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+	poolSize, err := PoolSize()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	// MaxConns, not just the default of 4: a pool that never grows past a
+	// handful of connections caps the whole pod's concurrent writes there.
+	cfg.MaxConns = int32(poolSize)
+	cfg.MinConns = 1
+	// A pooled connection does not notice the server going away, so a dead one
+	// would otherwise be handed to the next acquirer as an unexplained
+	// transport failure. Ported from pool.py's check=ConnectionPool.check_connection.
+	cfg.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
+		if err := conn.Ping(ctx); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Store{pool: pool, searchPath: schema + ", pg_catalog"}, nil
+}
+
+// Close releases the pool's connections.
+func (s *Store) Close() { s.pool.Close() }
+
+// Healthy reports whether the pool can hand out a working connection right now.
+// It answers rather than raises: the one thing a readiness probe must never do
+// is fail to produce a verdict.
+func (s *Store) Healthy(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return false
+	}
+	defer conn.Release()
+	var one int
+	return conn.QueryRow(ctx, "SELECT 1").Scan(&one) == nil
+}
+
+// Raw yields a connection with no tenant scope, read-only so it cannot become a
+// write path into every tenant's rows at once. For startup checks only.
+func (s *Store) Raw(ctx context.Context, fn func(pgx.Tx) error) error {
+	return s.tx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly},
+		"SELECT set_config('search_path', $1, true)", []any{s.searchPath}, fn)
+}
+
+// Scope yields a connection scoped to tenant for the life of one transaction.
+func (s *Store) Scope(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) error) error {
+	return s.tx(ctx, pgx.TxOptions{},
+		"SELECT set_config('search_path', $1, true), set_config($2, $3, true)",
+		[]any{s.searchPath, TenantGUC, tenant.String()}, fn)
+}
+
+// AdminScope yields a read-only connection that reads every tenant, for the
+// admin console only. Read-only, and the policy behind it is FOR SELECT: an
+// admin has no write path into a tenant it did not name. okf.admin is
+// self-asserted, so anything holding the app DSN can set it with or without
+// this method; authentication happens above this method, never inside it.
+func (s *Store) AdminScope(ctx context.Context, fn func(pgx.Tx) error) error {
+	return s.tx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly},
+		"SELECT set_config('search_path', $1, true), set_config($2, 'on', true), set_config($3, $4, true)",
+		[]any{s.searchPath, AdminGUC, TenantGUC, nilTenant}, fn)
+}
+
+// tx acquires with a bounded wait, runs setup in the new transaction, then fn.
+// set_config's is_local argument is SET LOCAL and, unlike SET, takes a
+// parameter; a session-scoped value would outlive the transaction and be
+// inherited by whoever next takes this connection from the pool.
+func (s *Store) tx(ctx context.Context, opts pgx.TxOptions, setup string, args []any, fn func(pgx.Tx) error) error {
+	ctx, cancel := context.WithTimeout(ctx, acquireTimeout)
+	defer cancel()
+	return pgx.BeginTxFunc(ctx, s.pool, opts, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, setup, args...); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
