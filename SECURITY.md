@@ -50,6 +50,17 @@ Out of scope, because they are documented behaviour rather than defects:
   the README and the chart, and is a roadmap item rather than a bug — but if you
   have found a way to reach a keepsake that its operator believed was private,
   we want to know.
+- The admin console has no login throttling. One account, one password, no
+  lockout after failed attempts — that password is the whole perimeter, keep
+  the Service `ClusterIP` and reach it by `kubectl port-forward`. Fronting it
+  with anything else needs throttling added first.
+
+Worth knowing even though it's an operational footgun rather than a
+vulnerability: a GitOps install that omits `admin.existingSecret` regenerates
+the admin password on every sync, because `helm template` and `helm template |
+kubectl apply` — how Argo CD and similar tools render this chart — never
+evaluate `lookup`, which is what would otherwise keep it stable across
+upgrades. Set `admin.existingSecret` for any GitOps-managed install.
 
 ## Supported versions
 
