@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go.yaml.in/yaml/v3"
+	"github.com/roee-fs/keepsake/okf/internal/yaml"
 )
 
 // YAMLError is frontmatter that cannot be read. Callers prefix it with the file name.
