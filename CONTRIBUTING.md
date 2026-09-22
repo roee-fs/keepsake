@@ -43,6 +43,10 @@ you can run it yourself with `bash e2e/run.sh`, which needs `kind`, `kubectl`
 and `helm`. It creates and deletes its own cluster and never touches your
 current kubectl context.
 
+For a cluster that stays up, `bash e2e/up.sh` installs the same release on a
+`keepsake-local` cluster and prints the console URL and password. Re-run it after
+a change; `bash e2e/down.sh` deletes it.
+
 `harness/` is a much wider version of the same idea — two install modes,
 concurrency, resilience, a real agent — and is deliberately **not** checked in.
 If you need it, ask; it is kept out of the repository because it is a working
