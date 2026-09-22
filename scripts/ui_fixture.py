@@ -58,8 +58,10 @@ _BUNDLE: dict[str, tuple[str, str, str, str]] = {
         "guide",
         "Login",
         "How users sign in.",
-        "Start a [Session](session.md) once credentials check out. High-risk "
-        "accounts also require [MFA](security/mfa.md).\n",
+        (
+            "Start a [Session](session.md) once credentials check out. High-risk "
+            "accounts also require [MFA](security/mfa.md).\n"
+        ),
     ),
     "auth/session.md": (
         "guide",
@@ -199,8 +201,12 @@ def _create_roles(admin_dsn: str, dbname: str) -> None:
     """Mirrors tests/conftest.py: an unprivileged app role is what makes RLS real."""
     create_role = sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}")
     with psycopg.connect(admin_dsn, autocommit=True) as conn:
-        conn.execute(create_role.format(sql.Identifier(OWNER_ROLE), sql.Literal(OWNER_PASSWORD)))
-        conn.execute(create_role.format(sql.Identifier(APP_ROLE), sql.Literal(APP_PASSWORD)))
+        conn.execute(
+            create_role.format(sql.Identifier(OWNER_ROLE), sql.Literal(OWNER_PASSWORD))
+        )
+        conn.execute(
+            create_role.format(sql.Identifier(APP_ROLE), sql.Literal(APP_PASSWORD))
+        )
         conn.execute(
             sql.SQL("GRANT CREATE ON DATABASE {} TO {}").format(
                 sql.Identifier(dbname), sql.Identifier(OWNER_ROLE)
