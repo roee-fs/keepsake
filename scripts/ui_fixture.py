@@ -21,7 +21,7 @@ import os
 import signal
 import socket
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from types import FrameType
 from uuid import UUID
@@ -140,21 +140,58 @@ _REVISED_LOGIN_BODY = (
 )
 
 # Every timestamp `import_bundle` writes defaults to `now()`, which would make the
-# Task 15 screenshot suite diff on wall-clock drift every run. Pin them instead.
-# ponytail: a fixed past date, not "N days before whenever this runs" -- pixel-diffed
-# screenshots need identical text on every run, and `daily_writes`' 30-day window is
-# measured against Postgres's real `current_date`. Comfortably outside that window
-# for the foreseeable future; bump it if it ever drifts inside (the writes-per-day
-# chart would stop showing its "No writes in this window" empty state).
-_SEED_TIME = datetime(2024, 1, 8, 9, 0, tzinfo=UTC)
+# screenshot suite diff on wall-clock drift every run. Pin them instead -- but pin
+# them relative to Postgres's own `current_date`, not to a fixed calendar date.
+# `daily_writes` buckets by `generate_series(current_date - 29, current_date)`, so
+# any absolute date old enough to be stable forever is also outside the only window
+# that would ever draw it: the writes-per-day chart can be deterministic or
+# non-empty, never both. It is a published artefact, so non-empty wins, and the
+# cost is stated plainly -- a baseline reproduces on the day it was captured.
+# Regenerate the screenshots and this seed in the same sitting.
+#
+# Days before that anchor, per bundle path. Two tenants double every count, so the
+# all-tenants chart reads 4, 2, 6, 2, 4, 2, 2, 2 with the v2 revision adding a
+# trailing 1 -- spread across the window rather than clustered, because a flat line
+# or a single bar does not read as real data.
+_DAYS_AGO: dict[str, int] = {
+    "auth/login": 28,
+    "auth/session": 28,
+    "auth/logout": 25,
+    "auth/security/mfa": 22,
+    "auth/security/audit-log": 22,
+    "billing/customer": 22,
+    "billing/invoice": 18,
+    "billing/plan": 15,
+    "billing/refund": 15,
+    "ops/deploy": 11,
+    "ops/rollback": 7,
+    "ops/oncall": 4,
+}
+_REVISED_DAYS_AGO = 1
+# Hours 9..20, never near midnight: `created_at::date` and `current_date` are both
+# resolved in the session timezone, so a mid-morning anchor keeps a row in the
+# bucket it was meant for even if that timezone is not the UTC these are built in.
+_FIRST_HOUR = 9
+
+# A path missing here keeps its `now()` timestamp and silently breaks a baseline,
+# and a revision older than the newest concept reorders the activity feed. Both
+# fail at import instead.
+assert _DAYS_AGO.keys() == {p.removesuffix(".md") for p in _BUNDLE}
+assert _REVISED_DAYS_AGO < min(_DAYS_AGO.values())
 
 
 def _freeze_timestamps(store: Store) -> None:
-    paths = [p.removesuffix(".md") for p in _BUNDLE]
+    with store.scope(TENANT_A) as conn:
+        row = conn.execute("SELECT current_date").fetchone()
+        assert row is not None
+        anchor = datetime.combine(row[0], time(_FIRST_HOUR), tzinfo=UTC)
+
     for tenant_id in (TENANT_A, TENANT_B):
         with store.scope(tenant_id) as conn:
-            for i, path in enumerate(paths):
-                ts = _SEED_TIME + timedelta(hours=i)
+            for i, (path, days_ago) in enumerate(_DAYS_AGO.items()):
+                # A distinct hour per path is what breaks ties in the activity
+                # feed's `ORDER BY created_at DESC, path DESC`.
+                ts = anchor - timedelta(days=days_ago) + timedelta(hours=i)
                 conn.execute(
                     "UPDATE concept SET created_at=%s, updated_at=%s WHERE path=%s",
                     (ts, ts, path),
@@ -165,7 +202,7 @@ def _freeze_timestamps(store: Store) -> None:
                 )
     # The revised auth/login (v2, tenant A only) is the one row with real history --
     # a later fixed time keeps its revision list ordered sensibly.
-    revised_at = _SEED_TIME + timedelta(days=1)
+    revised_at = anchor - timedelta(days=_REVISED_DAYS_AGO)
     with store.scope(TENANT_A) as conn:
         conn.execute(
             "UPDATE concept SET updated_at=%s WHERE path='auth/login'", (revised_at,)

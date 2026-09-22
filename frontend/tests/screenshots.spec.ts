@@ -56,6 +56,11 @@ test('browse, search results', async ({ page }) => {
   await page.goto(`/concepts?tenant=${TENANT_A}`)
   await page.getByPlaceholder('Search, or /pattern to grep').fill('oncall')
   await expect(page.getByRole('link', { name: 'ops/oncall', exact: true })).toBeVisible()
+  // ops/oncall is in the unfiltered browse table too, so its presence does not
+  // mean the 300ms SearchBox debounce has fired -- waiting only on that races
+  // the capture, and two runs disagree on which table they photograph. A row the
+  // result set does not contain is the signal that the swap actually happened.
+  await expect(page.getByRole('link', { name: 'auth/login', exact: true })).toHaveCount(0)
   await capture(page, 'browse-search')
 })
 
