@@ -186,12 +186,21 @@ def _freeze_timestamps(store: Store) -> None:
         assert row is not None
         anchor = datetime.combine(row[0], time(_FIRST_HOUR), tzinfo=UTC)
 
-    for tenant_id in (TENANT_A, TENANT_B):
+    for tenant_n, tenant_id in enumerate((TENANT_A, TENANT_B)):
         with store.scope(tenant_id) as conn:
             for i, (path, days_ago) in enumerate(_DAYS_AGO.items()):
-                # A distinct hour per path is what breaks ties in the activity
-                # feed's `ORDER BY created_at DESC, path DESC`.
-                ts = anchor - timedelta(days=days_ago) + timedelta(hours=i)
+                # `activity()` orders by `created_at DESC, path DESC, version
+                # DESC` with no tenant tiebreak, so the two tenants' copies of one
+                # path are a real tie and the planner may return them either way
+                # round -- observed swapping between two container runs, which is
+                # what makes a screenshot non-reproducible. A distinct hour per
+                # path and a half-hour per tenant leaves no tie to break. Both
+                # stay inside the same day, so the chart's buckets do not move.
+                ts = (
+                    anchor
+                    - timedelta(days=days_ago)
+                    + timedelta(hours=i, minutes=30 * tenant_n)
+                )
                 conn.execute(
                     "UPDATE concept SET created_at=%s, updated_at=%s WHERE path=%s",
                     (ts, ts, path),

@@ -4,6 +4,7 @@ import type { ConceptPage, GrepHit, HitOut } from '../client'
 import { grepGrepGet, listConceptsConceptsGet, searchSearchGet } from '../client'
 import { PathTree } from '../components/PathTree'
 import { SearchBox } from '../components/SearchBox'
+import { TenantId } from '../components/TenantId'
 import { TenantSwitcher } from '../components/TenantSwitcher'
 
 const PAGE_SIZE = 50
@@ -16,6 +17,8 @@ const TREE_SAMPLE_SIZE = 200
 const PATH_LINK = 'text-fg transition-colors hover:text-link hover:underline'
 const SKELETON = 'mt-3 h-48 animate-pulse rounded-md border border-line bg-surface'
 const EMPTY = 'mt-3 text-fg-muted'
+// The minimum keeps a one-row result from reading as a half-loaded page.
+const TABLE_SHELL = 'min-h-96 overflow-x-auto rounded-md border border-line'
 
 export const Route = createFileRoute('/concepts/')({
   validateSearch: (search: Record<string, unknown>): { prefix?: string; q?: string; offset?: number } => ({
@@ -154,7 +157,7 @@ function BrowseTable({
   }
   return (
     <div className="mt-3">
-      <div className="overflow-x-auto rounded-md border border-line">
+      <div className={TABLE_SHELL}>
         <table className="tbl">
           <thead>
             <tr>
@@ -181,7 +184,11 @@ function BrowseTable({
                 </td>
                 <td className="text-fg-muted">{item.type}</td>
                 <td>{item.title}</td>
-                {showTenant && <td className="font-mono text-fg-muted">{item.tenant_id}</td>}
+                {showTenant && (
+                  <td>
+                    <TenantId tenantId={item.tenant_id} />
+                  </td>
+                )}
                 <td className="font-mono tabular-nums text-fg-muted">{item.version}</td>
                 <td className="tabular-nums whitespace-nowrap text-fg-muted">
                   {new Date(item.updated_at).toLocaleString()}
@@ -226,7 +233,7 @@ function SearchTable({
   if (isLoading) return <div className={SKELETON} />
   if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
-    <div className="mt-3 overflow-x-auto rounded-md border border-line">
+    <div className={`mt-3 ${TABLE_SHELL}`}>
       <table className="tbl">
         <thead>
           <tr>
@@ -274,7 +281,7 @@ function GrepTable({
   if (isLoading) return <div className={SKELETON} />
   if (!hits || hits.length === 0) return <p className={EMPTY}>No matches.</p>
   return (
-    <div className="mt-3 overflow-x-auto rounded-md border border-line">
+    <div className={`mt-3 ${TABLE_SHELL}`}>
       <table className="tbl">
         <thead>
           <tr>

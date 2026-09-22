@@ -1,4 +1,5 @@
 import type { RevisionOut } from '../client'
+import { TenantId } from './TenantId'
 
 type ActivityListProps = {
   revisions: RevisionOut[] | undefined
@@ -37,8 +38,8 @@ export function ActivityList({ revisions, isLoading, showTenant }: ActivityListP
             <tr key={`${r.tenant_id}:${r.path}:${r.version}`}>
               <td className="font-mono">{r.path}</td>
               {showTenant && (
-                <td className="font-mono text-fg-muted" title={r.tenant_id}>
-                  {r.tenant_id.slice(0, 8)}
+                <td>
+                  <TenantId tenantId={r.tenant_id} />
                 </td>
               )}
               <td className="font-mono tabular-nums text-fg-muted">{r.version}</td>

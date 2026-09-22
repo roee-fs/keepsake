@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { tenantsTenantsGet } from '../client'
+import { tenantPrefix } from './TenantId'
 
 const ALL_TENANTS = ''
 
@@ -18,8 +19,8 @@ export function TenantSwitcher() {
     queryFn: async () => (await tenantsTenantsGet({ throwOnError: true })).data,
   })
 
-  // A UUID option is wider than the browse sidebar, so the select is capped
-  // rather than left to size itself by its longest option.
+  // Sized by its column rather than by its content: left to itself a select is
+  // as wide as its longest option, which on the overview is the whole page.
   return (
     <select
       className="w-full max-w-72 rounded-md border border-line bg-surface px-2 py-1.5 font-mono text-fg-muted transition-colors hover:text-fg"
@@ -32,7 +33,7 @@ export function TenantSwitcher() {
       <option value={ALL_TENANTS}>All tenants</option>
       {tenants?.map((t) => (
         <option key={t.tenant_id} value={t.tenant_id}>
-          {t.tenant_id} ({t.concepts})
+          {tenantPrefix(t.tenant_id)} ({t.concepts})
         </option>
       ))}
     </select>
