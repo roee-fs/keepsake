@@ -55,7 +55,12 @@ func misconfigured(format string, args ...any) error {
 	return &MisconfiguredDatabase{Msg: fmt.Sprintf(format, args...)}
 }
 
+// tenantExpr is tenant_isolation as migration 0001 writes it, whitespace collapsed.
+var tenantExpr = "(tenant_id = (current_setting('" + TenantGUC + "'::text))::uuid)"
+
 func readsTenant(expr string) bool { return strings.Contains(expr, TenantGUC) }
+
+func collapse(expr string) string { return strings.Join(strings.Fields(expr), " ") }
 
 // policyFault names the clause through which a policy fails to confine its rows, or returns "".
 func policyFault(p policyRow) string {
@@ -65,6 +70,10 @@ func policyFault(p policyRow) string {
 	if p.name != AdminPolicy {
 		if slices.ContainsFunc(p.exprs, func(e string) bool { return !readsTenant(e) }) {
 			return fmt.Sprintf("does not read %s, so it does not restrict rows to one tenant", TenantGUC)
+		}
+		// Permissive policies are ORed, so any looser expression widens every read.
+		if p.permissive && slices.ContainsFunc(p.exprs, func(e string) bool { return collapse(e) != tenantExpr }) {
+			return fmt.Sprintf("does not read exactly %s", tenantExpr)
 		}
 		return ""
 	}
@@ -77,7 +86,7 @@ func policyFault(p policyRow) string {
 		return fmt.Sprintf("is the %s exemption but is RESTRICTIVE, so it hides every "+
 			"row from every tenant", AdminPolicy)
 	}
-	if len(p.exprs) != 1 || strings.Join(strings.Fields(p.exprs[0]), " ") != adminQual {
+	if len(p.exprs) != 1 || collapse(p.exprs[0]) != adminQual {
 		return fmt.Sprintf("is the %s exemption but does not read exactly %s", AdminPolicy, adminQual)
 	}
 	return ""

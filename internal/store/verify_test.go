@@ -241,6 +241,28 @@ func TestVerifyRejectsAPermissivePolicy(t *testing.T) {
 			"so it does not restrict rows to one tenant")
 }
 
+// Each reads okf.current_tenant and still admits every tenant's rows.
+func TestVerifyRejectsAWidenedTenantPolicy(t *testing.T) {
+	for _, qual := range []string{
+		fmt.Sprintf("%s OR true", tenantQual),
+		"current_setting('okf.current_tenant') IS NOT NULL",
+		"current_setting('okf.current_tenant', true) <> 'x'",
+	} {
+		t.Run(qual, func(t *testing.T) {
+			pgtest.Exec(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY tenant_isolation ON okf.concept USING (%s)", qual))
+			t.Cleanup(func() {
+				pgtest.Exec(t, db.OwnerDSN,
+					fmt.Sprintf("ALTER POLICY tenant_isolation ON okf.concept USING (%s)", tenantQual))
+			})
+
+			err := verifyDSN(t, db.AppDSN, "okf")
+			assertMisconfigured(t, err,
+				"okf.concept policy tenant_isolation does not read exactly "+
+					"(tenant_id = (current_setting('okf.current_tenant'::text))::uuid)")
+		})
+	}
+}
+
 // A correct USING with WITH CHECK (true) reads one tenant and writes any.
 func TestVerifyRejectsAPermissiveWithCheck(t *testing.T) {
 	pgtest.Exec(t, db.OwnerDSN, "ALTER POLICY tenant_isolation ON okf.concept WITH CHECK (true)")
