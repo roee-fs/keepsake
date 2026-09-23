@@ -1,4 +1,4 @@
-// Ported from the app tests in 2de90d2:tests/test_tools.py and 2de90d2:tests/test_api.py.
+// Ported from the app tests in 2de90d2:tests/test_tools.py and 8f2af2e:tests/test_api.py.
 package server
 
 import (
@@ -156,6 +156,17 @@ func TestStaticBundlePresentServesTheConsoleLastWithSPAFallback(t *testing.T) {
 		if resp.StatusCode != 200 || body != shell {
 			t.Fatalf("%s = %d %q", p, resp.StatusCode, body)
 		}
+		// The shell names this build's assets, so it must not outlive an upgrade.
+		if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+			t.Fatalf("%s Cache-Control = %q", p, cc)
+		}
+	}
+	if resp, _ := send(t, http.MethodGet, base+"/assets/app.js", ""); resp.Header.Get("Cache-Control") != "" {
+		t.Fatalf("a hashed asset is served with Cache-Control %q", resp.Header.Get("Cache-Control"))
+	}
+	// The console must not stop the router redirecting a trailing slash.
+	if resp, _ := send(t, http.MethodPost, base+"/mcp/", "{}"); resp.StatusCode != 307 || resp.Header.Get("Location") != "/mcp" {
+		t.Fatalf("POST /mcp/ = %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	wantReady(t, base)
 	wantLogin(t, base)
@@ -176,8 +187,8 @@ func TestStaticFallsBackToTheShellButNotForAPIAndMCP(t *testing.T) {
 	wantMCP(t, base)
 }
 
-// Starlette's behaviour at 2de90d2: the catch-all mount answers every unmatched
-// path, and without it an unmatched path one slash away from a route redirects.
+// Starlette's behaviour at 8f2af2e: an unmatched path one slash away from a route
+// redirects, and the console, as the router's fallback, answers the rest.
 func TestUnmatchedPathsBehaveAsStarlettesRouter(t *testing.T) {
 	type want struct {
 		status   int
@@ -189,9 +200,11 @@ func TestUnmatchedPathsBehaveAsStarlettesRouter(t *testing.T) {
 		method, path string
 		want         want
 	}{
-		{true, "GET", "/mcp/", want{200, "", shell}},
-		{true, "GET", "/readyz/", want{200, "", shell}},
-		{true, "GET", "/api", want{200, "", shell}},
+		{true, "GET", "/mcp/", want{307, "/mcp", ""}},
+		{true, "POST", "/mcp/", want{307, "/mcp", ""}},
+		{true, "GET", "/readyz/", want{307, "/readyz", ""}},
+		{true, "GET", "/api", want{307, "/api/", ""}},
+		{true, "GET", "/elsewhere", want{200, "", shell}},
 		{true, "POST", "/readyz", want{405, "", ""}},
 		{true, "POST", "/elsewhere", want{405, "", ""}},
 		{true, "GET", "/assets", want{200, "", shell}},
@@ -229,7 +242,7 @@ func TestADirectoryWithAnIndexIsServedAsStarletteServesIt(t *testing.T) {
 }
 
 // A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows. The
-// refusal comes before the body limit and the method checks.
+// refusal comes before the body limit and the method checks, and /mcp/ still redirects.
 func TestMCPRefusesABrowserOrigin(t *testing.T) {
 	base := withStatic(t)
 	for _, c := range []struct {
@@ -243,6 +256,7 @@ func TestMCPRefusesABrowserOrigin(t *testing.T) {
 		{"GET", "/mcp", "x", "", 403},
 		{"DELETE", "/mcp", "x", "", 403},
 		{"PUT", "/mcp", "x", "", 403},
+		{"POST", "/mcp/", "x", toolsList, 307},
 		{"GET", "/readyz", "x", "", 200},
 	} {
 		req, err := http.NewRequest(c.method, base+c.path, strings.NewReader(c.body))

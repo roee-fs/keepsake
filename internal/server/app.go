@@ -1,5 +1,5 @@
 // The HTTP entry point. Verify runs here, before anything can bind a port.
-// Ported from 2de90d2:src/keepsake/server/app.py.
+// Ported from 8f2af2e:src/keepsake/server/app.py.
 package server
 
 import (
@@ -65,11 +65,13 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 		}
 		writeJSON(w, status, map[string]bool{"ready": ready})
 	})
-	var fallback http.Handler = slashRedirect(mux)
+	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Not Found", http.StatusNotFound)
+	})
+	var fallback http.Handler = slashRedirect(mux, notFound)
 	closeRoot := func() {}
 	if UIEnabled() {
 		mux.Handle("/api/", http.StripPrefix("/api", NewAPI(cs, NewAuth(password))))
-		// Unguarded because gating it would break the login page.
 		dir := os.Getenv("KEEPSAKE_STATIC_DIR")
 		if dir == "" {
 			dir = defaultStaticDir
@@ -77,7 +79,9 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 		// os.Root, not os.DirFS: a symlink out of the bundle is refused, as Starlette refuses it.
 		if root, err := os.OpenRoot(dir); err == nil {
 			closeRoot = func() { root.Close() }
-			fallback = staticConsole(root.FS())
+			// The router's fallback, after the slash redirect, so /mcp/ still redirects
+			// to /mcp. Unguarded because gating it would break the login page.
+			fallback = slashRedirect(mux, staticConsole(root.FS()))
 		} else {
 			log.Printf("no console bundle at %s; serving API and MCP only", dir)
 		}
@@ -103,8 +107,9 @@ func refuseBrowsers(next http.Handler) http.Handler {
 }
 
 // slashRedirect answers an unmatched path as Starlette's router does: with a 307 to
-// the same path with its trailing slash toggled, if that path has a route.
-func slashRedirect(mux *http.ServeMux) http.Handler {
+// the same path with its trailing slash toggled if that path has a route, and with
+// the router's default otherwise.
+func slashRedirect(mux *http.ServeMux, def http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		alt := r.URL.Path + "/"
 		if strings.HasSuffix(r.URL.Path, "/") {
@@ -118,7 +123,7 @@ func slashRedirect(mux *http.ServeMux) http.Handler {
 			http.Redirect(w, r, u.RequestURI(), http.StatusTemporaryRedirect)
 			return
 		}
-		http.Error(w, "Not Found", http.StatusNotFound)
+		def.ServeHTTP(w, r)
 	})
 }
 
@@ -161,6 +166,11 @@ func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name string) 
 	rs, ok := f.(io.ReadSeeker)
 	if err != nil || !st.Mode().IsRegular() || !ok {
 		return false
+	}
+	// The shell names this build's hashed assets, so a cached copy outlives an
+	// upgrade and loads chunks the new image no longer has.
+	if st.Name() == "index.html" {
+		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeContent(w, r, st.Name(), st.ModTime(), rs)
 	return true
