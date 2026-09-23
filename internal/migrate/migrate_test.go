@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
@@ -469,32 +468,4 @@ func TestUpIsIdempotentAtHead(t *testing.T) {
 	if version != Head() {
 		t.Fatalf("version_num = %s, want %s", version, Head())
 	}
-}
-
-func TestHeadIsTheLastMigration(t *testing.T) {
-	if Head() != lastPythonRevision(t) {
-		t.Fatal(Head())
-	}
-}
-
-// lastPythonRevision is the highest revision id under src/keepsake/store/migrations/versions.
-func lastPythonRevision(t *testing.T) string {
-	t.Helper()
-	entries, err := os.ReadDir("../../src/keepsake/store/migrations/versions")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var revisions []string
-	for _, e := range entries {
-		revision, _, ok := strings.Cut(e.Name(), "_")
-		if !ok || !strings.HasSuffix(e.Name(), ".py") {
-			continue
-		}
-		revisions = append(revisions, revision)
-	}
-	if len(revisions) == 0 {
-		t.Fatal("no python migrations found")
-	}
-	sort.Strings(revisions)
-	return revisions[len(revisions)-1]
 }

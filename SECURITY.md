@@ -24,7 +24,7 @@ it early than be right:
 - Any read or write that crosses a tenant boundary, by any route.
 - Anything that lets the server run with a database role that can bypass row
   level security — a superuser, a `BYPASSRLS` role, or the owner of the tables
-  the policy guards. `keepsake.store.verify` exists to refuse exactly this at
+  the policy guards. `store.Verify` exists to refuse exactly this at
   startup, so a way past that check is a vulnerability in itself.
 - A tool argument that reaches SQL, a shell, a file path or a schema name
   without validation.

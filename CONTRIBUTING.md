@@ -5,35 +5,37 @@ change that fits is usually easy to land.
 
 ## Getting set up
 
-You need [uv](https://docs.astral.sh/uv/) and Docker. Python 3.14 is a hard
-floor and uv will fetch it for you.
+You need Go 1.27 and Docker.
 
 ```bash
-uv sync                 # the venv, including dev dependencies
-uv run pytest           # the whole suite
+go test ./...
 ```
 
 The tests bring up PostgreSQL in a container through
-[testcontainers](https://testcontainers.com/), so Docker has to be running.
+[testcontainers](https://testcontainers.com/), so Docker MUST be running.
 There is nothing to configure and no database to create by hand.
+
+The Python tooling is only for `e2e/` and the chart tests. It needs
+[uv](https://docs.astral.sh/uv/), which fetches Python 3.14 for you:
+`uv sync && uv run pytest tests`.
 
 ## Before you open a pull request
 
 Run what CI runs:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run ty check src tests e2e
-uv run lint-imports
-uv run pytest
+gofmt -l .
+go vet ./...
+go test -race ./...
+uv run ruff check e2e tests
+uv run pytest tests
 ```
 
-`lint-imports` is not optional decoration. It enforces two contracts that the
-design depends on: `okf_core` never imports `keepsake`, because it is meant to
-be publishable on its own; and `keepsake.store` never imports the server or the
-CLI. If your change breaks one of those, the layering is usually the thing to
-reconsider rather than the contract.
+`layering_test.go` is not optional decoration. It enforces two contracts that
+the design depends on: `okf` never imports `internal/...`, because it is meant
+to be publishable on its own; and `internal/store` never imports the server or
+the CLI. If your change breaks one of those, the layering is usually the thing
+to reconsider rather than the contract.
 
 ## The end-to-end suite
 
@@ -65,11 +67,11 @@ bun run dev
 
 Vite proxies `/api` and `/mcp` to `localhost:8000` — the session cookie is
 `SameSite=Strict`, so a cross-origin dev server never gets it back. Point that
-port at a real server: run `uv run keepsake migrate` and `uv run keepsake serve`
-against a database you already have, with `KEEPSAKE_DSN` and
-`KEEPSAKE_ADMIN_PASSWORD` set.
+port at a real server: run `go run ./cmd/keepsake migrate` and
+`go run ./cmd/keepsake serve` against a database you already have, with
+`KEEPSAKE_DSN` and `KEEPSAKE_ADMIN_PASSWORD` set.
 
-After any backend response-model change, regenerate the generated client:
+After any change to `frontend/openapi.json`, regenerate the generated client:
 
 ```bash
 bash scripts/generate-client.sh
@@ -88,8 +90,8 @@ this tree. They're refreshed by hand and aren't part of CI.
 
 - **Tests assert behaviour, not structure.** A test that would pass against a
   stub is not a test. If you are asserting that something is absent, assert on
-  the value rather than on the shape: `assert not hasattr(hit, "body")` passes
-  for free on a `slots=True` dataclass and proves nothing about the query.
+  the value rather than on the shape: a check that a field is empty passes for
+  free on a struct that never had it, and proves nothing about the query.
 - **Comments explain why.** The code says what it does. A comment earns its line
   by recording a constraint, a measurement, or the reason an obvious alternative
   is wrong. There are a lot of those in this codebase and they are the most
@@ -98,8 +100,8 @@ this tree. They're refreshed by hand and aren't part of CI.
   Add a new one, and remember that `helm upgrade` re-runs the hook against a
   database already at head.
 - **Anything touching isolation needs a test that fails without it.** The tenant
-  boundary is the product. `tests/test_isolation.py` and `tests/test_verify.py`
-  are where those live.
+  boundary is the product. `internal/store/isolation_test.go` and
+  `internal/store/verify_test.go` are where those live.
 
 ## Commits and pull requests
 
@@ -114,8 +116,7 @@ two pull requests.
 
 For maintainers. Everything is driven by the tag, so there is nothing to click.
 
-1. Set the version in **three** places, which must agree: `pyproject.toml`
-   `version`, and `Chart.yaml`'s `version` and `appVersion`.
+1. Set the version in `Chart.yaml`'s `version` and `appVersion`, which MUST agree.
    `tests/test_release_metadata.py` enforces this and the release refuses
    otherwise — `appVersion` is the image tag the chart pulls by default, so a
    drift there is an install that fails on a tag nobody built.

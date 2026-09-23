@@ -1,66 +1,14 @@
-[project]
-name = "keepsake"
-version = "0.1.0"
-description = "MCP server storing OKF concepts in Postgres with row-level tenant isolation"
-readme = "README.md"
-requires-python = ">=3.14"
-# license-files as well as license: without it the wheel carries the SPDX string but
-# not the terms, and a redistributor has to go back to the repository for them.
-license = "MIT"
-license-files = ["LICENSE"]
-urls.Homepage = "https://github.com/roee-fs/keepsake"
-urls.Source = "https://github.com/roee-fs/keepsake"
-urls.Issues = "https://github.com/roee-fs/keepsake/issues"
-dependencies = [
-    "alembic>=1.20.0",
-    "fastapi>=0.121.0",
-    "mcp>=2.2.0",
-    "jsonschema>=4.26.0",
-    "psycopg[binary,pool]>=3.3.5",
-    "ruamel-yaml>=0.19.1",
-    "sqlalchemy>=2.0",
-    "starlette>=1.6.0",
-    "uvicorn>=0.53.0",
-]
-
-[project.scripts]
-keepsake = "keepsake.cli:main"
-
-[build-system]
-requires = ["uv_build>=0.12.13,<0.13.0"]
-build-backend = "uv_build"
-
-[tool.uv.build-backend]
-module-name = ["keepsake", "okf_core"]
+# Python tooling for e2e/ and the chart tests only. The server is Go.
+[tool.uv]
+package = false
 
 [dependency-groups]
 dev = [
-    "import-linter>=2.15",
     "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "ruamel-yaml>=0.19.1",
     "ruff>=0.16.7",
-    "testcontainers[postgres]>=4.15.0",
     "ty>=0.0.81",
 ]
 
-[tool.ruff]
-# Prose, not source: ruff would reformat the code blocks in the plan documents.
-extend-exclude = ["docs"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
-[tool.importlinter]
-root_packages = ["okf_core", "keepsake"]
-
-[[tool.importlinter.contracts]]
-name = "okf_core is a leaf: publishable without keepsake"
-type = "forbidden"
-source_modules = ["okf_core"]
-forbidden_modules = ["keepsake"]
-
-[[tool.importlinter.contracts]]
-name = "the store does not import the server"
-type = "forbidden"
-source_modules = ["keepsake.store"]
-forbidden_modules = ["keepsake.server", "keepsake.cli"]
