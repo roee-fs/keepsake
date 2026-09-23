@@ -192,9 +192,15 @@ func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	cs := store.NewConceptStore(s)
 	if _, _, err := cs.Create(ctx, A, okf.Concept{
 		Path: "x/y", Type: "Concept", Title: "secret", Body: "tenant a only",
-		Links: []string{"x/z"},
+		Links: []string{"t/z"},
 	}, "seed"); err != nil {
 		t.Fatal(err)
+	}
+	// The link target exists in both tenants, so B has a concept to read backlinks of.
+	for _, tenant := range []uuid.UUID{A, B} {
+		if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "t/z", Type: "Concept"}, "seed"); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// The positive control: every B assertion below also holds if nothing was written.
@@ -210,8 +216,8 @@ func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	if hits, err := cs.Grep(ctx, A, "tenant a only", 10); err != nil || len(hits) != 1 || hits[0].Path != "x/y" {
 		t.Fatalf("Grep(A, ...) = %v, %v, want just x/y", hits, err)
 	}
-	if bl, err := cs.Backlinks(ctx, A, "x/z"); err != nil || !reflect.DeepEqual(bl, []string{"x/y"}) {
-		t.Fatalf("Backlinks(A, x/z) = %v, %v, want [x/y]", bl, err)
+	if _, bl, err := cs.ReadWithBacklinks(ctx, A, "t/z"); err != nil || !reflect.DeepEqual(bl, []string{"x/y"}) {
+		t.Fatalf("ReadWithBacklinks(A, t/z) = %v, %v, want [x/y]", bl, err)
 	}
 
 	if c, err := cs.Read(ctx, B, "x/y"); err != nil || c != nil {
@@ -226,8 +232,8 @@ func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	if hits, err := cs.Grep(ctx, B, "tenant a only", 10); err != nil || len(hits) != 0 {
 		t.Fatalf("Grep(B, ...) = %v, %v, want empty", hits, err)
 	}
-	if bl, err := cs.Backlinks(ctx, B, "x/z"); err != nil || len(bl) != 0 {
-		t.Fatalf("Backlinks(B, x/z) = %v, %v, want empty", bl, err)
+	if c, bl, err := cs.ReadWithBacklinks(ctx, B, "t/z"); err != nil || c == nil || len(bl) != 0 {
+		t.Fatalf("ReadWithBacklinks(B, t/z) = %v, %v, %v, want no backlinks", c, bl, err)
 	}
 }
 

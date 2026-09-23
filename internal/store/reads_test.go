@@ -5,6 +5,7 @@
 package store_test
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -200,12 +201,13 @@ func TestSearchConfinesHitsToThePrefix(t *testing.T) {
 // Both concepts mention "dormant"; the one carrying it in its title outranks the other.
 var dormantHits = []string{"detect/dormant", "splunk/cursor"}
 
-func hitPaths(hits []store.Hit) []string {
-	paths := make([]string, len(hits))
-	for i, h := range hits {
-		paths[i] = h.Path
+// paths returns each row's Path field, in order.
+func paths[T any](rows []T) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = reflect.ValueOf(r).FieldByName("Path").String()
 	}
-	return paths
+	return out
 }
 
 func TestSearchIsCaseInsensitive(t *testing.T) {
@@ -215,8 +217,8 @@ func TestSearchIsCaseInsensitive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(hitPaths(hits), dormantHits) {
-		t.Fatalf("hits = %v, want %v", hitPaths(hits), dormantHits)
+	if !slices.Equal(paths(hits), dormantHits) {
+		t.Fatalf("hits = %v, want %v", paths(hits), dormantHits)
 	}
 }
 
@@ -231,8 +233,8 @@ func TestSearchTreatsTsquerySyntaxAsText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(hitPaths(hits), dormantHits) {
-		t.Fatalf("hits = %v, want %v", hitPaths(hits), dormantHits)
+	if !slices.Equal(paths(hits), dormantHits) {
+		t.Fatalf("hits = %v, want %v", paths(hits), dormantHits)
 	}
 }
 
@@ -245,25 +247,16 @@ func TestSearchOfATermlessQueryIsEmptyNotInvalid(t *testing.T) {
 	}
 }
 
-func grepPaths(t *testing.T, hits []store.GrepHit) []string {
-	t.Helper()
-	paths := make([]string, len(hits))
-	for i, h := range hits {
-		paths[i] = h.Path
-	}
-	return paths
-}
-
 func TestGrepMatchesARegexAndIsLimited(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
 
 	hits, err := cs.Grep(ctx, tenant, "index-time", 10)
-	if err != nil || !slices.Equal(grepPaths(t, hits), []string{"splunk/cursor"}) {
+	if err != nil || !slices.Equal(paths(hits), []string{"splunk/cursor"}) {
 		t.Fatalf("Grep(index-time) = %v, err %v", hits, err)
 	}
 	hits, err = cs.Grep(ctx, tenant, "inde.-tim[ez]", 10)
-	if err != nil || !slices.Equal(grepPaths(t, hits), []string{"splunk/cursor"}) {
+	if err != nil || !slices.Equal(paths(hits), []string{"splunk/cursor"}) {
 		t.Fatalf("Grep(inde.-tim[ez]) = %v, err %v", hits, err)
 	}
 	hits, err = cs.Grep(ctx, tenant, "[a-z]", 10)
@@ -285,7 +278,7 @@ func TestGrepMatchesTitlesAsWellAsBodies(t *testing.T) {
 	cs, tenant := fixture(t)
 	for _, pattern := range []string{"OAuth2", "oauth2"} {
 		hits, err := cs.Grep(ctx, tenant, pattern, 10)
-		if err != nil || !slices.Equal(grepPaths(t, hits), []string{"auth/flow"}) {
+		if err != nil || !slices.Equal(paths(hits), []string{"auth/flow"}) {
 			t.Fatalf("Grep(%q) = %v, err %v", pattern, hits, err)
 		}
 	}
@@ -374,13 +367,13 @@ func TestGrepIsCancelledRatherThanHoldingThePod(t *testing.T) {
 func TestBacklinksAreComputedNotStored(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	bl, err := cs.Backlinks(ctx, tenant, "detect/dormant")
+	_, bl, err := cs.ReadWithBacklinks(ctx, tenant, "detect/dormant")
 	if err != nil || !slices.Equal(bl, []string{"splunk/cursor"}) {
-		t.Fatalf("Backlinks(detect/dormant) = %v, err %v", bl, err)
+		t.Fatalf("backlinks(detect/dormant) = %v, err %v", bl, err)
 	}
-	bl, err = cs.Backlinks(ctx, tenant, "auth/flow")
-	if err != nil || len(bl) != 0 {
-		t.Fatalf("Backlinks(auth/flow) = %v, err %v, want empty", bl, err)
+	_, bl, err = cs.ReadWithBacklinks(ctx, tenant, "auth/flow")
+	if err != nil || bl == nil || len(bl) != 0 {
+		t.Fatalf("backlinks(auth/flow) = %#v, err %v, want empty", bl, err)
 	}
 }
 
@@ -417,22 +410,14 @@ func TestListTreatsThePrefixLiterally(t *testing.T) {
 // The admin console's read paths. tenant=nil means every tenant and must take
 // AdminScope; a concrete tenant must never fall through to it.
 
-func summaryPaths(page []store.Summary) []string {
-	paths := make([]string, len(page))
-	for i, s := range page {
-		paths[i] = s.Path
-	}
-	return paths
-}
-
 func TestPageReturnsSummariesUnderPrefix(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	page, err := cs.Page(ctx, &tenant, "detect/", 10, 0)
+	page, _, err := cs.Page(ctx, &tenant, "detect/", 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(summaryPaths(page), []string{"detect/dormant"}) {
+	if !slices.Equal(paths(page), []string{"detect/dormant"}) {
 		t.Fatalf("Page(detect/) = %+v", page)
 	}
 	if page[0].Type != "Concept" || page[0].Title != "Dormant Rule Identification" {
@@ -443,18 +428,18 @@ func TestPageReturnsSummariesUnderPrefix(t *testing.T) {
 func TestPageRespectsLimitAndOffset(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	first, err := cs.Page(ctx, &tenant, "", 2, 0)
+	first, _, err := cs.Page(ctx, &tenant, "", 2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := cs.Page(ctx, &tenant, "", 2, 2)
+	second, _, err := cs.Page(ctx, &tenant, "", 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(summaryPaths(first), []string{"auth/flow", "detect/dormant"}) {
+	if !slices.Equal(paths(first), []string{"auth/flow", "detect/dormant"}) {
 		t.Fatalf("Page(limit=2, offset=0) = %+v", first)
 	}
-	if !slices.Equal(summaryPaths(second), []string{"splunk/cursor"}) {
+	if !slices.Equal(paths(second), []string{"splunk/cursor"}) {
 		t.Fatalf("Page(limit=2, offset=2) = %+v", second)
 	}
 }
@@ -462,22 +447,22 @@ func TestPageRespectsLimitAndOffset(t *testing.T) {
 func TestPageOfANegativeLimitIsEmptyNotInvalid(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	page, err := cs.Page(ctx, &tenant, "", -1, 0)
+	page, _, err := cs.Page(ctx, &tenant, "", -1, 0)
 	if err != nil || len(page) != 0 {
 		t.Fatalf("Page(limit=-1) = %v, err %v, want empty", page, err)
 	}
 }
 
-func TestCountMatchesWhatPageCovers(t *testing.T) {
+func TestPageTotalCountsPastThePage(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	n, err := cs.Count(ctx, &tenant, "")
+	_, n, err := cs.Page(ctx, &tenant, "", 1, 0)
 	if err != nil || n != len(seedData) {
-		t.Fatalf("Count(\"\") = %d, err %v, want %d", n, err, len(seedData))
+		t.Fatalf("Page(\"\") total = %d, err %v, want %d", n, err, len(seedData))
 	}
-	n, err = cs.Count(ctx, &tenant, "detect/")
+	_, n, err = cs.Page(ctx, &tenant, "detect/", 1, 5)
 	if err != nil || n != 1 {
-		t.Fatalf("Count(detect/) = %d, err %v, want 1", n, err)
+		t.Fatalf("Page(detect/) total = %d, err %v, want 1", n, err)
 	}
 }
 
@@ -488,7 +473,7 @@ func TestPageOfOneTenantNeverReturnsAnothersRows(t *testing.T) {
 	if _, _, err := cs.Create(ctx, other, okf.Concept{Path: "other/one", Type: "Concept"}, "seed"); err != nil {
 		t.Fatal(err)
 	}
-	page, err := cs.Page(ctx, &tenant, "", 10, 0)
+	page, _, err := cs.Page(ctx, &tenant, "", 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +494,7 @@ func TestPageOfEveryTenantReturnsBoth(t *testing.T) {
 	if _, _, err := cs.Create(ctx, other, okf.Concept{Path: "other/one", Type: "Concept"}, "seed"); err != nil {
 		t.Fatal(err)
 	}
-	page, err := cs.Page(ctx, nil, "", 1000, 0)
+	page, _, err := cs.Page(ctx, nil, "", 1000, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,11 +524,11 @@ func TestPageOfEveryTenantBreaksATiedPathByTenantId(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first, err := cs.Page(ctx, nil, path, 1, 0)
+	first, _, err := cs.Page(ctx, nil, path, 1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := cs.Page(ctx, nil, path, 1, 1)
+	second, _, err := cs.Page(ctx, nil, path, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,14 +570,6 @@ func TestTotalsCountsConceptsTypesRevisionsLinksAndOrphans(t *testing.T) {
 	}
 }
 
-func revisionPaths(revs []store.Revision) []string {
-	paths := make([]string, len(revs))
-	for i, r := range revs {
-		paths[i] = r.Path
-	}
-	return paths
-}
-
 func TestActivityReturnsRecentRevisionsNewestFirst(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
@@ -602,8 +579,8 @@ func TestActivityReturnsRecentRevisionsNewestFirst(t *testing.T) {
 	}
 	// seed writes dormant, then flow, then cursor: newest-first reverses that.
 	want := []string{"splunk/cursor", "auth/flow", "detect/dormant"}
-	if !slices.Equal(revisionPaths(revs), want) {
-		t.Fatalf("Activity paths = %v, want %v", revisionPaths(revs), want)
+	if !slices.Equal(paths(revs), want) {
+		t.Fatalf("Activity paths = %v, want %v", paths(revs), want)
 	}
 }
 
@@ -728,8 +705,8 @@ func TestActivityOfEveryTenantBreaksATiedRevisionByTenantId(t *testing.T) {
 }
 
 // activity()'s cap is tenant-wide, so a quiet concept can fall off it.
-// RevisionsFor filters by path in SQL, so other paths cannot crowd it out.
-func TestRevisionsForIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
+// Detail filters its history by path in SQL, so other paths cannot crowd it out.
+func TestDetailHistoryIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
 	cs, tenant := fixture(t)
 	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "detect/dormant", Type: "Concept", Title: "v1"}, "seed"); err != nil {
 		t.Fatal(err)
@@ -746,12 +723,12 @@ func TestRevisionsForIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
 		}
 	}
 
-	revs, err := cs.RevisionsFor(ctx, &tenant, "detect/dormant", 3)
+	_, _, revs, err := cs.Detail(ctx, tenant, "detect/dormant", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(revs) != 2 || revs[0].Version != 2 || revs[1].Version != 1 {
-		t.Fatalf("RevisionsFor versions = %+v, want [2, 1]", revs)
+		t.Fatalf("Detail history = %+v, want [2, 1]", revs)
 	}
 	for _, r := range revs {
 		if r.TenantID != tenant {
@@ -779,6 +756,29 @@ func TestDailyWritesGroupsByDayAndZeroFillsGaps(t *testing.T) {
 		if w.Count != 0 {
 			t.Fatalf("write = %+v, want count 0", w)
 		}
+	}
+}
+
+// The series' first day starts at midnight: a write then counts, a write just before does not.
+func TestDailyWritesBoundsTheFirstDayAtMidnight(t *testing.T) {
+	cs, tenant := fixture(t)
+	create(t, okf.Concept{Path: "edge/in", Type: "Concept"})
+	create(t, okf.Concept{Path: "edge/out", Type: "Concept"})
+	execDDL(t, db.AdminDSN,
+		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = current_date - 6 "+
+			"WHERE tenant_id = '%s' AND path = 'edge/in'", tenant),
+		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = (current_date - 6)::timestamptz - interval '1 microsecond' "+
+			"WHERE tenant_id = '%s' AND path = 'edge/out'", tenant))
+	writes, err := cs.DailyWrites(ctx, &tenant, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := make([]int, len(writes))
+	for i, w := range writes {
+		counts[i] = w.Count
+	}
+	if !slices.Equal(counts, []int{1, 0, 0, 0, 0, 0, 0}) {
+		t.Fatalf("counts = %v, want the first day's write alone", counts)
 	}
 }
 
@@ -819,8 +819,8 @@ func TestRevisionsReturnsOldestFirstAndEmptyForANegativeLimit(t *testing.T) {
 	}
 	// seed writes dormant, then flow, then cursor: oldest-first keeps that order.
 	want := []string{"detect/dormant", "auth/flow", "splunk/cursor"}
-	if !slices.Equal(revisionPaths(revs), want) {
-		t.Fatalf("Revisions paths = %v, want %v", revisionPaths(revs), want)
+	if !slices.Equal(paths(revs), want) {
+		t.Fatalf("Revisions paths = %v, want %v", paths(revs), want)
 	}
 	empty, err := cs.Revisions(ctx, tenant, -1)
 	if err != nil || len(empty) != 0 {

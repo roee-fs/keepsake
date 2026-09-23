@@ -596,12 +596,7 @@ func (a *api) concepts(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	items, err := a.cs.Page(r.Context(), tenant, prefix, limit, offset)
-	if err != nil {
-		reply(w, nil, err)
-		return
-	}
-	total, err := a.cs.Count(r.Context(), tenant, prefix)
+	items, total, err := a.cs.Page(r.Context(), tenant, prefix, limit, offset)
 	page := conceptPage{Items: []summaryOut{}, Total: total}
 	for _, s := range items {
 		page.Items = append(page.Items, summaryOut{s.Path, s.Type, s.Title, s.Description, s.Version, pyTime(s.UpdatedAt), s.TenantID})
@@ -616,7 +611,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.PathValue("path")
-	c, backlinks, err := a.cs.ReadWithBacklinks(r.Context(), *tenant, path)
+	c, backlinks, history, err := a.cs.Detail(r.Context(), *tenant, path, historyLimit)
 	if err != nil {
 		reply(w, nil, err)
 		return
@@ -625,7 +620,6 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, detail{"Not Found"})
 		return
 	}
-	history, err := a.cs.RevisionsFor(r.Context(), tenant, path, historyLimit)
 	reply(w, conceptDetail{
 		c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Links, c.Version, backlinks, revisions(history),
 	}, err)

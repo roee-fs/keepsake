@@ -124,32 +124,33 @@ func (cs *ConceptStore) connect(ctx context.Context, tenant *uuid.UUID, fn func(
 	return cs.s.Scope(ctx, *tenant, fn)
 }
 
-func scanConcept(row pgx.Row) (okf.Concept, error) {
+// scanConcept scans readCols, then extra.
+func scanConcept(row pgx.Row, extra ...any) (okf.Concept, error) {
 	var c okf.Concept
 	var fm []byte
-	if err := row.Scan(&c.Path, &c.Type, &c.Title, &c.Description, &c.Body, &fm, &c.Links, &c.Version); err != nil {
+	dest := append([]any{&c.Path, &c.Type, &c.Title, &c.Description, &c.Body, &fm, &c.Links, &c.Version}, extra...)
+	if err := row.Scan(dest...); err != nil {
 		return okf.Concept{}, err
 	}
-	return finishConcept(c, fm)
-}
-
-func finishConcept(c okf.Concept, fm []byte) (okf.Concept, error) {
-	m := okf.NewMap()
-	if err := json.Unmarshal(fm, m); err != nil {
+	c.Frontmatter = okf.NewMap()
+	if err := json.Unmarshal(fm, c.Frontmatter); err != nil {
 		return okf.Concept{}, err
 	}
-	c.Frontmatter = m
-	if c.Links == nil {
-		c.Links = []string{}
-	}
+	c.Links = links(c.Links)
 	return c, nil
 }
 
-// backlinksSQL is _BACKLINKS with its one placeholder at position n: sequential,
-// not the GIN index (`links @> ARRAY[path]` is the only form it serves, and
-// arraycontains is not leakproof under FORCE ROW LEVEL SECURITY).
-func backlinksSQL(n int) string {
-	return fmt.Sprintf("ARRAY(SELECT b.path FROM concept b WHERE $%d = ANY(b.links) ORDER BY b.path)", n)
+// backlinksSQL is _BACKLINKS: sequential, not the GIN index, because arraycontains
+// is not leakproof under FORCE ROW LEVEL SECURITY.
+const backlinksSQL = "ARRAY(SELECT b.path FROM concept b WHERE $2 = ANY(b.links) ORDER BY b.path)"
+
+// collect runs sql and scans every row into a T by column position.
+func collect[T any](ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]T, error) {
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[T])
 }
 
 // Read returns the whole concept, body included. nil means no such path.
@@ -169,37 +170,45 @@ func (cs *ConceptStore) Read(ctx context.Context, tenant uuid.UUID, path string)
 	return out, err
 }
 
-// ReadWithBacklinks returns the concept and the paths linking to it. One statement,
-// so the backlinks cannot be read from a later snapshot than the concept.
-func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID, path string) (*okf.Concept, []string, error) {
-	var concept *okf.Concept
-	var backlinks []string
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		var c okf.Concept
-		var fm []byte
-		var bl []string
-		err := tx.QueryRow(ctx,
-			fmt.Sprintf("SELECT %s, %s FROM concept WHERE path = $1", readCols, backlinksSQL(2)),
-			path, path,
-		).Scan(&c.Path, &c.Type, &c.Title, &c.Description, &c.Body, &fm, &c.Links, &c.Version, &bl)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		c, err = finishConcept(c, fm)
-		if err != nil {
-			return err
-		}
-		concept = &c
-		if bl == nil {
-			bl = []string{}
-		}
-		backlinks = bl
-		return nil
+// readWithBacklinks reads the concept and the paths linking to it in one statement,
+// so the backlinks cannot come from a later snapshot than the concept.
+func readWithBacklinks(ctx context.Context, tx pgx.Tx, path string) (*okf.Concept, []string, error) {
+	var bl []string
+	c, err := scanConcept(tx.QueryRow(ctx,
+		"SELECT "+readCols+", "+backlinksSQL+" FROM concept WHERE path = $1", path, path), &bl)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return &c, links(bl), nil
+}
+
+// ReadWithBacklinks returns the concept and the paths linking to it. nil means no such path.
+func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID, path string) (c *okf.Concept, backlinks []string, err error) {
+	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		c, backlinks, err = readWithBacklinks(ctx, tx, path)
+		return err
 	})
-	return concept, backlinks, err
+	return c, backlinks, err
+}
+
+// Detail is ReadWithBacklinks plus the path's most recent limit revisions, newest
+// first, in one transaction. The cap is per path, so other concepts cannot crowd it out.
+func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []Revision, err error) {
+	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		if c, backlinks, err = readWithBacklinks(ctx, tx, path); err != nil || c == nil {
+			return err
+		}
+		history, err = collect[Revision](ctx, tx,
+			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
+				"to_char(created_at, 'YYYY-MM-DD') "+
+				"FROM concept_revision WHERE path = $1 "+
+				"ORDER BY version DESC LIMIT $2", path, limit)
+		return err
+	})
+	return c, backlinks, history, err
 }
 
 // ReadAll returns every concept, body included, path-ordered, from one snapshot.
@@ -210,29 +219,10 @@ func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Co
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-		for rows.Next() {
-			c, err := scanConcept(rows)
-			if err != nil {
-				return err
-			}
-			out = append(out, c)
-		}
-		return rows.Err()
+		out, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (okf.Concept, error) { return scanConcept(row) })
+		return err
 	})
 	return out, err
-}
-
-func scanRevisions(rows pgx.Rows) ([]Revision, error) {
-	var out []Revision
-	for rows.Next() {
-		var r Revision
-		if err := rows.Scan(&r.Path, &r.Version, &r.Op, &r.UpdatedBy, &r.CreatedAt, &r.TenantID, &r.Day); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
 }
 
 // Revisions returns the most recent limit revisions, oldest first: the newest
@@ -243,8 +233,8 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 		return nil, nil
 	}
 	var out []Revision
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+		out, err = collect[Revision](ctx, tx,
 			"SELECT path, version, op, updated_by, created_at, tenant_id,"+
 				" to_char(created_at, 'YYYY-MM-DD') FROM ("+
 				"  SELECT path, version, op, coalesce(updated_by, '') AS updated_by,"+
@@ -253,119 +243,58 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 				"  ORDER BY created_at DESC, path DESC, version DESC LIMIT $1"+
 				") recent ORDER BY created_at, path, version",
 			limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		out, err = scanRevisions(rows)
 		return err
 	})
-	return out, err
-}
-
-// Backlinks returns the paths whose outbound links name path.
-func (cs *ConceptStore) Backlinks(ctx context.Context, tenant uuid.UUID, path string) ([]string, error) {
-	var out []string
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		var bl []string
-		if err := tx.QueryRow(ctx, "SELECT "+backlinksSQL(1), path).Scan(&bl); err != nil {
-			return err
-		}
-		out = bl
-		return nil
-	})
-	if out == nil && err == nil {
-		out = []string{}
-	}
 	return out, err
 }
 
 // List returns (path, type) for every concept under prefix. An empty prefix is all.
 func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]PathType, error) {
 	var out []PathType
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+		out, err = collect[PathType](ctx, tx,
 			"SELECT path, type FROM concept WHERE starts_with(path, $1) ORDER BY path", prefix)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var pt PathType
-			if err := rows.Scan(&pt.Path, &pt.Type); err != nil {
-				return err
-			}
-			out = append(out, pt)
-		}
-		return rows.Err()
+		return err
 	})
 	return out, err
 }
 
-// Page returns a path-ordered page of concepts under prefix. tenant=nil mixes
-// every tenant.
-func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) ([]Summary, error) {
-	if limit <= 0 {
-		return nil, nil
-	}
-	var out []Summary
-	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		// path alone is not a total order under AdminScope: two tenants can share a
-		// path, so tenant_id breaks the tie the same way both ways.
-		rows, err := tx.Query(ctx,
-			fmt.Sprintf("SELECT %s FROM concept WHERE starts_with(path, $1) "+
-				"ORDER BY path, tenant_id LIMIT $2 OFFSET $3", summaryCols),
-			prefix, limit, offset)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var s Summary
-			if err := rows.Scan(&s.Path, &s.Type, &s.Title, &s.Description, &s.Version, &s.UpdatedAt, &s.TenantID); err != nil {
+// Page returns a path-ordered page of concepts under prefix and how many there are
+// in all, in one transaction. tenant=nil mixes every tenant.
+func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []Summary, total int, err error) {
+	err = cs.connect(ctx, tenant, func(tx pgx.Tx) error {
+		if limit > 0 {
+			// path alone is not a total order under AdminScope: two tenants can share a
+			// path, so tenant_id breaks the tie the same way both ways.
+			if page, err = collect[Summary](ctx, tx,
+				fmt.Sprintf("SELECT %s FROM concept WHERE starts_with(path, $1) "+
+					"ORDER BY path, tenant_id LIMIT $2 OFFSET $3", summaryCols),
+				prefix, limit, offset); err != nil {
 				return err
 			}
-			out = append(out, s)
 		}
-		return rows.Err()
+		return tx.QueryRow(ctx, "SELECT count(*) FROM concept WHERE starts_with(path, $1)", prefix).Scan(&total)
 	})
-	return out, err
-}
-
-// Count reports how many concepts Page would cover for the same tenant/prefix.
-func (cs *ConceptStore) Count(ctx context.Context, tenant *uuid.UUID, prefix string) (int, error) {
-	var n int
-	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "SELECT count(*) FROM concept WHERE starts_with(path, $1)", prefix).Scan(&n)
-	})
-	return n, err
+	return page, total, err
 }
 
 // Totals are corpus-wide counts for the admin console's summary tiles.
 func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, error) {
 	var t Totals
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
-			"SELECT type, count(*), coalesce(sum(cardinality(links)), 0) "+
-				"FROM concept GROUP BY type")
+		byType, err := collect[struct {
+			Type         string
+			Count, Links int
+		}](ctx, tx, "SELECT type, count(*), coalesce(sum(cardinality(links)), 0) "+
+			"FROM concept GROUP BY type")
 		if err != nil {
 			return err
 		}
 		t.ByType = map[string]int{}
-		for rows.Next() {
-			var typ string
-			var n, links int
-			if err := rows.Scan(&typ, &n, &links); err != nil {
-				rows.Close()
-				return err
-			}
-			t.ByType[typ] = n
-			t.Concepts += n
-			t.Links += links
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
+		for _, row := range byType {
+			t.ByType[row.Type] = row.Count
+			t.Concepts += row.Count
+			t.Links += row.Links
 		}
 
 		if err := tx.QueryRow(ctx, "SELECT count(*) FROM concept_revision").Scan(&t.Revisions); err != nil {
@@ -389,44 +318,15 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 		return nil, nil
 	}
 	var out []Revision
-	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
+	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// Under AdminScope two tenants can hold the same path at the same version
 		// and timestamp, so tenant_id is what makes the order total.
-		rows, err := tx.Query(ctx,
+		out, err = collect[Revision](ctx, tx,
 			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
 				"to_char(created_at, 'YYYY-MM-DD') "+
 				"FROM concept_revision "+
 				"ORDER BY created_at DESC, path DESC, version DESC, tenant_id DESC "+
 				"LIMIT $1", limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		out, err = scanRevisions(rows)
-		return err
-	})
-	return out, err
-}
-
-// RevisionsFor returns the most recent limit revisions of one path, newest first.
-// Unlike Activity, the cap is per path, so a concept's history cannot be crowded
-// out by other concepts' unrelated revisions.
-func (cs *ConceptStore) RevisionsFor(ctx context.Context, tenant *uuid.UUID, path string, limit int) ([]Revision, error) {
-	if limit <= 0 {
-		return nil, nil
-	}
-	var out []Revision
-	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
-			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
-				"to_char(created_at, 'YYYY-MM-DD') "+
-				"FROM concept_revision WHERE path = $1 "+
-				"ORDER BY version DESC LIMIT $2", path, limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		out, err = scanRevisions(rows)
 		return err
 	})
 	return out, err
@@ -439,26 +339,17 @@ func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days
 		return nil, nil
 	}
 	var out []DailyWrite
-	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
+		// The lower bound repeats the series start so the created_at index can serve the join.
+		out, err = collect[DailyWrite](ctx, tx,
 			"SELECT d::date, count(r.created_at) FROM generate_series("+
 				"  (current_date - ($1::int - 1))::timestamp, current_date::timestamp,"+
 				"  interval '1 day'"+
 				") AS d "+
-				"LEFT JOIN concept_revision r ON r.created_at::date = d::date "+
+				"LEFT JOIN concept_revision r ON r.created_at::date = d::date"+
+				"  AND r.created_at >= (current_date - ($1::int - 1))::timestamp "+
 				"GROUP BY d ORDER BY d", days)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var dw DailyWrite
-			if err := rows.Scan(&dw.Date, &dw.Count); err != nil {
-				return err
-			}
-			out = append(out, dw)
-		}
-		return rows.Err()
+		return err
 	})
 	return out, err
 }
@@ -467,21 +358,10 @@ func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days
 // Admin-only: there is no tenant registry besides this table.
 func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 	var out []TenantCount
-	err := cs.s.AdminScope(ctx, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.s.AdminScope(ctx, func(tx pgx.Tx) (err error) {
+		out, err = collect[TenantCount](ctx, tx,
 			"SELECT tenant_id, count(*) FROM concept GROUP BY tenant_id ORDER BY tenant_id")
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var tc TenantCount
-			if err := rows.Scan(&tc.TenantID, &tc.Count); err != nil {
-				return err
-			}
-			out = append(out, tc)
-		}
-		return rows.Err()
+		return err
 	})
 	return out, err
 }
@@ -493,8 +373,8 @@ func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query stri
 		return nil, nil
 	}
 	var out []Hit
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+		out, err = collect[Hit](ctx, tx,
 			"SELECT path, type, title, description, "+
 				"       ts_rank_cd(search, to_tsquery('english', $1)) AS score "+
 				"FROM concept "+
@@ -502,18 +382,7 @@ func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query stri
 				"  AND starts_with(path, coalesce($3::text, '')) "+
 				"ORDER BY score DESC, path LIMIT $4",
 			terms, terms, prefix, limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var h Hit
-			if err := rows.Scan(&h.Path, &h.Type, &h.Title, &h.Description, &h.Score); err != nil {
-				return err
-			}
-			out = append(out, h)
-		}
-		return rows.Err()
+		return err
 	})
 	return out, err
 }
@@ -543,24 +412,13 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 		return nil, nil
 	}
 	var out []GrepHit
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// SET LOCAL takes no parameter; the value is an int literal in this file.
 		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", grepTimeoutMS)); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, grepSQL, pattern, limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var h GrepHit
-			if err := rows.Scan(&h.Path, &h.Snippet); err != nil {
-				return err
-			}
-			out = append(out, h)
-		}
-		return rows.Err()
+		out, err = collect[GrepHit](ctx, tx, grepSQL, pattern, limit)
+		return err
 	})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -581,21 +439,10 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 // Graph returns (path, type, title, links) for the first limit concepts by path.
 func (cs *ConceptStore) Graph(ctx context.Context, tenant uuid.UUID, limit int) ([]GraphRow, error) {
 	var out []GraphRow
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx,
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+		out, err = collect[GraphRow](ctx, tx,
 			"SELECT path, type, title, links FROM concept ORDER BY path LIMIT $1", limit)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var g GraphRow
-			if err := rows.Scan(&g.Path, &g.Type, &g.Title, &g.Links); err != nil {
-				return err
-			}
-			out = append(out, g)
-		}
-		return rows.Err()
+		return err
 	})
 	return out, err
 }
