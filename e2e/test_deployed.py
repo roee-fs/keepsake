@@ -20,15 +20,19 @@ from urllib.error import HTTPError
 
 import pytest
 
-from keepsake.cli import head
-
 BASE = "http://localhost:30800"
 CHART = str(Path(__file__).resolve().parent.parent / "charts" / "keepsake")
 
 # Named on every command rather than taken from the ambient one. These tests install a
 # Helm release, and a machine that runs this suite is likely to have other clusters.
 CONTEXT = "kind-keepsake-e2e"
-HEAD = head()
+# The revision `migrate` brings a database to: the highest-numbered embedded migration.
+HEAD = max(
+    p.name.removesuffix(".sql.tmpl")
+    for p in (Path(__file__).resolve().parent.parent / "internal/migrate/sql").glob(
+        "*.sql.tmpl"
+    )
+)
 
 TOOL_NAMES = {
     "okf_list",

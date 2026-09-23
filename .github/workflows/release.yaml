@@ -29,9 +29,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
-          tree=$(uv run python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          tree=$(grep -E '^appVersion:' charts/keepsake/Chart.yaml | awk '{print $2}' | tr -d '"')
           if [ "$tag" != "$tree" ]; then
-            echo "tag $GITHUB_REF_NAME says $tag, pyproject says $tree" >&2
+            echo "tag $GITHUB_REF_NAME says $tag, Chart.yaml appVersion says $tree" >&2
             exit 1
           fi
           echo "version=$tag" >> "$GITHUB_OUTPUT"
@@ -56,7 +56,7 @@ jobs:
             exit 1
           fi
       - run: uv sync --locked
-      # Holds Chart.yaml's version and appVersion to pyproject's, and the community
+      # Holds Chart.yaml's version to its appVersion, and the community
       # health files to their locations.
       - run: uv run pytest tests/test_release_metadata.py -v
       # A release with no changelog entry is a release nobody can read.
@@ -142,7 +142,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # From the source tree rather than the image: uv.lock is the exact resolved
+      # From the source tree rather than the image: go.sum is the exact resolved
       # dependency set, which is what a consumer wants to diff.
       - uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
