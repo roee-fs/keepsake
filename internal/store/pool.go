@@ -9,13 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// acquireTimeout mirrors psycopg_pool's default wait for a pooled connection.
-const acquireTimeout = 30 * time.Second
+// acquireTimeout bounds only the wait to acquire a pooled connection, mirroring
+// psycopg_pool's default wait. A var, not a const, so tests can shrink it.
+var acquireTimeout = 30 * time.Second
 
-// nilTenant is a value ”::uuid would raise on, chosen so it casts cleanly and
-// matches no tenant. tenant_isolation's USING clause casts TenantGUC to uuid
-// whichever way Postgres plans admin_read's OR, and Postgres does not promise
-// short-circuiting; this value gives that cast something to land on.
+// nilTenant casts to uuid without raising and matches no tenant. tenant_isolation's
+// USING clause casts TenantGUC to uuid whichever way Postgres plans admin_read's
+// OR, and Postgres does not promise short-circuiting; an unset GUC reads as an
+// empty string, which fails an uuid cast. This value gives that cast something to
+// land on instead.
 const nilTenant = "00000000-0000-0000-0000-000000000000"
 
 // Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
@@ -45,14 +47,11 @@ func Open(ctx context.Context, dsn, schema string) (*Store, error) {
 	cfg.MaxConns = int32(poolSize)
 	cfg.MinConns = 1
 	// A pooled connection does not notice the server going away, so a dead one
-	// would otherwise be handed to the next acquirer as an unexplained
-	// transport failure. Ported from pool.py's check=ConnectionPool.check_connection.
-	cfg.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
-		if err := conn.Ping(ctx); err != nil {
-			return false, err
-		}
-		return true, nil
-	}
+	// would otherwise be handed to the next acquirer as an unexplained transport
+	// failure. Ping every acquire, matching pool.py's check=ConnectionPool.check_connection:
+	// on a failed ping, pgxpool destroys that connection and tries another rather
+	// than failing the caller's request (see pgxpool.Pool.Acquire's retry loop).
+	cfg.ShouldPing = func(context.Context, pgxpool.ShouldPingParams) bool { return true }
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -104,17 +103,33 @@ func (s *Store) AdminScope(ctx context.Context, fn func(pgx.Tx) error) error {
 		[]any{s.searchPath, AdminGUC, TenantGUC, nilTenant}, fn)
 }
 
-// tx acquires with a bounded wait, runs setup in the new transaction, then fn.
-// set_config's is_local argument is SET LOCAL and, unlike SET, takes a
+// tx acquires with a bounded wait, then runs setup and fn on the caller's own ctx
+// for the rest of the transaction's life: psycopg_pool's timeout, which this
+// mirrors, covers only the acquire, not the transaction an acquired connection
+// then runs. set_config's is_local argument is SET LOCAL and, unlike SET, takes a
 // parameter; a session-scoped value would outlive the transaction and be
 // inherited by whoever next takes this connection from the pool.
 func (s *Store) tx(ctx context.Context, opts pgx.TxOptions, setup string, args []any, fn func(pgx.Tx) error) error {
-	ctx, cancel := context.WithTimeout(ctx, acquireTimeout)
-	defer cancel()
-	return pgx.BeginTxFunc(ctx, s.pool, opts, func(tx pgx.Tx) error {
+	acquireCtx, cancel := context.WithTimeout(ctx, acquireTimeout)
+	conn, err := s.pool.Acquire(acquireCtx)
+	cancel()
+	if err != nil {
+		return &acquireError{err}
+	}
+	defer conn.Release()
+
+	return pgx.BeginTxFunc(ctx, conn, opts, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, setup, args...); err != nil {
 			return err
 		}
 		return fn(tx)
 	})
 }
+
+// acquireError marks an error as having occurred while acquiring a pooled
+// connection, so IsUnavailable can tell a real acquire timeout from an unrelated
+// deadline a caller's own fn happened to hit.
+type acquireError struct{ err error }
+
+func (e *acquireError) Error() string { return e.err.Error() }
+func (e *acquireError) Unwrap() error { return e.err }

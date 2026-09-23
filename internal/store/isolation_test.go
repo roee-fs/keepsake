@@ -14,6 +14,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -338,25 +339,24 @@ func TestScopeDoesNotLeakAcrossPooledConnections(t *testing.T) {
 			return nil
 		})
 	}
-	for range 64 {
-		var pid uint32
-		var tenant, admin *string
-		_ = s.Raw(ctx, func(tx pgx.Tx) error {
-			pid = tx.Conn().PgConn().PID()
-			return tx.QueryRow(ctx, `SELECT current_setting('okf.current_tenant', true), current_setting('okf.admin', true)`).Scan(&tenant, &admin)
-		})
-		if (tenant != nil && *tenant != "") || (admin != nil && *admin != "") {
-			t.Fatalf("scope outlived its transaction: %v %v", tenant, admin)
-		}
-		if scoped[pid] {
-			return
-		}
-	}
-	t.Fatal("never re-drew a scoped connection: the probe proved nothing")
+	probeUntilScopedConnectionReturns(t, s, scoped)
 }
 
-// TestIsUnavailable is new: no Python test kills backends. It opens its own store so
-// killing every okf_app backend cannot poison other tests running in this package.
+// terminateAppBackends kills every backend currently logged in as okf_app, from
+// admin, the way an operator's restart or failover would.
+func terminateAppBackends(t *testing.T, admin *pgx.Conn) {
+	t.Helper()
+	if _, err := admin.Exec(ctx,
+		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'okf_app'"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestIsUnavailable is new: no Python test kills backends. It also locks okf_app
+// out of new connections, not just existing ones: with login still allowed, the
+// pool's ping-on-acquire silently discards a killed connection and dials a fresh
+// one (see TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed), so a real
+// failure needs both the existing connection dead and no replacement possible.
 func TestIsUnavailable(t *testing.T) {
 	s, err := store.Open(ctx, db.AppDSN, "okf")
 	if err != nil {
@@ -364,7 +364,7 @@ func TestIsUnavailable(t *testing.T) {
 	}
 	defer s.Close()
 
-	// Force at least one physical connection to exist before killing it.
+	// Force at least one physical connection to exist before locking it out.
 	if err := s.Raw(ctx, func(pgx.Tx) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -373,19 +373,31 @@ func TestIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close(ctx)
-	if _, err := admin.Exec(ctx,
-		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'okf_app'"); err != nil {
+	// Cleanups run LIFO, so this closes admin only after restoreLogin, registered
+	// below, has had its chance to use it.
+	t.Cleanup(func() { admin.Close(context.Background()) })
+
+	restoreLogin := func() {
+		if _, err := admin.Exec(context.Background(), "ALTER ROLE okf_app LOGIN"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := admin.Exec(ctx, "ALTER ROLE okf_app NOLOGIN"); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(restoreLogin)
+	terminateAppBackends(t, admin)
 
 	scopeErr := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil })
 	if scopeErr == nil {
-		t.Fatal("Scope succeeded after every okf_app backend was terminated")
+		t.Fatal("Scope succeeded after okf_app was locked out and its backends terminated")
 	}
 	if !store.IsUnavailable(scopeErr) {
 		t.Errorf("IsUnavailable(%v) = false, want true", scopeErr)
 	}
+	// Restored now, not just in Cleanup: the unique-violation check below needs a
+	// working connection of its own.
+	restoreLogin()
 
 	s2 := openApp(t)
 	dupErr := s2.Scope(ctx, A, func(tx pgx.Tx) error {
@@ -399,5 +411,124 @@ func TestIsUnavailable(t *testing.T) {
 	}
 	if store.IsUnavailable(dupErr) {
 		t.Errorf("IsUnavailable(%v) = true, want false for a unique violation", dupErr)
+	}
+}
+
+// The opposite of TestIsUnavailable: with login still allowed, the pool's
+// ping-on-acquire discards a killed connection and dials a fresh one instead of
+// failing the caller.
+func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
+	s, err := store.Open(ctx, db.AppDSN, "okf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	if err := s.Raw(ctx, func(pgx.Tx) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	admin, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(ctx)
+	terminateAppBackends(t, admin)
+
+	if err := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil }); err != nil {
+		t.Fatalf("Scope after a terminated backend with login still allowed: %v", err)
+	}
+}
+
+// A regression test for the acquire timeout: it must bound only the wait for a
+// pooled connection, not the transaction that connection then runs. Before the
+// fix, BeginTxFunc reused the acquire's timed context for COMMIT too, so a slow
+// fn failed at commit instead of succeeding.
+func TestScopeCommitsAfterTheAcquireTimeoutElapses(t *testing.T) {
+	s := openApp(t)
+	restore := store.SetAcquireTimeout(20 * time.Millisecond)
+	defer restore()
+
+	tenant := uuid.New()
+	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		time.Sleep(50 * time.Millisecond)
+		return insert(ctx, tx, tenant, "slow/one")
+	})
+	if err != nil {
+		t.Fatalf("Scope with an fn slower than the acquire timeout: %v", err)
+	}
+
+	err = s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		var count int
+		if err := tx.QueryRow(ctx,
+			"SELECT count(*) FROM okf.concept WHERE path = 'slow/one'").Scan(&count); err != nil {
+			return err
+		}
+		if count != 1 {
+			t.Errorf("count = %d, want 1: the slow transaction did not commit", count)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A real acquire timeout, unlike a query-level one, is unavailability: the pool
+// itself could not produce a connection.
+func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
+	t.Setenv("KEEPSAKE_POOL_SIZE", "1")
+	s, err := store.Open(ctx, db.AppDSN, "okf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	restore := store.SetAcquireTimeout(20 * time.Millisecond)
+	defer restore()
+
+	holding := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Scope(ctx, uuid.New(), func(pgx.Tx) error {
+			close(holding)
+			<-release
+			return nil
+		})
+	}()
+	<-holding
+	defer func() {
+		close(release)
+		if err := <-done; err != nil {
+			t.Errorf("the connection-holding Scope call: %v", err)
+		}
+	}()
+
+	err = s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil })
+	if err == nil {
+		t.Fatal("Scope succeeded while the pool's only connection was held")
+	}
+	if !store.IsUnavailable(err) {
+		t.Errorf("IsUnavailable(%v) = false, want true for an acquire timeout", err)
+	}
+}
+
+// A deadline the caller's own fn hit, rather than the acquire, is not
+// unavailability: context.DeadlineExceeded also satisfies net.Error, which is
+// exactly what would misclassify this without the acquire-only guard.
+func TestIsUnavailableDoesNotClassifyAnUnrelatedDeadline(t *testing.T) {
+	s := openApp(t)
+	shortCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+
+	err := s.Scope(shortCtx, uuid.New(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(shortCtx, "SELECT pg_sleep(1)")
+		return err
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if store.IsUnavailable(err) {
+		t.Errorf("IsUnavailable(%v) = true, want false for a query-level deadline", err)
 	}
 }

@@ -19,6 +19,14 @@ func IsUnavailable(err error) bool {
 		return false
 	}
 
+	// A deadline only means the pool is unavailable when it timed out waiting
+	// for a connection; an unrelated deadline the caller's own fn hit is not
+	// this, even though context.DeadlineExceeded also satisfies net.Error below.
+	var acquireErr *acquireError
+	if errors.As(err, &acquireErr) && errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
 	var connectErr *pgconn.ConnectError
 	if errors.As(err, &connectErr) {
 		return true
@@ -32,8 +40,12 @@ func IsUnavailable(err error) bool {
 			pgErr.Code == "57P01" || pgErr.Code == "57P02" || pgErr.Code == "57P03"
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, puddle.ErrClosedPool) {
+	if errors.Is(err, puddle.ErrClosedPool) {
 		return true
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
 	}
 
 	var netErr net.Error
