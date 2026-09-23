@@ -240,6 +240,10 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 		}
 		// Rooted, not relative: a bare to_path would resolve against the source's own directory.
 		body := source.Body + "\n\n[" + toPath + "](/" + toPath + ".md)\n"
+		// A non-canonical to_path would append a link that never reads back as to_path, on every retry.
+		if !slices.Contains(okf.ExtractLinks(body, fromPath), toPath) {
+			return nil, toolErr("to_path " + okf.PyReprString(toPath) + " is not a concept path such as detect/dormant-rules")
+		}
 		version := source.Version
 		result, err := t.write(ctx, *source, fromPath, &version, map[string]any{"body": body})
 		if err != nil {

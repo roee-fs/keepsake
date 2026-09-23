@@ -58,6 +58,13 @@ test enforces it and the release workflow refuses otherwise.
   - Logout clears the cookie with the login cookie's `HttpOnly`, `SameSite` and
     `Secure` attributes, where Starlette's `delete_cookie` sent `SameSite=lax`.
   - There is no per-request access log, unlike uvicorn's.
+  - `okf_relate` refuses a `to_path` whose appended link would not read back as
+    that path, such as `./b/y` or `b y`. Python appended the link anyway and
+    reported success.
+  - The startup check refuses a permissive tenant policy that does not read
+    exactly `(tenant_id = (current_setting('okf.current_tenant'::text))::uuid)`.
+    Python accepted any expression that mentioned `okf.current_tenant`, such as
+    one ending in `OR true`.
   - At most `KEEPSAKE_POOL_SIZE - 1` tool calls (at least one) hold a
     connection at once, so the console always has one. Further calls queue,
     where Python answered "temporarily unavailable" after a 30-second wait.

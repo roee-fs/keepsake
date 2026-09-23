@@ -317,6 +317,19 @@ func TestRelateIsIdempotent(t *testing.T) {
 	}
 }
 
+// New: a to_path whose link would not read back as to_path MUST NOT be appended.
+func TestRelateRejectsANonCanonicalTarget(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/x", map[string]any{"body": "start"})
+	for _, to := range []string{"/b/y", "./b/y", "b y", "b)y"} {
+		_, err := tools.Relate(ctx, "a/x", to)
+		wantToolError(t, err, "to_path "+okf.PyReprString(to)+" is not a concept path such as detect/dormant-rules")
+	}
+	if got := read(t, tools, "a/x").Body; got != "start" {
+		t.Fatalf("body = %q", got)
+	}
+}
+
 func TestRelateRejectsAMissingSource(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "b/y", map[string]any{})
