@@ -136,26 +136,13 @@ func toolDefinitions() []*mcp.Tool {
 			InputSchema: schema(obj("from_path", str(), "to_path", str()), "from_path", "to_path"),
 		},
 	}
+	// Properties, required and type lead, as Python's mcp_types model serialises a
+	// tool's top-level schema. Nested schemas keep their declared order.
 	for _, t := range tools {
-		t.InputSchema = wireOrder(t.InputSchema.(*okf.Map))
+		t.InputSchema = first(t.InputSchema.(*okf.Map), "properties", "required", "type")
 		if t.OutputSchema != nil {
-			t.OutputSchema = wireOrder(t.OutputSchema.(*okf.Map))
+			t.OutputSchema = first(t.OutputSchema.(*okf.Map), "properties", "required", "type")
 		}
 	}
 	return tools
-}
-
-// wireOrder puts properties, required and type first, as Python's mcp_types model
-// serialises a tool's top-level schema. Nested schemas keep their declared order.
-func wireOrder(m *okf.Map) *okf.Map {
-	out := okf.NewMap()
-	for _, k := range append([]string{"properties", "required", "type"}, m.Keys()...) {
-		if _, done := out.Get(k); done {
-			continue
-		}
-		if v, ok := m.Get(k); ok {
-			out.Set(k, v)
-		}
-	}
-	return out
 }

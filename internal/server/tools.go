@@ -27,6 +27,15 @@ func (e *ToolError) Error() string { return e.Msg }
 
 func toolErr(msg string) error { return &ToolError{Msg: msg} }
 
+// convert maps rows to their wire shape, never nil, so an empty answer is [] and not null.
+func convert[S, T any](rows []S, f func(S) T) []T {
+	out := make([]T, len(rows))
+	for i, r := range rows {
+		out[i] = f(r)
+	}
+	return out
+}
+
 type Tools struct {
 	c     *store.ConceptStore
 	t     uuid.UUID
@@ -181,11 +190,7 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 	if err != nil {
 		return nil, err
 	}
-	out := []searchHit{}
-	for _, h := range hits {
-		out = append(out, searchHit(h))
-	}
-	return out, nil
+	return convert(hits, func(h store.Hit) searchHit { return searchHit(h) }), nil
 }
 
 func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit, error) {
@@ -197,11 +202,7 @@ func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit,
 	if err != nil {
 		return nil, err
 	}
-	out := []grepHit{}
-	for _, h := range hits {
-		out = append(out, grepHit(h))
-	}
-	return out, nil
+	return convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), nil
 }
 
 func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {

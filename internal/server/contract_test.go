@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -16,16 +15,6 @@ import (
 
 	"github.com/roee-fs/keepsake/okf"
 )
-
-func TestTheEmbeddedContractIsTheFrontendsCopy(t *testing.T) {
-	frontend, err := os.ReadFile("../../frontend/openapi.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(frontend, openapiJSON) {
-		t.Fatal("internal/server/openapi.json drifted from frontend/openapi.json; run go generate ./internal/server")
-	}
-}
 
 // contractQuery is the query each templated route is exercised with.
 func contractQuery(route string, tenant uuid.UUID) url.Values {

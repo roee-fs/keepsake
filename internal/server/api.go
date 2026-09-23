@@ -23,13 +23,19 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/roee-fs/keepsake/frontend"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
 
-//go:generate cp ../../frontend/openapi.json openapi.json
-//go:embed openapi.json
-var openapiJSON []byte
+// openapiJSON is the contract compacted once, as FastAPI's JSONResponse renders app.openapi().
+var openapiJSON = func() []byte {
+	var b bytes.Buffer
+	if err := json.Compact(&b, frontend.OpenAPI); err != nil {
+		panic(err)
+	}
+	return b.Bytes()
+}()
 
 // docsHTML is fastapi.openapi.docs.get_swagger_ui_html(openapi_url="openapi.json",
 // title="keepsake API") as FastAPI 0.141.1 rendered it.
@@ -63,23 +69,25 @@ type api struct {
 type route struct {
 	pattern string
 	serve   func(*api, http.ResponseWriter, *http.Request)
+	// public routes need no session and take no slot.
+	public bool
 }
 
-// routeTable is every route NewAPI registers. Only POST /session is unguarded.
+// routeTable is every route NewAPI registers.
 var routeTable = []route{
-	{"POST /session", (*api).login},
-	{"DELETE /session", (*api).logout},
-	{"GET /openapi.json", (*api).openapi},
-	{"GET /docs", (*api).docs},
-	{"GET /tenants", (*api).tenants},
-	{"GET /stats", (*api).stats},
-	{"GET /stats/timeseries", (*api).timeseries},
-	{"GET /concepts", (*api).concepts},
-	{"GET /concepts/{path...}", (*api).concept},
-	{"GET /search", (*api).search},
-	{"GET /grep", (*api).grep},
-	{"GET /graph", (*api).graph},
-	{"GET /activity", (*api).activity},
+	{"POST /session", (*api).login, true},
+	{"DELETE /session", (*api).logout, false},
+	{"GET /openapi.json", (*api).openapi, false},
+	{"GET /docs", (*api).docs, false},
+	{"GET /tenants", (*api).tenants, false},
+	{"GET /stats", (*api).stats, false},
+	{"GET /stats/timeseries", (*api).timeseries, false},
+	{"GET /concepts", (*api).concepts, false},
+	{"GET /concepts/{path...}", (*api).concept, false},
+	{"GET /search", (*api).search, false},
+	{"GET /grep", (*api).grep, false},
+	{"GET /graph", (*api).graph, false},
+	{"GET /activity", (*api).activity, false},
 }
 
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
@@ -92,7 +100,7 @@ func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 	for _, rt := range routeTable {
 		serve := rt.serve
 		mux.HandleFunc(rt.pattern, func(w http.ResponseWriter, r *http.Request) {
-			if rt.pattern == "POST /session" {
+			if rt.public {
 				serve(h, w, r)
 				return
 			}
@@ -109,14 +117,14 @@ func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 			serve(h, w, r)
 		})
 	}
-	return limitBody(mux)
+	return limitBody(maxAPIBody, mux)
 }
 
-// limitBody reads the whole body before routing, as RequestBodyLimitMiddleware does,
-// and answers its 413 past maxAPIBody.
-func limitBody(next http.Handler) http.Handler {
+// limitBody reads the whole body before next runs, as RequestBodyLimitMiddleware does,
+// and answers its 413 past n bytes.
+func limitBody(n int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ContentLength > maxAPIBody {
+		if r.ContentLength > n {
 			tooLarge(w)
 			return
 		}
@@ -124,7 +132,7 @@ func limitBody(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAPIBody))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, n))
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			tooLarge(w)
@@ -537,14 +545,8 @@ func (a *api) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) openapi(w http.ResponseWriter, r *http.Request) {
-	// Compact, as FastAPI's JSONResponse renders app.openapi().
-	var b bytes.Buffer
-	if err := json.Compact(&b, openapiJSON); err != nil {
-		internalError(w, err)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(b.Bytes())
+	w.Write(openapiJSON)
 }
 
 func (a *api) docs(w http.ResponseWriter, r *http.Request) {
@@ -633,11 +635,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Search(r.Context(), *tenant, q, limit, nil)
-	out := []searchHit{}
-	for _, h := range hits {
-		out = append(out, searchHit{h.Path, h.Type, h.Title, h.Description, h.Score})
-	}
-	reply(w, out, err)
+	reply(w, convert(hits, func(h store.Hit) searchHit { return searchHit(h) }), err)
 }
 
 func (a *api) grep(w http.ResponseWriter, r *http.Request) {
@@ -649,11 +647,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Grep(r.Context(), *tenant, pattern, limit)
-	out := []grepHit{}
-	for _, h := range hits {
-		out = append(out, grepHit{h.Path, h.Snippet})
-	}
-	reply(w, out, err)
+	reply(w, convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), err)
 }
 
 func (a *api) graph(w http.ResponseWriter, r *http.Request) {

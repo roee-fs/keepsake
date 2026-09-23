@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"slices"
@@ -223,16 +222,8 @@ func pythonWire(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		body, err := io.ReadAll(r.Body)
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			tooLarge(w)
-			return
-		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		// limitBody has already buffered it.
+		body, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		modern := modernEra(r)
 		if !json.Valid(body) {

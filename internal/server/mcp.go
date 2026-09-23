@@ -243,13 +243,8 @@ func NewMCPHandler(t *Tools) http.Handler {
 		DisableLocalhostProtection: true,
 	})
 	h := pythonWire(sdk)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
-		if r.ContentLength > mcp.DefaultMaxRequestBodyBytes {
-			tooLarge(w)
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, mcp.DefaultMaxRequestBodyBytes)
+	// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
+	return limitBody(mcp.DefaultMaxRequestBodyBytes, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && modernEra(r) {
 			methodNotAllowed(w, r)
 			return
@@ -270,7 +265,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// served, as the Python server serves it; go-sdk insists on both types.
 		r.Header.Add("Accept", "text/event-stream")
 		h.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // acceptsJSON is check_accept_headers in mcp/server/streamable_http.py.
