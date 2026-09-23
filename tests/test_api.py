@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from starlette.applications import Starlette
 from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 from starlette.testclient import TestClient
 
 from keepsake.server.app import Config, build_app
@@ -110,6 +111,14 @@ def test_a_bad_password_is_rejected_and_sets_no_cookie(client: TestClient) -> No
     assert COOKIE_NAME not in response.cookies
 
 
+def test_an_oversized_login_body_is_refused_before_it_is_read(
+    client: TestClient,
+) -> None:
+    """The one unauthenticated route MUST NOT buffer whatever a caller sends."""
+    response = client.post("/api/session", json={"password": "x" * 100_000})
+    assert response.status_code == 413
+
+
 def test_a_good_password_sets_an_httponly_strict_cookie(client: TestClient) -> None:
     response = client.post("/api/session", json={"password": PASSWORD})
     assert response.status_code == 204
@@ -146,6 +155,16 @@ def test_docs_ui_is_served_behind_the_session_guard(logged_in: TestClient) -> No
     response = logged_in.get("/api/docs")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+def test_mcp_refuses_a_browser_origin(client: TestClient) -> None:
+    """A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows."""
+    response = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        headers={"Accept": "application/json", "Origin": "http://evil.example:8000"},
+    )
+    assert response.status_code == 403
 
 
 def test_tenants_lists_every_tenant_with_a_concept(
@@ -335,7 +354,7 @@ def test_missing_static_bundle_skips_the_mount_but_api_and_mcp_still_serve(
     monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(tmp_path / "no-such-dir"))
     built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
     try:
-        assert not any(isinstance(r, Mount) and r.path == "" for r in built.routes)
+        assert not isinstance(built.router.default, StaticFiles)
         assert any(isinstance(r, Mount) and r.path == "/api" for r in built.routes)
         assert "/mcp" in [getattr(r, "path", None) for r in built.routes]
         with TestClient(built) as c:
@@ -356,9 +375,7 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
     monkeypatch.setenv("KEEPSAKE_STATIC_DIR", str(static_dir))
     built = build_app(Config(dsn=pg_dsn, tenant_id=uuid.uuid4()))
     try:
-        last = built.routes[-1]
-        assert isinstance(last, Mount)
-        assert last.path == ""
+        assert isinstance(built.router.default, StaticFiles)
         with TestClient(built) as c:
             index = c.get("/")
             assert index.status_code == 200
@@ -368,6 +385,13 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             deep_link = c.get("/concepts/notes%2Fa.md")
             assert deep_link.status_code == 200
             assert deep_link.text == "<html>console shell</html>"
+            # The shell names this build's assets, so it must not outlive an upgrade.
+            assert index.headers["cache-control"] == "no-cache"
+            assert deep_link.headers["cache-control"] == "no-cache"
+            # The console must not stop the router redirecting a trailing slash.
+            slashed = c.post("/mcp/", json={}, follow_redirects=False)
+            assert slashed.status_code == 307
+            assert slashed.headers["location"].endswith("/mcp")
             assert c.get("/readyz").status_code == 200
             login = c.post("/api/session", json={"password": PASSWORD})
             assert login.status_code == 204
@@ -387,3 +411,78 @@ def test_static_bundle_present_serves_the_console_last_with_spa_fallback(
             assert not content_type.startswith("text/html")
     finally:
         built.state.store.close()
+
+
+def _link(app: Starlette, tenant: uuid.UUID, path: str, *links: str) -> None:
+    ConceptStore(app.state.store).create(
+        tenant, Concept(path=path, type="Concept", title=path, links=links), "test"
+    )
+
+
+def test_graph_returns_edges_and_marks_a_missing_target(
+    app: Starlette, logged_in: TestClient, tenant: uuid.UUID, other_tenant: uuid.UUID
+) -> None:
+    _link(app, tenant, "a", "b", "ghost")
+    _link(app, tenant, "b", "a")
+
+    response = logged_in.get("/api/graph", params={"tenant": str(tenant)})
+    assert response.status_code == 200
+    body = response.json()
+    nodes = {n["path"]: n["missing"] for n in body["nodes"]}
+    # other/thing belongs to other_tenant and MUST NOT appear.
+    assert nodes == {"a": False, "b": False, "ghost": True}
+    assert sorted(map(tuple, body["edges"])) == [("a", "b"), ("a", "ghost"), ("b", "a")]
+    assert body["truncated"] is False
+
+
+def test_graph_past_the_cap_drops_edges_it_cannot_place(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keepsake.server.api._GRAPH_LIMIT", 1)
+    _link(app, tenant, "a", "b")
+    _link(app, tenant, "b")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    # "b" exists past the cap, so it MUST NOT come back as a missing node.
+    assert [n["path"] for n in body["nodes"]] == ["a"]
+    assert body["edges"] == []
+    assert body["truncated"] is True
+
+
+def test_graph_caps_missing_targets_at_the_node_limit(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One concept can name thousands of targets nobody wrote."""
+    monkeypatch.setattr("keepsake.server.api._GRAPH_LIMIT", 3)
+    _link(app, tenant, "a", "g1", "g2", "g3", "g4")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert [n["path"] for n in body["nodes"]] == ["a", "g1", "g2"]
+    assert body["edges"] == [["a", "g1"], ["a", "g2"]]
+    assert body["truncated"] is True
+
+
+def test_graph_caps_edges(
+    app: Starlette,
+    logged_in: TestClient,
+    tenant: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("keepsake.server.api._GRAPH_EDGE_LIMIT", 2)
+    _link(app, tenant, "a", "b", "c")
+    _link(app, tenant, "b", "a", "c")
+    _link(app, tenant, "c")
+
+    body = logged_in.get("/api/graph", params={"tenant": str(tenant)}).json()
+    assert len(body["edges"]) == 2
+    assert body["truncated"] is True
+
+
+def test_graph_requires_a_tenant(logged_in: TestClient) -> None:
+    assert logged_in.get("/api/graph").status_code == 422

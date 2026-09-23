@@ -29,6 +29,15 @@ agent ──MCP──> keepsake ──> Postgres (RLS)
   not the storage layer. `keepsake export` regenerates `index.md` and `log.md` at
   export time; they are never stored, so nothing derived can drift.
 
+## How it runs
+
+![keepsake on Kubernetes](assets/architecture.png)
+
+Agents call the Service over MCP, and operators use the console through the
+same Service. A Helm hook runs the migration Job before every install and
+upgrade. Edit `assets/architecture.excalidraw` at [excalidraw.com](https://excalidraw.com)
+and re-export the PNG when the deployment changes.
+
 ## How it differs
 
 **Every other OKF implementation is local-first, single-user, and git-backed.**
