@@ -1,7 +1,5 @@
-// The seven tool bodies, ported from Tools in 2de90d2:src/keepsake/server/tools.py.
-// No tool takes a tenant: the server binds one at startup, so an agent cannot name
-// the wrong one. Nothing a tool returns to the agent carries a body it was not
-// already entitled to read.
+// The seven tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant is bound
+// at startup, so no tool takes one, and no tool returns a body the agent could not read.
 package server
 
 import (
@@ -16,8 +14,7 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts is how many times Relate re-reads and re-appends past a concurrent
-// writer. Each round has exactly one winner.
+// relateAttempts bounds Relate's retries past concurrent writers; each round has one winner.
 const relateAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
@@ -87,8 +84,7 @@ type concept struct {
 	Backlinks   []string `json:"backlinks"`
 }
 
-// textField reads an absent field as empty. A present one must already be a string, so
-// that null cannot overwrite what is stored.
+// textField reads an absent field as empty and refuses a non-string, so null cannot erase a field.
 func textField(kw map[string]any, name string) (string, error) {
 	v, ok := kw[name]
 	if !ok {
@@ -172,8 +168,7 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	}
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)
 	if errors.Is(err, store.ErrNotFound) {
-		// Another tenant's row is hidden too: a distinguishable answer here would be
-		// a cross-tenant existence oracle.
+		// Another tenant's row gets the same answer, or this would be a cross-tenant existence oracle.
 		return nil, toolErr("no concept at " + path)
 	}
 	if err != nil {
@@ -229,8 +224,7 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 	return &concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks}, nil
 }
 
-// Relate appends the edge, retrying past concurrent writers: appending a link
-// commutes, so a compare-and-swap conflict here is nobody's decision to make.
+// Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
 	for range relateAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)

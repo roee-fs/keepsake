@@ -74,8 +74,7 @@ func isIntLiteral(s string) bool {
 	return !strings.ContainsAny(s, ".eE")
 }
 
-// pyFloatRepr is Python's repr(float): the shortest round-trip digits, in exponent form
-// when the decimal exponent is below -4 or at least 16.
+// pyFloatRepr is Python's repr(float): shortest digits, exponent form below 1e-4 or from 1e16.
 func pyFloatRepr(f float64) string {
 	switch {
 	case math.IsInf(f, 1):

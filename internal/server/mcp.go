@@ -1,5 +1,5 @@
-// The MCP wiring, ported from register in 2de90d2:src/keepsake/server/tools.py and the
-// streamable HTTP app in 8f2af2e:src/keepsake/server/app.py.
+// The MCP wiring, ported from 2de90d2:src/keepsake/server/tools.py's register and
+// 8f2af2e:src/keepsake/server/app.py's streamable HTTP app.
 package server
 
 import (
@@ -28,8 +28,7 @@ const unavailable = "the knowledge store is temporarily unavailable; try again s
 
 type handler func(ctx context.Context, t *Tools, args map[string]any) (any, error)
 
-// envelope carries a list answer: structured content is object-only through
-// protocol 2025-11-25.
+// envelope carries a list answer, since structured content is object-only through 2025-11-25.
 type envelope struct {
 	Results any `json:"results"`
 }
@@ -79,8 +78,7 @@ var handlers = map[string]handler{
 	},
 }
 
-// toolList is tools/list as Python answers it: declaration order, and no cacheScope
-// or ttlMs, which go-sdk's ListToolsResult always sends.
+// toolList is tools/list without the cacheScope and ttlMs go-sdk's ListToolsResult always sends.
 type toolList struct {
 	mcp.ResultBase
 	Tools []*mcp.Tool `json:"tools"`
@@ -109,8 +107,7 @@ func compile(schema any) *jsonschema.Schema {
 
 var printer = message.NewPrinter(language.English)
 
-// schemaErrors renders every leaf violation as "<path>: <message>", sorted by path
-// the way tools.py sorts by json_path.
+// schemaErrors renders each leaf violation as "<path>: <message>", sorted by path as tools.py sorts.
 func schemaErrors(err error) string {
 	var ve *jsonschema.ValidationError
 	if !errors.As(err, &ve) {
@@ -180,8 +177,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		if err := json.Unmarshal(raw, m); err != nil {
 			return nil, err
 		}
-		// The advertised schema, enforced before dispatch, so a wrong shape comes back
-		// as something the agent can correct.
+		// Enforced before dispatch, so a wrong shape is something the agent can correct.
 		if err := schema.Validate(plain(m)); err != nil {
 			return failed(name + ": " + schemaErrors(err)), nil
 		}
@@ -254,8 +250,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 			var res mcp.Result
 			var err error
 			if call, ok := req.(*mcp.CallToolRequest); ok && handlers[call.Params.Name] == nil {
-				// An error result, not a protocol error: an agent can correct itself from a
-				// tool result and cannot from a transport failure.
+				// An error result, which an agent can correct itself from, unlike a protocol error.
 				res = failed("no such tool: " + call.Params.Name)
 			} else if res, err = next(ctx, method, req); err != nil || shapes[method] == nil {
 				return res, err
@@ -271,8 +266,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// A session would pin an agent to one replica; several sit behind one Service.
 		Stateless:    true,
 		JSONResponse: true,
-		// The Host header is a cluster Service name, so the localhost-only default
-		// would reject every real request. refuseBrowsers covers DNS rebinding.
+		// The Host header is a cluster Service name; refuseBrowsers covers DNS rebinding.
 		DisableLocalhostProtection: true,
 	})
 	// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
@@ -297,8 +291,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 		if r.Method == http.MethodPost && rejected(w, r, e) {
 			return
 		}
-		// JSON responses never stream, so a client accepting only application/json is
-		// served, as the Python server serves it; go-sdk insists on both types.
+		// go-sdk insists on both types; Python serves an application/json-only client, since JSON never streams.
 		r.Header.Add("Accept", "text/event-stream")
 		sdk.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), eraKey{}, e)))
 	}))
@@ -323,8 +316,7 @@ func tooLarge(w http.ResponseWriter) {
 	io.WriteString(w, "Request body too large")
 }
 
-// methodNotAllowed answers a method other than POST as whichever Python transport
-// the request reaches. A legacy GET is left to go-sdk: Python streams it forever.
+// methodNotAllowed answers as the Python transport would; a legacy GET is left to go-sdk.
 func methodNotAllowed(w http.ResponseWriter, method string, e era) {
 	if e != legacy {
 		w.Header().Set("Allow", "POST")
@@ -348,8 +340,7 @@ func notAcceptable(w http.ResponseWriter, e era) {
 	rpcError(w, http.StatusNotAcceptable, nil, codeInvalidReq, "Not Acceptable: Client must accept application/json")
 }
 
-// pyDumps renders v as Python's json.dumps does by default: ", " and ": "
-// separators and every non-ASCII character escaped.
+// pyDumps renders v as Python's default json.dumps: ", " and ": " separators, non-ASCII escaped.
 func pyDumps(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {

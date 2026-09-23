@@ -1,7 +1,5 @@
-// Package pgtest shares one disposable Postgres container across every test package in
-// a `go test` run, with a database per package and the three roles
-// 2de90d2:tests/conftest.py creates: an admin (the container superuser), an owner
-// (migrations run as this role) and an app role (RLS applies to this one).
+// Package pgtest shares one Postgres container across a test run, one database per package,
+// with the admin, owner and app roles of 2de90d2:tests/conftest.py.
 package pgtest
 
 import (
@@ -22,8 +20,7 @@ import (
 
 type DB struct{ AdminDSN, OwnerDSN, AppDSN string }
 
-// Main runs the package's tests against a database of its own, after setup, and exits.
-// setup is where a package migrates: pgtest cannot import internal/migrate without a cycle.
+// Main runs the tests on the package's own database after setup, which migrates without an import cycle.
 func Main(m *testing.M, setup func(*DB) error) {
 	db, drop, err := start(context.Background())
 	if err != nil {
@@ -38,8 +35,7 @@ func Main(m *testing.M, setup func(*DB) error) {
 	os.Exit(code)
 }
 
-// start joins the session's container, starting it if no other package has, and
-// creates this package's database from template1. Ryuk reaps the container.
+// start joins or starts the session's container, which Ryuk reaps, and creates the package's database.
 func start(ctx context.Context) (*DB, func(), error) {
 	c, err := postgres.Run(ctx, "postgres:17",
 		postgres.WithDatabase("keepsake"), postgres.WithUsername("postgres"), postgres.WithPassword("postgres"),
@@ -114,9 +110,7 @@ func Exec(t testing.TB, dsn string, statements ...string) {
 	}
 }
 
-// LockOut refuses the app role new connections to db's database and ends its open
-// ones: a database that is down, to the app, without touching other packages'.
-// The returned func, also run when t ends, lets it back in.
+// LockOut makes db's database look down to the app role, until the returned func or t's end.
 func (db *DB) LockOut(t testing.TB) (restore func()) {
 	t.Helper()
 	restore = func() {

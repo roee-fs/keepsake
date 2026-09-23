@@ -1,5 +1,4 @@
-// The seven advertised tools, ported from _TOOLS in 2de90d2:src/keepsake/server/tools.py.
-// Schemas are okf.Maps so their key order on the wire is the Python order.
+// The seven advertised tools, ported from 2de90d2:src/keepsake/server/tools.py's _TOOLS in wire key order.
 package server
 
 import (
@@ -8,13 +7,10 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// MaxLimit is the most results a single call may ask for. Uncapped, one call
-// materialises the whole corpus into one response; advertised, an agent can see
-// the ceiling it has.
+// MaxLimit caps and advertises a call's results, so one call cannot return the whole corpus.
 const MaxLimit = 200
 
-// MaxVersion bounds expected_version, which is bound as int4: a larger value
-// would be a database error, not a mistake the agent could correct.
+// MaxVersion is int4's maximum, so expected_version never overflows into a database error.
 const MaxVersion = 2147483647
 
 // obj builds an ordered JSON object from key, value pairs.
@@ -28,8 +24,7 @@ func obj(kv ...any) *okf.Map {
 
 func str() *okf.Map { return obj("type", "string") }
 
-// schema is closed: an argument the tool does not read is a caller believing
-// something it asked for took effect.
+// schema is closed: an unread argument is a caller believing something took effect.
 func schema(properties *okf.Map, required ...string) *okf.Map {
 	if required == nil {
 		required = []string{}
@@ -136,8 +131,7 @@ func toolDefinitions() []*mcp.Tool {
 			InputSchema: schema(obj("from_path", str(), "to_path", str()), "from_path", "to_path"),
 		},
 	}
-	// Properties, required and type lead, as Python's mcp_types model serialises a
-	// tool's top-level schema. Nested schemas keep their declared order.
+	// Properties, required and type lead a top-level schema, as mcp_types serialises it.
 	for _, t := range tools {
 		t.InputSchema = first(t.InputSchema.(*okf.Map), "properties", "required", "type")
 		if t.OutputSchema != nil {

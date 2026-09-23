@@ -1,5 +1,4 @@
-// The read-only JSON API the admin console calls, mounted at /api. Ported from
-// 8f2af2e:src/keepsake/server/api.py; frontend/openapi.json is its contract.
+// The admin console's read-only JSON API at /api, ported from 8f2af2e:src/keepsake/server/api.py.
 package server
 
 import (
@@ -37,8 +36,7 @@ var openapiJSON = func() []byte {
 	return b.Bytes()
 }()
 
-// docsHTML is fastapi.openapi.docs.get_swagger_ui_html(openapi_url="openapi.json",
-// title="keepsake API") as FastAPI 0.141.1 rendered it.
+// docsHTML is get_swagger_ui_html(openapi_url="openapi.json", title="keepsake API") from FastAPI 0.141.1.
 //
 //go:embed docs.html
 var docsHTML []byte
@@ -46,8 +44,7 @@ var docsHTML []byte
 // Long enough to outlast a port-forward session, short enough to bound a leaked cookie.
 const sessionTTL = 12 * time.Hour
 
-// maxAPIBody caps every /api body. The only body is a login; uncapped, one
-// unauthenticated POST is buffered whole.
+// maxAPIBody caps every /api body, so an unauthenticated login is never buffered whole.
 const maxAPIBody = 64 * 1024
 
 // historyLimit bounds a concept's revision history, since the detail route takes no limit.
@@ -93,8 +90,7 @@ var routeTable = []route{
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
 func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 	h := &api{cs: cs, auth: a, proxies: loadProxies()}
-	// One: the tools' pool is shared, and a slow console read must not hold the
-	// connections an agent is waiting on.
+	// One, so a slow console read never holds connections an agent is waiting on.
 	slot := make(chan struct{}, 1)
 	mux := http.NewServeMux()
 	for _, rt := range routeTable {
@@ -120,8 +116,7 @@ func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 	return limitBody(maxAPIBody, mux)
 }
 
-// limitBody reads the whole body before next runs, as RequestBodyLimitMiddleware does,
-// and answers its 413 past n bytes.
+// limitBody buffers the body before next runs, as RequestBodyLimitMiddleware does, and answers 413 past n bytes.
 func limitBody(n int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength > n {
@@ -172,8 +167,7 @@ func internalError(w http.ResponseWriter, err error) {
 	io.WriteString(w, "Internal Server Error")
 }
 
-// reply answers v, or maps err the way FastAPI does: a GrepError is the caller's
-// mistake, anything else is a 500.
+// reply answers v, or maps err as FastAPI does: a GrepError is a 400 and anything else a 500.
 func reply(w http.ResponseWriter, v any, err error) {
 	var ge *store.GrepError
 	switch {
@@ -258,8 +252,7 @@ func (p *params) int(name string, def, lo, hi int) int {
 	return n
 }
 
-// pyUUID parses s as pydantic does, through Rust uuid's parse_str. On failure it
-// returns the text of that crate's InvalidUuid::into_err, which pydantic quotes.
+// pyUUID parses s as pydantic does, returning the Rust uuid crate's error text on failure.
 func pyUUID(s string) (uuid.UUID, string) {
 	shaped := len(s) == 32 || len(s) == 36 ||
 		len(s) == 38 && s[0] == '{' && s[37] == '}' ||
@@ -405,8 +398,7 @@ func revisions(rs []store.Revision) []revisionOut {
 	return out
 }
 
-// credentials validates the login body as FastAPI validates Credentials: only a
-// JSON content type is parsed, with Python's json. It answers the error itself.
+// credentials validates the login body as FastAPI validates Credentials, and answers any error itself.
 func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -476,8 +468,7 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// proxies is uvicorn's forwarded_allow_ips: the peers whose X-Forwarded-Proto
-// sets the scheme Python's Secure decision reads.
+// proxies is uvicorn's forwarded_allow_ips: the peers trusted to set the scheme with X-Forwarded-Proto.
 type proxies struct {
 	all      bool
 	addrs    map[netip.Addr]bool

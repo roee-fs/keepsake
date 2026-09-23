@@ -23,8 +23,7 @@ func SetAcquireTimeout(d time.Duration) func() {
 // nilTenant gives admin_read's uuid cast of an unset TenantGUC a value that matches no tenant.
 var nilTenant = uuid.Nil.String()
 
-// Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
-// set here and nowhere else. Ported from 8f2af2e:src/keepsake/store/pool.py.
+// Store owns the pool and sets the tenant GUC, ported from 8f2af2e:src/keepsake/store/pool.py.
 type Store struct {
 	pool       *pgxpool.Pool
 	searchPath string
@@ -73,8 +72,7 @@ func OpenVerified(ctx context.Context, dsn, schema string) (*Store, error) {
 // Close releases the pool's connections.
 func (s *Store) Close() { s.pool.Close() }
 
-// Healthy reports whether the pool can hand out a working connection right now.
-// It answers rather than raises: a readiness probe must always produce a verdict.
+// Healthy reports whether the pool can hand out a working connection; it never raises.
 func (s *Store) Healthy(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -87,8 +85,7 @@ func (s *Store) Healthy(ctx context.Context) bool {
 	return true
 }
 
-// Raw yields a connection with no tenant scope, read-only so it cannot become a
-// write path into every tenant's rows at once. For startup checks only.
+// Raw yields a read-only connection with no tenant scope, for startup checks only.
 func (s *Store) Raw(ctx context.Context, fn func(pgx.Tx) error) error {
 	return s.tx(ctx, fmt.Sprintf("BEGIN READ ONLY; SELECT set_config('search_path', '%s', true)", s.searchPath), fn)
 }
@@ -101,19 +98,14 @@ func (s *Store) Scope(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) err
 		s.searchPath, AdminGUC, TenantGUC, tenant), fn)
 }
 
-// AdminScope yields a read-only connection that reads every tenant, for the
-// admin console only. The policy behind it is FOR SELECT, so an admin has no
-// write path into a tenant. okf.admin is self-asserted: authentication happens
-// above this method, never inside it.
+// AdminScope yields a read-only connection reading every tenant; authentication happens above it.
 func (s *Store) AdminScope(ctx context.Context, fn func(pgx.Tx) error) error {
 	return s.tx(ctx, fmt.Sprintf(
 		"BEGIN READ ONLY; SELECT set_config('search_path', '%s', true), set_config('%s', 'on', true), set_config('%s', '%s', true)",
 		s.searchPath, AdminGUC, TenantGUC, nilTenant), fn)
 }
 
-// tx runs fn in a transaction opened by begin, which sets its GUCs in the same round trip.
-// Every value begin interpolates is a validated schema, a GUC constant or a uuid.
-// set_config's is_local is SET LOCAL: a session value would leak to the connection's next user.
+// tx runs fn in a transaction whose begin, built from validated values only, sets GUCs SET LOCAL in one round trip.
 func (s *Store) tx(ctx context.Context, begin string, fn func(pgx.Tx) error) error {
 	// The timeout covers only the acquire, as psycopg_pool's does, not the transaction.
 	acquireCtx, cancel := context.WithTimeout(ctx, acquireTimeout)
@@ -126,8 +118,7 @@ func (s *Store) tx(ctx context.Context, begin string, fn func(pgx.Tx) error) err
 	return pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{BeginQuery: begin}, fn)
 }
 
-// acquireError marks an error from acquiring a pooled connection, so IsUnavailable
-// can tell an acquire timeout from a deadline the caller's own fn hit.
+// acquireError marks an acquire failure, so IsUnavailable can tell it from fn's own deadline.
 type acquireError struct{ err error }
 
 func (e *acquireError) Error() string { return e.err.Error() }

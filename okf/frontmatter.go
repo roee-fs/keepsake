@@ -348,8 +348,7 @@ var timestampParts = regexp.MustCompile(`^([0-9]{4})-([0-9][0-9]?)-([0-9][0-9]?)
 	`(?:(?:([Tt])|[ \t]+)([0-9][0-9]?):([0-9]{2}):([0-9]{2})(?:\.([0-9]*))?` +
 	`(?:[ \t]*(Z|([-+])([0-9][0-9]?)(?::([0-9]{2}))?))?)?$`)
 
-// constructTimestamp returns Python str() of what ruamel builds: a date, a naive datetime,
-// or a TimeStamp that keeps the T separator and the offset.
+// constructTimestamp is Python's str() of ruamel's date, naive datetime or TimeStamp.
 func constructTimestamp(s string) (any, error) {
 	m := timestampParts.FindStringSubmatch(s)
 	if m == nil {

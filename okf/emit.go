@@ -10,9 +10,7 @@ import (
 	"strings"
 )
 
-// This file ports the parts of ruamel.yaml's emitter that frontmatter.join reaches:
-// the round-trip representer with default_flow_style=None and width=4096, and no
-// comments, anchors, tags or block scalars, none of which survive a jsonb round trip.
+// The parts of ruamel.yaml's round-trip emitter frontmatter.join reaches, at width 4096.
 
 const (
 	bestWidth          = 4096
@@ -573,8 +571,7 @@ func (e *emitter) writeDoubleQuoted(t []rune, split bool) {
 	e.writeIndicator(`"`, false, false, false)
 }
 
-// canFoldAt is ruamel's test for breaking a double-quoted line without a trailing backslash.
-// Python's IndexError and ValueError there both mean a backslash is needed.
+// canFoldAt is ruamel's test for folding a double-quoted line without a trailing backslash.
 func canFoldAt(t []rune, start, end int) bool {
 	space := slices.Index(t[end:], ' ')
 	if space < 0 {

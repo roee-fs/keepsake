@@ -1,5 +1,4 @@
-// The admin session: one password, one signed cookie, no server-side state.
-// Ported from 8f2af2e:src/keepsake/server/auth.py.
+// The admin session, ported from 8f2af2e:src/keepsake/server/auth.py: one password, one signed cookie.
 package server
 
 import (
@@ -46,9 +45,7 @@ type Auth struct {
 	key      []byte
 }
 
-// NewAuth derives the cookie key from the password, so changing the password
-// revokes every outstanding cookie. scrypt, because a leaked cookie lets anyone
-// test password guesses offline at the key's cost.
+// NewAuth derives the cookie key from the password with scrypt, so a password change revokes every cookie.
 func NewAuth(password string) *Auth {
 	key, err := scrypt.Key([]byte(password), []byte("keepsake-session"), 1<<14, 8, 1, 32)
 	if err != nil {

@@ -1,5 +1,4 @@
-// Package okf is the Open Knowledge Format: concept parsing, link extraction and validation.
-// It MUST be publishable without the rest of keepsake.
+// Package okf is the Open Knowledge Format, publishable without the rest of keepsake.
 package okf
 
 // Concept is a single knowledge unit: a path, its frontmatter and its markdown body.
@@ -42,8 +41,7 @@ func promote(fm *Map, key string) string {
 	return pyStr(v)
 }
 
-// Serialize renders a concept as an OKF document, known fields first.
-// It fails only on a non-finite float, which the store cannot hold.
+// Serialize renders a concept as an OKF document, failing only on a non-finite float.
 func Serialize(c Concept) (string, error) {
 	meta := NewMap()
 	meta.Set("type", c.Type)

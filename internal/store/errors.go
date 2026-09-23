@@ -10,18 +10,14 @@ import (
 	"github.com/jackc/puddle/v2"
 )
 
-// IsUnavailable reports whether err reflects the database being down or
-// unreachable, rather than a statement the database understood and refused. A
-// caller uses this to tell "try again shortly" apart from a real error, the way
+// IsUnavailable reports whether err means the database is down or unreachable, as
 // 2de90d2:src/keepsake/server/tools.py classifies psycopg.OperationalError.
 func IsUnavailable(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// A deadline only means the pool is unavailable when it timed out waiting
-	// for a connection; an unrelated deadline the caller's own fn hit is not
-	// this, even though context.DeadlineExceeded also satisfies net.Error below.
+	// Only an acquire's deadline is unavailability; context.DeadlineExceeded also satisfies net.Error below.
 	var acquireErr *acquireError
 	if errors.As(err, &acquireErr) && errors.Is(err, context.DeadlineExceeded) {
 		return true
@@ -34,8 +30,7 @@ func IsUnavailable(err error) bool {
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
-		// Class 08 is connection_exception; the 57P0x codes are the server
-		// shutting the connection down (admin command, crash, or restart).
+		// Class 08 is connection_exception; 57P0x is the server shutting the connection down.
 		return strings.HasPrefix(pgErr.Code, "08") ||
 			pgErr.Code == "57P01" || pgErr.Code == "57P02" || pgErr.Code == "57P03"
 	}

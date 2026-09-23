@@ -11,8 +11,7 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// pyJSON decodes s as CPython's json.loads does. On failure it returns the
-// JSONDecodeError's msg and pos, which FastAPI puts in a json_invalid error.
+// pyJSON decodes s as json.loads does, or returns the JSONDecodeError's msg and pos.
 func pyJSON(s []rune) (v any, msg string, pos int) {
 	d := &pyDecoder{s: s}
 	i := d.ws(0)

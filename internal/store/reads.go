@@ -1,5 +1,4 @@
-// Concept reads. Ported from 8f2af2e:src/keepsake/store/concepts.py (the read half; writes
-// are concepts.go). Every SQL statement is copied verbatim, %s changed to $n.
+// Concept reads, ported from 8f2af2e:src/keepsake/store/concepts.py with its SQL verbatim.
 package store
 
 import (
@@ -29,8 +28,7 @@ var grepTimeoutMS = 5000
 // word finds runs of letters, digits and underscore: Python's \w under re.UNICODE.
 var word = regexp.MustCompile(`[\p{L}\p{N}_]+`)
 
-// Revision is one entry in the revision log. It carries no snapshot: that holds
-// the body.
+// Revision is one entry in the revision log, without the snapshot that holds the body.
 type Revision struct {
 	Path      string
 	Version   int
@@ -51,8 +49,7 @@ type Hit struct {
 	Score       float64
 }
 
-// Summary is one row in the admin console's concept table: Hit without the score,
-// plus TenantID, since a tenant-less page mixes tenants.
+// Summary is a concept table row: Hit without the score, plus TenantID for mixed-tenant pages.
 type Summary struct {
 	Path        string
 	Type        string
@@ -90,8 +87,7 @@ type TenantCount struct {
 	Count    int
 }
 
-// GrepHit is one (path, snippet) match. The snippet is a card, not a body: enough
-// context to judge relevance, no more.
+// GrepHit is one (path, snippet) match; the snippet is a card, not a body.
 type GrepHit struct {
 	Path    string
 	Snippet string
@@ -105,8 +101,7 @@ type GraphRow struct {
 	Links []string
 }
 
-// GrepError reports a pattern Postgres could not compile, or one whose match
-// exceeded the statement timeout.
+// GrepError reports a pattern Postgres could not compile or match within the timeout.
 type GrepError struct{ Msg string }
 
 func (e *GrepError) Error() string { return e.Msg }
@@ -115,8 +110,7 @@ func tsquery(query string) string {
 	return strings.Join(word.FindAllString(query, -1), " | ")
 }
 
-// connect dispatches tenant=nil to AdminScope, any other value to Scope. Centralised
-// so a per-method copy cannot get the two backwards, mirroring Python's _connect.
+// connect dispatches tenant=nil to AdminScope and any other tenant to Scope, as Python's _connect.
 func (cs *ConceptStore) connect(ctx context.Context, tenant *uuid.UUID, fn func(pgx.Tx) error) error {
 	if tenant == nil {
 		return cs.s.AdminScope(ctx, fn)
@@ -140,8 +134,7 @@ func scanConcept(row pgx.Row, extra ...any) (okf.Concept, error) {
 	return c, nil
 }
 
-// backlinksSQL is _BACKLINKS: sequential, not the GIN index, because arraycontains
-// is not leakproof under FORCE ROW LEVEL SECURITY.
+// backlinksSQL is _BACKLINKS: sequential, since arraycontains is not leakproof under forced RLS.
 const backlinksSQL = "ARRAY(SELECT b.path FROM concept b WHERE $2 = ANY(b.links) ORDER BY b.path)"
 
 // collect runs sql and scans every row into a T by column position.
@@ -170,8 +163,7 @@ func (cs *ConceptStore) Read(ctx context.Context, tenant uuid.UUID, path string)
 	return out, err
 }
 
-// readWithBacklinks reads the concept and the paths linking to it in one statement,
-// so the backlinks cannot come from a later snapshot than the concept.
+// readWithBacklinks reads the concept and its backlinks in one statement, so from one snapshot.
 func readWithBacklinks(ctx context.Context, tx pgx.Tx, path string) (*okf.Concept, []string, error) {
 	var bl []string
 	c, err := scanConcept(tx.QueryRow(ctx,
@@ -194,8 +186,7 @@ func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID,
 	return c, backlinks, err
 }
 
-// Detail is ReadWithBacklinks plus the path's most recent limit revisions, newest
-// first, in one transaction. The cap is per path, so other concepts cannot crowd it out.
+// Detail is ReadWithBacklinks plus the path's newest limit revisions, in one transaction.
 func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []Revision, err error) {
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		if c, backlinks, err = readWithBacklinks(ctx, tx, path); err != nil || c == nil {
@@ -225,9 +216,7 @@ func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Co
 	return out, err
 }
 
-// Revisions returns the most recent limit revisions, oldest first: the newest
-// window, not the oldest, bounded at the wrong end otherwise shows only what a
-// bundle carried first and nothing since.
+// Revisions returns the newest limit revisions, oldest first.
 func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]Revision, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -259,13 +248,11 @@ func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix strin
 	return out, err
 }
 
-// Page returns a path-ordered page of concepts under prefix and how many there are
-// in all, in one transaction. tenant=nil mixes every tenant.
+// Page returns a path-ordered page under prefix and its total, in one transaction. nil mixes tenants.
 func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []Summary, total int, err error) {
 	err = cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		if limit > 0 {
-			// path alone is not a total order under AdminScope: two tenants can share a
-			// path, so tenant_id breaks the tie the same way both ways.
+			// Two tenants can share a path, so tenant_id breaks the tie.
 			if page, err = collect[Summary](ctx, tx,
 				fmt.Sprintf("SELECT %s FROM concept WHERE starts_with(path, $1) "+
 					"ORDER BY path, tenant_id LIMIT $2 OFFSET $3", summaryCols),
@@ -301,8 +288,7 @@ func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, 
 			return err
 		}
 
-		// Correlated on tenant_id: paths repeat across tenants under AdminScope.
-		// Unnested so the anti-join hashes on the path; = ANY(links) is quadratic.
+		// Correlated on tenant_id, and unnested so the anti-join hashes on the path.
 		return tx.QueryRow(ctx,
 			"SELECT count(*) FROM concept c WHERE NOT EXISTS ("+
 				"  SELECT 1 FROM concept b, unnest(b.links) AS l(target)"+
@@ -319,8 +305,7 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 	}
 	var out []Revision
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
-		// Under AdminScope two tenants can hold the same path at the same version
-		// and timestamp, so tenant_id is what makes the order total.
+		// tenant_id makes the order total: two tenants can share a path, version and timestamp.
 		out, err = collect[Revision](ctx, tx,
 			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
 				"to_char(created_at, 'YYYY-MM-DD') "+
@@ -332,8 +317,7 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 	return out, err
 }
 
-// DailyWrites returns concept-revision counts for the last days days, oldest
-// first and zero-filled so a quiet day does not vanish from the chart.
+// DailyWrites returns revision counts for the last days days, oldest first and zero-filled.
 func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]DailyWrite, error) {
 	if days <= 0 {
 		return nil, nil
@@ -354,8 +338,7 @@ func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days
 	return out, err
 }
 
-// Tenants lists every tenant holding at least one concept, and its count.
-// Admin-only: there is no tenant registry besides this table.
+// Tenants lists every tenant with concepts, and how many; there is no other tenant registry.
 func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 	var out []TenantCount
 	err := cs.s.AdminScope(ctx, func(tx pgx.Tx) (err error) {
@@ -387,10 +370,7 @@ func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query stri
 	return out, err
 }
 
-// grep is the query the Python _GREP constant holds: the match position, not the
-// matched text, since substring(body from pattern) would tell an agent nothing
-// about relevance. One haystack rather than three columns keeps the snippet and
-// the predicate from ever disagreeing.
+// grepSQL is _GREP: the snippet comes from the match position in one haystack the predicate also reads.
 const grepSQL = `
 SELECT c.path,
        btrim(regexp_replace(
@@ -404,9 +384,7 @@ ORDER BY c.path
 LIMIT $2
 `
 
-// Grep returns (path, snippet) for every concept matching the POSIX regex pattern.
-// It returns a *GrepError if Postgres cannot compile pattern, or if matching it
-// exceeds the statement timeout.
+// Grep returns (path, snippet) matches of a POSIX regex, or a *GrepError for a bad or slow one.
 func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
 	if limit <= 0 {
 		return nil, nil

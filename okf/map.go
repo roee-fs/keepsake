@@ -7,8 +7,7 @@ import (
 	"slices"
 )
 
-// Map is a JSON object that keeps its keys in insertion order, as a Python dict does.
-// Its values are string, bool, nil, json.Number, int, NonFinite, []any or *Map.
+// Map is an insertion-ordered JSON object of string, bool, nil, json.Number, int, NonFinite, []any or *Map.
 type Map struct {
 	keys []string
 	vals map[string]any

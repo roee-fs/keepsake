@@ -1,5 +1,4 @@
-// The HTTP entry point. Verify runs here, before anything can bind a port.
-// Ported from 8f2af2e:src/keepsake/server/app.py.
+// The HTTP entry point, which verifies the database first. Ported from 8f2af2e:src/keepsake/server/app.py.
 package server
 
 import (
@@ -17,12 +16,10 @@ import (
 	"github.com/roee-fs/keepsake/internal/store"
 )
 
-// Every request is the one configured tenant, so the revision log records the server
-// rather than a caller it has no way to identify.
+// The revision log records the server, since a request carries no caller identity.
 const actor = "mcp"
 
-// Where the image bakes the built console. Overridable so a source checkout can point
-// it at a local frontend/dist.
+// Where the image bakes the built console; KEEPSAKE_STATIC_DIR overrides it.
 const defaultStaticDir = "/app/static"
 
 type Config struct {
@@ -31,12 +28,9 @@ type Config struct {
 	Schema   string
 }
 
-// BuildApp returns the MCP app at /mcp with a readiness probe at /readyz, and a func
-// that closes its pool. It fails with *store.MisconfiguredDatabase when the database
-// does not isolate tenants: crashing is the check.
+// BuildApp serves /mcp and /readyz and returns a closer, or fails when the database does not isolate tenants.
 func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
-	// Read before the pool opens, so a misconfigured console fails before the
-	// database is holding connections open.
+	// Read before the pool opens, so a misconfigured console holds no connections.
 	password, err := AdminPassword()
 	if err != nil {
 		return nil, nil, err
@@ -75,8 +69,7 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 		// os.Root, not os.DirFS: a symlink out of the bundle is refused, as Starlette refuses it.
 		if root, err := os.OpenRoot(dir); err == nil {
 			closeRoot = func() { root.Close() }
-			// The router's fallback, after the slash redirect, so /mcp/ still redirects
-			// to /mcp. Unguarded because gating it would break the login page.
+			// The fallback after the slash redirect, and unguarded, since the login page is served from it.
 			fallback = slashRedirect(mux, staticConsole(root.FS()))
 		} else {
 			slog.Warn("no console bundle; serving API and MCP only", "dir", dir)
@@ -88,9 +81,7 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 	return refuseBrowsers(mux), func() { closeRoot(); s.Close() }, nil
 }
 
-// refuseBrowsers answers Starlette's bare 403 to any /mcp request carrying an Origin
-// header. A browser sends Origin on every POST and an MCP client sends none, so this
-// stops a DNS-rebound page without a Host allowlist of the cluster's Service names.
+// refuseBrowsers answers Starlette's bare 403 to a /mcp request with an Origin, which only a browser sends.
 func refuseBrowsers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := r.Header["Origin"]; ok && r.URL.Path == "/mcp" {
@@ -102,9 +93,7 @@ func refuseBrowsers(next http.Handler) http.Handler {
 	})
 }
 
-// slashRedirect answers an unmatched path as Starlette's router does: with a 307 to
-// the same path with its trailing slash toggled if that path has a route, and with
-// the router's default otherwise.
+// slashRedirect 307s an unmatched path to its slash-toggled twin if that has a route, as Starlette does.
 func slashRedirect(mux *http.ServeMux, def http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		alt := r.URL.Path + "/"
@@ -123,9 +112,7 @@ func slashRedirect(mux *http.ServeMux, def http.Handler) http.Handler {
 	})
 }
 
-// staticConsole serves the built console as Starlette's StaticFiles(html=True) does, falling
-// back to index.html for a missing file so a client-side route reloaded as a deep link
-// gets the SPA shell. A stale hashed asset URL also 200s as the shell.
+// staticConsole serves the console as StaticFiles(html=True) does, with index.html for any missing file.
 func staticConsole(root fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -163,8 +150,7 @@ func serveFile(w http.ResponseWriter, r *http.Request, root fs.FS, name string) 
 	if err != nil || !st.Mode().IsRegular() || !ok {
 		return false
 	}
-	// The shell names this build's hashed assets, so a cached copy outlives an
-	// upgrade and loads chunks the new image no longer has.
+	// The shell names this build's hashed assets, so a cached copy would outlive an upgrade.
 	if st.Name() == "index.html" {
 		w.Header().Set("Cache-Control", "no-cache")
 	}

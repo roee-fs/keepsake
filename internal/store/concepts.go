@@ -1,5 +1,4 @@
-// Concept writes, ported from 8f2af2e:src/keepsake/store/concepts.py. Tables are
-// unqualified because Scope sets search_path to the validated schema.
+// Concept writes, ported from 8f2af2e:src/keepsake/store/concepts.py.
 package store
 
 import (
@@ -24,8 +23,7 @@ type NotFoundError struct{ Path string }
 func (e *NotFoundError) Error() string        { return ErrNotFound.Error() + ": " + e.Path }
 func (e *NotFoundError) Is(target error) bool { return target == ErrNotFound }
 
-// fields is every column a write sets, in Concept's own field order. Every write
-// statement is derived from it, so a seventh field cannot reach one and not another.
+// fields is every column a write sets, in Concept's order; every write statement derives from it.
 var fields = []string{"type", "title", "description", "body", "frontmatter", "links"}
 
 // revise appends the revision of w's row, completing the snapshot with its version.
@@ -40,8 +38,7 @@ var insertSQL = func() string {
 		strings.Join(fields, ", "), placeholders(n+3), 1, 2, "create", n+4, n+3)
 }()
 
-// updateSQL overwrites a concept and appends its revision. $%d is expected_version:
-// NULL is last-write-wins. It returns no row on a stale version or a missing path.
+// updateSQL overwrites a concept and logs it, or returns no row on a stale version or missing path.
 var updateSQL = func() string {
 	n := len(fields)
 	assignments := make([]string, n)
@@ -82,8 +79,7 @@ func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Conc
 	return version, created, err
 }
 
-// Update writes a concept. expected makes it a compare-and-swap; nil is
-// last-write-wins. err is a *NotFoundError if the path does not exist.
+// Update writes a concept, as a compare-and-swap unless expected is nil. err is a *NotFoundError for a missing path.
 func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *Conflict, err error) {
 	w, err := newWrite(c)
 	if err != nil {
@@ -96,9 +92,7 @@ func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Conc
 	return version, conflict, err
 }
 
-// ImportMany stores a whole bundle in one transaction, last write winning per
-// path: every insert in one batch, then an overwrite for each path already taken.
-// err is a *NotFoundError if a path is deleted underneath the import.
+// ImportMany stores a bundle in one transaction, last write winning per path; err is a *NotFoundError if a path vanishes.
 func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (int, error) {
 	writes := make([]write, len(bundle))
 	for i, c := range bundle {
@@ -113,8 +107,7 @@ func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle
 			inserts.Queue(insertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
 				_, created, err := scanInsert(row)
 				if err == nil && !created {
-					// The bundle is the authority the operator is replaying, so there
-					// is no version to compare and no conflict to resolve.
+					// The bundle is the operator's authority: there is no version to compare.
 					updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
 						_, _, err := overwrite(ctx, tx, row, w.c.Path)
 						return err

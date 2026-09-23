@@ -15,8 +15,7 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// era is the Python transport a request reaches, classified once from its
-// mcp-protocol-version header.
+// era is the Python transport a request reaches, from its mcp-protocol-version header.
 type era int
 
 const (
@@ -89,8 +88,7 @@ var shapes = map[string]func(result *okf.Map, modern bool){
 	},
 }
 
-// pyModel orders a model's keys as mcp_types declares its fields: alphabetically,
-// with _meta last. Only models are reordered, never the data they carry.
+// pyModel orders a model's keys as mcp_types does: alphabetically, _meta last; data keeps its order.
 func pyModel(m *okf.Map) *okf.Map {
 	keys := m.Keys()
 	slices.SortFunc(keys, func(a, b string) int {
@@ -119,8 +117,7 @@ func first(m *okf.Map, keys ...string) *okf.Map {
 	return out
 }
 
-// pythonMethods are the requests Python's server answers in each era. go-sdk
-// answers more (resources/list, logging/setLevel, ...); Python says -32601.
+// pythonMethods are the requests Python answers per era; go-sdk answers more, where Python says -32601.
 var pythonMethods = map[bool][]string{
 	false: {"initialize", "ping", "tools/list", "tools/call"},
 	true:  {"server/discover", "tools/list", "tools/call"},
@@ -140,8 +137,7 @@ const (
 	codeVersion       = -32022
 )
 
-// rpcError answers a JSON-RPC error. Divergence 11: status and code are Python's,
-// the message may be worded differently.
+// rpcError answers a JSON-RPC error with Python's status and code; divergence 11 is the wording.
 func rpcError(w http.ResponseWriter, status int, id any, code int, msg string, data ...any) {
 	e := obj("code", code, "message", msg)
 	if len(data) > 0 {
@@ -184,8 +180,7 @@ func validMessage(m *okf.Map) bool {
 	return (validID(id) || id == nil) && (hasResult && resultObj || hasError && errorObj)
 }
 
-// envelopeLadder is Python's modern ladder for a request whose mcp-protocol-version header
-// names no known version: it returns the status, code and message, or 0.
+// envelopeLadder is Python's answer to a request naming an unknown protocol version.
 func envelopeLadder(params *okf.Map) (int, string) {
 	meta, _ := params.Get("_meta")
 	m, ok := meta.(*okf.Map)
@@ -204,8 +199,7 @@ func envelopeLadder(params *okf.Map) (int, string) {
 	return codeHeader, "mcp-protocol-version header does not match the request envelope's protocol version"
 }
 
-// badParams is the params validation Python runs before dispatch, for the requests
-// whose params go-sdk would accept or check later.
+// badParams is Python's pre-dispatch params check, for requests go-sdk would accept or check later.
 func badParams(method string, params *okf.Map, r *http.Request, e era) bool {
 	get := func(k string) (any, bool) {
 		if params == nil {
@@ -245,8 +239,7 @@ func badParams(method string, params *okf.Map, r *http.Request, e era) bool {
 	return false
 }
 
-// rejected answers what Python's transports refuse before dispatch, with Python's
-// status and code, and reports whether it did.
+// rejected answers what Python refuses before dispatch, as Python does, and reports whether it did.
 func rejected(w http.ResponseWriter, r *http.Request, e era) bool {
 	// limitBody has already buffered it.
 	body, _ := io.ReadAll(r.Body)
@@ -277,8 +270,7 @@ func rejected(w http.ResponseWriter, r *http.Request, e era) bool {
 		if e != legacy {
 			return false
 		}
-		// Python forwards a notification unanswered; pydantic reads a request
-		// whose id is not a string or integer as one.
+		// Python forwards a notification unanswered, and reads a request with a non-integer id as one.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 	case isRequest && e == unknown:
@@ -308,8 +300,7 @@ func methodNotFound(method string) error {
 	return &jsonrpc.Error{Code: codeNotFound, Message: "Method not found", Data: data}
 }
 
-// shaped is a result in Python's key order. go-sdk adds _meta after the middleware
-// returns, and Python's models serialise it last.
+// shaped is a result in Python's key order, with the _meta go-sdk adds after the middleware last.
 type shaped struct {
 	mcp.ResultBase
 	m *okf.Map

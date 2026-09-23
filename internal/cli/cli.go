@@ -1,5 +1,4 @@
-// Package cli is the operator commands: import, export, validate, migrate, serve.
-// Ported from 2de90d2:src/keepsake/cli/__init__.py.
+// Package cli is the operator commands, ported from 2de90d2:src/keepsake/cli/__init__.py.
 package cli
 
 import (
@@ -29,9 +28,7 @@ const defaultPort = 8000
 
 const choices = "{import,export,validate,migrate,serve}"
 
-// EnvPort is the port $KEEPSAKE_PORT names, or 8000 when it names nothing usable.
-// kubelet injects `tcp://10.96.0.1:8000` as KEEPSAKE_PORT into every pod in a
-// namespace holding a Service named keepsake, so this never fails. Only serve reads it.
+// EnvPort is $KEEPSAKE_PORT, or 8000 for anything else, such as the service link kubelet injects.
 func EnvPort() int {
 	value := os.Getenv("KEEPSAKE_PORT")
 	if !okf.IsDecimal(value) {
@@ -129,8 +126,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		flags["--port"] = &port
 	}
 
-	// argparse's order: flags anywhere, -h at once, everything after -- positional,
-	// and every argument nothing consumed reported together at the end.
+	// argparse's order: flags anywhere, -h at once, and leftovers reported together at the end.
 	var extra []string
 	hasDirectory := false
 	positional := func(a string) {
@@ -203,8 +199,7 @@ func required(value, flag, env string) (string, error) {
 	return value, nil
 }
 
-// tenantID parses a required tenant as Python's UUID() does, which ignores braces, a
-// URN prefix and where the hyphens fall.
+// tenantID parses a tenant as Python's UUID() does, ignoring braces, a URN prefix and hyphen positions.
 func tenantID(value string) (uuid.UUID, error) {
 	if _, err := required(value, "--tenant", "KEEPSAKE_TENANT_ID"); err != nil {
 		return uuid.UUID{}, err
@@ -232,8 +227,7 @@ func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, fun
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
-	// Verified because RLS is the only thing keeping one tenant's concepts out of
-	// another's bundle: a privileged DSN would export every tenant, silently.
+	// Verified: RLS alone keeps another tenant's concepts out of this bundle.
 	s, err := store.OpenVerified(ctx, dsn, name)
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err

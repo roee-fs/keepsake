@@ -10,19 +10,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Every catalog read below is schema-qualified: search_path names pg_catalog explicitly,
-// so it is searched in listed order and a table named okf.pg_class would shadow it.
+// Catalog reads are qualified: search_path lists okf first, so okf.pg_class would shadow pg_catalog's.
 
 // roleQuery reads pg_roles, not pg_user: pg_user omits NOLOGIN roles, which SET ROLE can reach.
 const roleQuery = `SELECT rolsuper, rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user`
 
-// schemaOwnerQuery checks MEMBER, not USAGE: a NOINHERIT member holds none of the owner's
-// privileges until it runs SET ROLE, and may run it at any time.
+// schemaOwnerQuery checks MEMBER, not USAGE: a NOINHERIT member may SET ROLE to the owner at any time.
 const schemaOwnerQuery = `SELECT pg_catalog.pg_has_role(nspowner, 'MEMBER') FROM pg_catalog.pg_namespace WHERE nspname = $1`
 
-// tablesQuery looks for a tenant_id column, not a name: the rule is "every table holding
-// tenant data", and an exemption list is how a table that does hold it gets waved through.
-// Alembic's bookkeeping table has no such column, so it stays out without being named.
+// tablesQuery finds tenant tables by their tenant_id column, never by name, which leaves alembic_version out.
 const tablesQuery = `
 	SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
 	       pg_catalog.pg_has_role(c.relowner, 'MEMBER')
@@ -33,8 +29,7 @@ const tablesQuery = `
 	              WHERE a.attrelid = c.oid AND a.attname = 'tenant_id'
 	                AND NOT a.attisdropped)`
 
-// policiesQuery reads both expressions: USING alone leaves WITH CHECK (true) free to admit
-// another tenant's inserts, and an INSERT-only policy carries no USING at all.
+// policiesQuery reads USING and WITH CHECK: either alone can admit another tenant's rows.
 const policiesQuery = `
 	SELECT c.relname, p.polname, p.polcmd, p.polpermissive,
 	       pg_catalog.pg_get_expr(p.polqual, p.polrelid),
@@ -44,12 +39,10 @@ const policiesQuery = `
 	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 	WHERE n.nspname = $1`
 
-// selectOnly is pg_policy.polcmd for a policy applying to SELECT alone. '*' is ALL, and a
-// policy reaching a write is not the exemption.
+// selectOnly is pg_policy.polcmd for SELECT alone; a policy reaching a write is not the exemption.
 const selectOnly = "r"
 
-// adminQual is admin_read as migration 0004 writes it, whitespace collapsed. Any looser
-// test, such as mentioning the GUC, also passes a policy that admits every row.
+// adminQual is admin_read as migration 0004 writes it, whitespace collapsed; nothing looser passes.
 var adminQual = "(tenant_id >= CASE WHEN (current_setting('" + AdminGUC + "'::text, true) = " +
 	"'on'::text) THEN '" + nilTenant + "'::uuid ELSE NULL::uuid END)"
 
@@ -64,8 +57,7 @@ func misconfigured(format string, args ...any) error {
 
 func readsTenant(expr string) bool { return strings.Contains(expr, TenantGUC) }
 
-// policyFault says why a policy fails to confine the rows it admits, or "" if it does.
-// The sentence is read off a crash-looping pod, so each case names the failing clause.
+// policyFault names the clause through which a policy fails to confine its rows, or returns "".
 func policyFault(p policyRow) string {
 	if len(p.exprs) == 0 {
 		return "applies no expression, so it admits every row"
@@ -76,9 +68,7 @@ func policyFault(p policyRow) string {
 		}
 		return ""
 	}
-	// The single exemption, for the admin console's cross-tenant read. Pinned to the
-	// name, the command, permissiveness and the exact expression: loosen any one and
-	// a policy that admits another tenant's rows starts passing this check.
+	// The admin console's exemption, pinned to name, command, permissiveness and exact expression.
 	if p.cmd != selectOnly {
 		return fmt.Sprintf("is the %s exemption but is not FOR SELECT, so it would "+
 			"admit another tenant's rows to a write", AdminPolicy)
@@ -179,17 +169,14 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			if !forced {
 				return misconfigured("%s.%s does not FORCE row-level security", schema, name)
 			}
-			// A permissive tenant policy, not merely a policy: admin_read on its own,
-			// or a restrictive tenant policy, leaves the table unreadable by every tenant.
+			// A permissive tenant policy: admin_read alone, or a restrictive one, leaves the table unreadable.
 			if !slices.ContainsFunc(policies[name], func(p policyRow) bool {
 				return p.permissive && slices.ContainsFunc(p.exprs, readsTenant)
 			}) {
 				return misconfigured("%s.%s has no row-level security policy scoping it"+
 					" to one tenant", schema, name)
 			}
-			// Permissive policies are ORed, so one that ignores the GUC opens the table
-			// however strict its siblings are. Every expression it does apply must
-			// read a GUC: reads and writes are gated by different ones.
+			// Permissive policies are ORed, so every expression of every one must read a GUC.
 			for _, p := range policies[name] {
 				if fault := policyFault(p); fault != "" {
 					return misconfigured("%s.%s policy %s %s", schema, name, p.name, fault)

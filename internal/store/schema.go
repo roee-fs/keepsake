@@ -1,5 +1,4 @@
-// Package store owns the SQL and connection handling: every statement keepsake
-// sends to Postgres. Ported from 2de90d2:src/keepsake/store/__init__.py.
+// Package store sends every statement keepsake runs, ported from 2de90d2:src/keepsake/store/__init__.py.
 package store
 
 import (
@@ -22,15 +21,13 @@ func ValidatedSchema(name string) (string, error) {
 	return name, nil
 }
 
-// The only GUCs a policy may key on. The policy, the connection that sets one and the
-// startup check that asserts the policy reads it must all name the same string.
+// The only GUCs a policy may key on; the policy, the connection and the startup check share them.
 const (
 	TenantGUC = "okf.current_tenant"
 	AdminGUC  = "okf.admin"
 )
 
-// AdminPolicy is the one policy the startup check exempts from reading TenantGUC. The
-// migration creating it and the check recognising it must agree on the name.
+// AdminPolicy is the one policy the startup check exempts from reading TenantGUC.
 const AdminPolicy = "admin_read"
 
 // Schema reads KEEPSAKE_SCHEMA, defaulting to "okf" only when it is unset.
@@ -42,8 +39,7 @@ func Schema() (string, error) {
 	return ValidatedSchema(name)
 }
 
-// PoolSize reads KEEPSAKE_POOL_SIZE, defaulting to 10. It refuses a bad value with a
-// sentence rather than a strconv error.
+// PoolSize reads KEEPSAKE_POOL_SIZE, defaulting to 10, and refuses a bad value with a sentence.
 func PoolSize() (int, error) {
 	value := cmp.Or(os.Getenv("KEEPSAKE_POOL_SIZE"), "10")
 	n, err := strconv.Atoi(value)

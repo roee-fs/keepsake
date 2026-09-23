@@ -1,6 +1,4 @@
-// A bundle of markdown files is how knowledge enters and leaves; Postgres is the only
-// store. The index and log a bundle carries are generated at export time and are never
-// stored as concepts. Ported from 2de90d2:src/keepsake/cli/__init__.py.
+// Bundles of markdown files in and out of Postgres, ported from 2de90d2:src/keepsake/cli/__init__.py.
 package cli
 
 import (
@@ -27,13 +25,9 @@ const logLimit = 1000
 
 const topLevel = "(top level)"
 
-// documents returns every concept in the bundle, the generated files excluded. It
-// parses the whole bundle before returning, so a malformed file refuses the command
-// rather than aborting it half-applied. strict=false returns invalid concepts instead,
-// for validate to report them all at once.
+// documents parses the whole bundle before returning, so a bad file refuses the command; strict=false keeps invalid concepts for validate.
 func documents(root string, strict bool) ([]okf.Concept, error) {
-	// WalkDir does not follow a symlinked root, and rglob does. Files are still named
-	// by the root the operator typed.
+	// WalkDir does not follow a symlinked root, as rglob does; files keep the root the operator typed.
 	resolved, err := filepath.EvalSymlinks(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		// pathlib's rglob finds nothing in a directory that does not exist.
@@ -82,8 +76,7 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 			if nonFinite(concept.Frontmatter) {
 				return nil, fmt.Errorf("%s: frontmatter holds NaN or Infinity, which JSON cannot store", file)
 			}
-			// Storing an invalid concept is worse than refusing it: a later okf_update
-			// merges the stored empty type back in and fails on a field nobody touched.
+			// A stored invalid concept would fail a later okf_update on a field nobody touched.
 			if errs := okf.Validate(concept); len(errs) > 0 {
 				return nil, fmt.Errorf("%s: %s", file, strings.Join(errs, "; "))
 			}
@@ -109,8 +102,7 @@ func nonFinite(v any) bool {
 	return false
 }
 
-// ImportBundle stores every concept in the bundle in one transaction, so the
-// all-or-nothing documents promises across parsing holds across writing too.
+// ImportBundle stores the whole bundle in one transaction, all or nothing.
 func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, root string) (int, error) {
 	concepts, err := documents(root, true)
 	if err != nil {
@@ -124,15 +116,13 @@ func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	return n, err
 }
 
-// target is the file a concept is written to, relative to the bundle root. It refuses
-// rather than leave the bundle.
+// target is a concept's file relative to the bundle root, refused if it would leave the bundle.
 func target(path string) (string, error) {
 	if okf.ReservedPaths[path] {
 		return "", fmt.Errorf("the concept %s collides with a generated file: the bundle root reserves index.md and log.md",
 			okf.PyReprString(path))
 	}
-	// A traversing path cannot be written through a tool, but whatever is stored, the
-	// export MUST NOT write outside the directory the operator named.
+	// Whatever is stored, the export MUST NOT write outside the directory the operator named.
 	name := path + ".md"
 	if !filepath.IsLocal(name) {
 		return "", fmt.Errorf("refusing to write %s outside the bundle", okf.PyReprString(path))
@@ -155,8 +145,7 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	if err != nil {
 		return 0, err
 	}
-	// Every path is checked before the first file is written: a bundle that is half
-	// written looks like a complete one.
+	// Every path is checked first: a half-written bundle looks like a complete one.
 	targets := make([]string, len(concepts))
 	paths := make([]string, len(concepts))
 	for i, c := range concepts {

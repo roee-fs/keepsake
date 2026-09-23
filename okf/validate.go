@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// ReservedPaths are the paths a bundle export writes at its root: a concept
-// holding one would be overwritten on export and skipped on the way back in.
+// ReservedPaths are the files a bundle export writes at its root, so no concept may hold one.
 var ReservedPaths = map[string]bool{"index": true, "log": true}
 
 // Postgres limits in bytes, refused in advance so the agent gets a sentence instead of a driver error.
@@ -45,8 +44,7 @@ func Validate(c Concept) []string {
 	if ReservedPaths[c.Path] {
 		errors = append(errors, fmt.Sprintf("path '%s' is reserved for a generated bundle file", c.Path))
 	} else if pathStripped != "" && slices.Contains(strings.Split(strings.TrimPrefix(c.Path, "/"), "/"), "") {
-		// A trailing or doubled slash. Each names a concept the store accepts and the
-		// bundle export cannot write out as a file.
+		// A trailing or doubled slash names a concept the export cannot write as a file.
 		errors = append(errors, "path must not have an empty segment")
 	}
 	if strings.Contains(c.Path, "\x00") {
@@ -68,8 +66,7 @@ func Validate(c Concept) []string {
 		{"body", c.Body, MaxBody},
 		{"type", c.Type, MaxTitle},
 	} {
-		// Postgres text holds no NUL, so this reaches the driver and fails the write
-		// after validation has already passed it.
+		// Postgres text holds no NUL, which would otherwise fail the write after validation.
 		if strings.Contains(f.value, "\x00") {
 			errors = append(errors, f.name+" must not contain a NUL byte")
 		}

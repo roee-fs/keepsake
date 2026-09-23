@@ -1,7 +1,5 @@
-// Package migrate replays the Alembic migrations under
-// 8f2af2e:src/keepsake/store/migrations/versions/ in place, without Python or Alembic
-// installed. It reads and writes the same <schema>.alembic_version table Alembic
-// does, so a database Alembic migrated upgrades from wherever it left off.
+// Package migrate replays 8f2af2e:src/keepsake/store/migrations/versions/ without Alembic,
+// through the same <schema>.alembic_version, so an Alembic-migrated database upgrades in place.
 package migrate
 
 import (
@@ -21,8 +19,7 @@ import (
 //go:embed sql/*.sql.tmpl
 var sqlFS embed.FS
 
-// appRole is the role migration 0001 grants by name when it exists. Restated
-// rather than imported, matching 2de90d2:src/keepsake/store/migrations/versions/0001_initial.py.
+// appRole is restated, as 2de90d2:src/keepsake/store/migrations/versions/0001_initial.py restates it.
 const appRole = "okf_app"
 
 type fields struct {
@@ -55,8 +52,7 @@ func loadMigrations() []migration {
 	return out
 }
 
-// Up applies every migration after schema's current alembic_version, in a single
-// transaction, the way Alembic applies them. Run again at head, it changes nothing.
+// Up applies every migration past schema's alembic_version in one transaction; at head it changes nothing.
 func Up(ctx context.Context, dsn, schema string) error {
 	schema, err := store.ValidatedSchema(schema)
 	if err != nil {
