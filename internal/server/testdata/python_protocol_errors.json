@@ -1,0 +1,702 @@
+[
+ {
+  "name": "modern resources/list",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "resources/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 404,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"resources/list\"}}"
+ },
+ {
+  "name": "modern ping",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "ping"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 404,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"ping\"}}"
+ },
+ {
+  "name": "modern initialize",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "initialize"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 404,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"initialize\"}}"
+ },
+ {
+  "name": "modern foo/bar",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "foo/bar"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"foo/bar\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 404,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"foo/bar\"}}"
+ },
+ {
+  "name": "modern foo/bar no meta",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "foo/bar"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\"}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta must be an object carrying the required 'io.modelcontextprotocol/protocolVersion' and 'io.modelcontextprotocol/clientCapabilities' envelope keys\"}}"
+ },
+ {
+  "name": "modern foo/bar empty params",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "foo/bar"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\",\"params\":{}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta must be an object carrying the required 'io.modelcontextprotocol/protocolVersion' and 'io.modelcontextprotocol/clientCapabilities' envelope keys\"}}"
+ },
+ {
+  "name": "modern no mcp-method",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-method header does not match the request body's method\"}}"
+ },
+ {
+  "name": "modern tools/list no mcp-method",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-method header does not match the request body's method\"}}"
+ },
+ {
+  "name": "modern foo/bar method header mismatch",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-method header does not match the request body's method\"}}"
+ },
+ {
+  "name": "modern notification foo",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/foo\"}",
+  "status": 202,
+  "contentType": "",
+  "response": ""
+ },
+ {
+  "name": "modern notification initialized",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}",
+  "status": 202,
+  "contentType": "",
+  "response": ""
+ },
+ {
+  "name": "modern notification with meta",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "notifications/foo"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/foo\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 202,
+  "contentType": "",
+  "response": ""
+ },
+ {
+  "name": "modern notification params array",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"x\",\"params\":[1]}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "unknown version notification",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/foo\"}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\"],\"requested\":\"1999-01-01\"}},\"id\":null}"
+ },
+ {
+  "name": "modern id null",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern id true",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern id 1.5",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern id 1.0",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "ping"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1.0,\"method\":\"ping\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern foo/bar unknown version meta",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "foo/bar"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1999-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-protocol-version header does not match the request envelope's protocol version\"}}"
+ },
+ {
+  "name": "legacy resources/list",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2025-11-25"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}",
+  "status": 200,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"resources/list\"}}"
+ },
+ {
+  "name": "modern parse",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"Parse error\"},\"id\":null}"
+ },
+ {
+  "name": "modern scalar",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "\"x\"",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern batch",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}]",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern response",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern jsonrpc 1.0",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern method not a string",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":5,\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32600,\"message\":\"Body must be a single JSON-RPC request or notification object\"},\"id\":null}"
+ },
+ {
+  "name": "modern meta missing key",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\"}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta is missing the required envelope key(s): io.modelcontextprotocol/clientCapabilities\"}}"
+ },
+ {
+  "name": "modern meta missing both keys",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta is missing the required envelope key(s): io.modelcontextprotocol/protocolVersion, io.modelcontextprotocol/clientCapabilities\"}}"
+ },
+ {
+  "name": "modern tools/call name mismatch",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/call"
+   ],
+   [
+    "mcp-name",
+    "okf_read"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"okf_list\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-name header does not match the request body's 'name' parameter\"}}"
+ },
+ {
+  "name": "modern tools/call name missing header",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/call"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"okf_list\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-name header does not match the request body's 'name' parameter\"}}"
+ },
+ {
+  "name": "modern tools/call name base64",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/call"
+   ],
+   [
+    "mcp-name",
+    "=?base64?b2tmX2xpc3Q=?="
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"okf_list\",\"arguments\":[1],\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid request parameters\",\"data\":\"\"}}"
+ },
+ {
+  "name": "modern tools/call without name",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/call"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid request parameters\",\"data\":\"\"}}"
+ },
+ {
+  "name": "unknown version no meta",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta must be an object carrying the required 'io.modelcontextprotocol/protocolVersion' and 'io.modelcontextprotocol/clientCapabilities' envelope keys\"}}"
+ },
+ {
+  "name": "unknown version meta 2026",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-protocol-version header does not match the request envelope's protocol version\"}}"
+ },
+ {
+  "name": "unknown version meta matches",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1999-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\"],\"requested\":\"1999-01-01\"}}}"
+ },
+ {
+  "name": "unknown version meta matches no method header",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1999-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-method header does not match the request body's method\"}}"
+ },
+ {
+  "name": "unknown version foo/bar",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "1999-01-01"
+   ],
+   [
+    "mcp-method",
+    "foo/bar"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1999-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32022,\"message\":\"Unsupported protocol version\",\"data\":{\"supported\":[\"2026-07-28\"],\"requested\":\"1999-01-01\"}}}"
+ },
+ {
+  "name": "empty version header",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    ""
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"params._meta must be an object carrying the required 'io.modelcontextprotocol/protocolVersion' and 'io.modelcontextprotocol/clientCapabilities' envelope keys\"}}"
+ },
+ {
+  "name": "modern notification unknown version meta",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/foo\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"1999-01-01\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 202,
+  "contentType": "",
+  "response": ""
+ },
+ {
+  "name": "legacy tools/call without name",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2025-11-25"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{}}",
+  "status": 200,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid request parameters\",\"data\":\"\"}}"
+ },
+ {
+  "name": "legacy initialize without params",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2025-11-25"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+  "status": 200,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32602,\"message\":\"Invalid request parameters\",\"data\":\"\"}}"
+ },
+ {
+  "name": "legacy foo/bar",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2025-11-25"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"foo/bar\"}",
+  "status": 200,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"Method not found\",\"data\":\"foo/bar\"}}"
+ },
+ {
+  "name": "legacy notification",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2025-11-25"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/foo\"}",
+  "status": 202,
+  "contentType": "application/json",
+  "response": ""
+ },
+ {
+  "name": "modern duplicate method header",
+  "headers": [
+   [
+    "mcp-protocol-version",
+    "2026-07-28"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ],
+   [
+    "mcp-method",
+    "tools/list"
+   ]
+  ],
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientCapabilities\":{}}}}",
+  "status": 400,
+  "contentType": "application/json",
+  "response": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32020,\"message\":\"mcp-method header appears more than once\"}}"
+ }
+]

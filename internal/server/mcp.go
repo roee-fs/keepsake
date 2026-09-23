@@ -238,12 +238,6 @@ func NewMCPHandler(t *Tools) http.Handler {
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			e, _ := ctx.Value(eraKey{}).(era)
-			if strings.HasPrefix(method, "notifications/") {
-				return next(ctx, method, req)
-			}
-			if !pythonServes(method, e) {
-				return nil, methodNotFound(method)
-			}
 			if method == "tools/list" {
 				return &shaped{m: toolsList[e]}, nil
 			}
@@ -328,7 +322,7 @@ func methodNotAllowed(w http.ResponseWriter, method string, e era) {
 		msg = "Method Not Allowed"
 		w.Header().Set("Allow", "GET, POST, DELETE")
 	}
-	rpcError(w, http.StatusMethodNotAllowed, nil, codeInvalidReq, msg)
+	rpcError(w, e, http.StatusMethodNotAllowed, nil, codeInvalidReq, msg)
 }
 
 // notAcceptable answers 406 as whichever Python transport the request reaches.
@@ -337,7 +331,7 @@ func notAcceptable(w http.ResponseWriter, e era) {
 		w.WriteHeader(http.StatusNotAcceptable)
 		return
 	}
-	rpcError(w, http.StatusNotAcceptable, nil, codeInvalidReq, "Not Acceptable: Client must accept application/json")
+	rpcError(w, e, http.StatusNotAcceptable, nil, codeInvalidReq, "Not Acceptable: Client must accept application/json")
 }
 
 // pyDumps renders v as Python's default json.dumps: ", " and ": " separators, non-ASCII escaped.

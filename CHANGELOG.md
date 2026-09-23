@@ -42,9 +42,11 @@ test enforces it and the release workflow refuses otherwise.
     4300 digits and deeply nested frontmatter.
   - A tool-argument error still names the field and the expected type. The rest
     of the sentence differs.
-  - A malformed MCP request gets the same HTTP status and JSON-RPC error code,
-    but a different message. Methods keepsake does not serve MAY answer -32601
-    where Python answered -32602.
+  - A malformed MCP request on the handshake-era transport (no
+    `mcp-protocol-version` header, or a handshake version) gets the same HTTP
+    status and JSON-RPC error code, but a different message. On either
+    transport, a method keepsake does not serve answers -32601 even where its
+    params are invalid and Python answered -32602.
   - Floats in JSON keep their value, but their text MAY differ (`1e-05` vs
     `0.00001`).
   - Admin API timestamps are always in UTC. The instant is unchanged.

@@ -2,14 +2,16 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/roee-fs/keepsake/okf"
@@ -137,13 +139,18 @@ const (
 	codeVersion       = -32022
 )
 
-// rpcError answers a JSON-RPC error with Python's status and code; divergence 11 is the wording.
-func rpcError(w http.ResponseWriter, status int, id any, code int, msg string, data ...any) {
-	e := obj("code", code, "message", msg)
+// rpcError answers a JSON-RPC error with Python's status and code. The modern transport
+// writes a null id last; legacy messages keep divergence 11's wording.
+func rpcError(w http.ResponseWriter, e era, status int, id any, code int, msg string, data ...any) {
+	errObj := obj("code", code, "message", msg)
 	if len(data) > 0 {
-		e.Set("data", data[0])
+		errObj.Set("data", data[0])
 	}
-	b, _ := json.Marshal(obj("jsonrpc", "2.0", "id", id, "error", e))
+	body := obj("jsonrpc", "2.0", "id", id, "error", errObj)
+	if e != legacy && id == nil {
+		body = obj("jsonrpc", "2.0", "error", errObj, "id", nil)
+	}
+	b, _ := json.Marshal(body)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(b)
@@ -180,27 +187,79 @@ func validMessage(m *okf.Map) bool {
 	return (validID(id) || id == nil) && (hasResult && resultObj || hasError && errorObj)
 }
 
-// envelopeLadder is Python's answer to a request naming an unknown protocol version.
-func envelopeLadder(params *okf.Map) (int, string) {
-	meta, _ := params.Get("_meta")
-	m, ok := meta.(*okf.Map)
-	if !ok {
-		return codeInvalidParams, "params._meta must be an object carrying the required envelope keys"
+const (
+	versionKey = "io.modelcontextprotocol/protocolVersion"
+	capsKey    = "io.modelcontextprotocol/clientCapabilities"
+)
+
+// nameBearing maps a method to the params key its Mcp-Name header mirrors.
+var nameBearing = map[string]string{"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}
+
+var base64Sentinel = regexp.MustCompile(`^=\?base64\?(.*)\?=$`)
+
+// headerValue is decode_header_value: the value, or its canonical base64 payload as UTF-8.
+func headerValue(v string) (string, bool) {
+	m := base64Sentinel.FindStringSubmatch(v)
+	if m == nil {
+		return v, true
 	}
-	pv, hasPV := m.Get("io.modelcontextprotocol/protocolVersion")
-	if _, hasCaps := m.Get("io.modelcontextprotocol/clientCapabilities"); !hasPV || !hasCaps {
-		return codeInvalidParams, "params._meta is missing the required envelope key(s)"
+	b, err := base64.StdEncoding.DecodeString(m[1])
+	if err != nil || base64.StdEncoding.EncodeToString(b) != m[1] || !utf8.Valid(b) {
+		return "", false
 	}
-	if s, ok := pv.(string); !ok {
-		return codeInvalidParams, "the protocol-version envelope value must be a string"
-	} else if s != "2026-07-28" {
-		return codeVersion, "Unsupported protocol version"
+	return string(b), true
+}
+
+// unsupportedVersion is Python's -32022 for a protocol version the modern transport does not serve.
+func unsupportedVersion(w http.ResponseWriter, e era, id, requested any) {
+	rpcError(w, e, http.StatusBadRequest, id, codeVersion, "Unsupported protocol version",
+		obj("supported", []string{"2026-07-28"}, "requested", requested))
+}
+
+// ladder is classify_inbound_request: the first envelope or header rung a modern request fails.
+func ladder(r *http.Request, method string, params *okf.Map) (code int, msg string) {
+	var meta *okf.Map
+	if params != nil {
+		v, _ := params.Get("_meta")
+		meta, _ = v.(*okf.Map)
 	}
-	return codeHeader, "mcp-protocol-version header does not match the request envelope's protocol version"
+	if meta == nil {
+		return codeInvalidParams, "params._meta must be an object carrying the required '" + versionKey + "' and '" + capsKey + "' envelope keys"
+	}
+	var missing []string
+	for _, k := range []string{versionKey, capsKey} {
+		if _, ok := meta.Get(k); !ok {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		return codeInvalidParams, "params._meta is missing the required envelope key(s): " + strings.Join(missing, ", ")
+	}
+	pv, _ := meta.Get(versionKey)
+	if v := r.Header.Values("Mcp-Protocol-Version"); len(v) == 0 || pv != any(v[0]) {
+		return codeHeader, "mcp-protocol-version header does not match the request envelope's protocol version"
+	}
+	if v := r.Header.Values("Mcp-Method"); len(v) == 0 || v[0] != method {
+		return codeHeader, "mcp-method header does not match the request body's method"
+	}
+	if key := nameBearing[method]; key != "" {
+		if body, _ := params.Get(key); body != nil {
+			v := r.Header.Values("Mcp-Name")
+			header, ok := "", false
+			if len(v) > 0 {
+				header, ok = headerValue(v[0])
+			}
+			if s, isString := body.(string); !ok || !isString || s != header {
+				return codeHeader, "mcp-name header does not match the request body's '" + key + "' parameter"
+			}
+		}
+	}
+	// A non-string version already failed the header rung, which is always present here.
+	return 0, ""
 }
 
 // badParams is Python's pre-dispatch params check, for requests go-sdk would accept or check later.
-func badParams(method string, params *okf.Map, r *http.Request, e era) bool {
+func badParams(method string, params *okf.Map, e era) bool {
 	get := func(k string) (any, bool) {
 		if params == nil {
 			return nil, false
@@ -212,9 +271,6 @@ func badParams(method string, params *okf.Map, r *http.Request, e era) bool {
 		name, hasName := get("name")
 		args, hasArgs := get("arguments")
 		_, argsObj := args.(*okf.Map)
-		if e != legacy && (r.Header.Get("Mcp-Method") != method || hasName && r.Header.Get("Mcp-Name") != name) {
-			return false // go-sdk's header checks answer -32020, as Python's do.
-		}
 		_, nameString := name.(string)
 		return !hasName || !nameString || hasArgs && args != nil && !argsObj
 	case "initialize":
@@ -246,17 +302,15 @@ func rejected(w http.ResponseWriter, r *http.Request, e era) bool {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	var msg okf.Map
 	err := json.Unmarshal(body, &msg)
-	var syntax *json.SyntaxError
-	switch {
-	case errors.As(err, &syntax):
-		rpcError(w, http.StatusBadRequest, nil, codeParse, "Parse error")
+	if syntax := (*json.SyntaxError)(nil); errors.As(err, &syntax) {
+		rpcError(w, e, http.StatusBadRequest, nil, codeParse, "Parse error")
 		return true
-	case err != nil || !validMessage(&msg):
-		if e != legacy {
-			rpcError(w, http.StatusBadRequest, nil, codeInvalidReq, "Body must be a single JSON-RPC request or notification object")
-		} else {
-			rpcError(w, http.StatusBadRequest, nil, codeInvalidParams, "Validation error")
-		}
+	}
+	if e != legacy {
+		return rejectedModern(w, r, e, &msg, err == nil)
+	}
+	if err != nil || !validMessage(&msg) {
+		rpcError(w, e, http.StatusBadRequest, nil, codeInvalidParams, "Validation error")
 		return true
 	}
 	m, _ := msg.Get("method")
@@ -264,40 +318,75 @@ func rejected(w http.ResponseWriter, r *http.Request, e era) bool {
 	id, hasID := msg.Get("id")
 	p, _ := msg.Get("params")
 	params, _ := p.(*okf.Map)
-	isRequest := method != "" && hasID && validID(id)
 	switch {
-	case method != "" && !isRequest:
-		if e != legacy {
-			return false
-		}
+	case method != "" && !(hasID && validID(id)):
 		// Python forwards a notification unanswered, and reads a request with a non-integer id as one.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-	case isRequest && e == unknown:
-		if params == nil {
-			params = okf.NewMap()
-		}
-		code, text := envelopeLadder(params)
-		rpcError(w, http.StatusBadRequest, id, code, text)
-	case isRequest && badParams(method, params, r, e):
-		status := http.StatusOK
-		if e != legacy {
-			status = http.StatusBadRequest
-		}
-		rpcError(w, status, id, codeInvalidParams, "Invalid request parameters")
-	case isRequest && e == legacy && !pythonServes(method, e):
-		// The modern transport checks its headers first, so go-sdk answers there.
-		rpcError(w, http.StatusOK, id, codeNotFound, "Method not found", method)
+	case method != "" && badParams(method, params, e):
+		rpcError(w, e, http.StatusOK, id, codeInvalidParams, "Invalid request parameters", "")
+	case method != "" && !pythonServes(method, e):
+		rpcError(w, e, http.StatusOK, id, codeNotFound, "Method not found", method)
 	default:
 		return false
 	}
 	return true
 }
 
-// methodNotFound is -32601 as Python words it; go-sdk sends it as 404 to a modern request.
-func methodNotFound(method string) error {
-	data, _ := json.Marshal(method)
-	return &jsonrpc.Error{Code: codeNotFound, Message: "Method not found", Data: data}
+// rejectedModern is handle_modern_request's pre-dispatch half, in its order.
+func rejectedModern(w http.ResponseWriter, r *http.Request, e era, msg *okf.Map, isObject bool) bool {
+	m, _ := msg.Get("method")
+	method, isString := m.(string)
+	p, hasParams := msg.Get("params")
+	params, isObj := p.(*okf.Map)
+	id, hasID := msg.Get("id")
+	jsonrpc, _ := msg.Get("jsonrpc")
+	if !isObject || jsonrpc != "2.0" || !isString || hasParams && p != nil && !isObj || hasID && !modernID(id) {
+		rpcError(w, e, http.StatusBadRequest, nil, codeInvalidReq, "Body must be a single JSON-RPC request or notification object")
+		return true
+	}
+	if !hasID {
+		// A notification is acknowledged and dropped, at a version this transport serves.
+		if e == unknown {
+			unsupportedVersion(w, e, nil, r.Header.Get("Mcp-Protocol-Version"))
+		} else {
+			w.WriteHeader(http.StatusAccepted)
+		}
+		return true
+	}
+	for _, h := range []string{"mcp-protocol-version", "mcp-method", "mcp-name"} {
+		if len(r.Header.Values(h)) > 1 {
+			rpcError(w, e, http.StatusBadRequest, id, codeHeader, h+" header appears more than once")
+			return true
+		}
+	}
+	if code, text := ladder(r, method, params); code != 0 {
+		rpcError(w, e, http.StatusBadRequest, id, code, text)
+		return true
+	}
+	switch {
+	case e == unknown:
+		// The ladder proved the header equals the envelope's version.
+		unsupportedVersion(w, e, id, r.Header.Get("Mcp-Protocol-Version"))
+	case !pythonServes(method, e):
+		rpcError(w, e, http.StatusNotFound, id, codeNotFound, "Method not found", method)
+	case badParams(method, params, e):
+		rpcError(w, e, http.StatusBadRequest, id, codeInvalidParams, "Invalid request parameters", "")
+	default:
+		return false
+	}
+	return true
+}
+
+// modernID is a RequestId pydantic accepts from JSON: a string or an integer literal.
+func modernID(v any) bool {
+	switch v := v.(type) {
+	case string:
+		return true
+	case json.Number:
+		return !strings.ContainsAny(string(v), ".eE")
+	}
+	return false
 }
 
 // shaped is a result in Python's key order, with the _meta go-sdk adds after the middleware last.

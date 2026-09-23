@@ -925,3 +925,39 @@ func TestAnOversizedBodyIsRefusedAtTheLimit(t *testing.T) {
 		}
 	}
 }
+
+// testdata/python_protocol_errors.json is the Python server's answer to each request,
+// byte for byte, captured from 8f2af2e's app on mcp 2.2.0.
+func TestProtocolErrorBytesArePythons(t *testing.T) {
+	raw, err := os.ReadFile("testdata/python_protocol_errors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name, Body, ContentType, Response string
+		Headers                           [][2]string
+		Status                            int
+	}
+	if err := json.Unmarshal(raw, &cases); err != nil || len(cases) == 0 {
+		t.Fatalf("%d cases: %v", len(cases), err)
+	}
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	for _, tc := range cases {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(tc.Body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		for _, h := range tc.Headers {
+			req.Header.Add(h[0], h[1])
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != tc.Status || resp.Header.Get("Content-Type") != tc.ContentType || string(body) != tc.Response {
+			t.Errorf("%s:\n got %d %q %s\nwant %d %q %s", tc.Name, resp.StatusCode, resp.Header.Get("Content-Type"), body, tc.Status, tc.ContentType, tc.Response)
+		}
+	}
+}
