@@ -1,4 +1,4 @@
-// Ported from 2de90d2:tests/test_verify.py: every rejection here misconfigures the shared
+// Ported from 8f2af2e:tests/test_verify.py: every rejection here misconfigures the shared
 // database and restores it in t.Cleanup, so later tests see a clean database. None of
 // these tests run in parallel with each other or with isolation_test.go's.
 package store_test
@@ -17,7 +17,8 @@ import (
 // Restated from the migration: the tests that rewrite these policies restore them.
 const (
 	tenantQual = "tenant_id = current_setting('okf.current_tenant')::uuid"
-	adminQual  = "current_setting('okf.admin', true) = 'on'"
+	adminQual  = "tenant_id >= CASE WHEN current_setting('okf.admin', true) = 'on' " +
+		"THEN '00000000-0000-0000-0000-000000000000'::uuid END"
 )
 
 var restoreTenantPolicy = fmt.Sprintf(
@@ -270,15 +271,46 @@ func TestVerifyRejectsAPermissiveWithCheck(t *testing.T) {
 
 // The exemption is for one policy shape, not for "any second policy".
 func TestVerifyRejectsAWidenedAdminPolicy(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "ALTER POLICY admin_read ON okf.concept USING (true)")
+	for _, qual := range []string{
+		"true",
+		// Each reads okf.admin and still admits every tenant's rows to every read.
+		"current_setting('okf.admin', true) IS NOT NULL",
+		"current_setting('okf.admin', true) = 'on' OR true",
+		"current_setting('okf.administrator', true) IS NULL",
+	} {
+		t.Run(qual, func(t *testing.T) {
+			execDDL(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", qual))
+			t.Cleanup(func() {
+				execDDL(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", adminQual))
+			})
+
+			// The message must name the clause that failed, not the first one checked.
+			err := verifyDSN(t, db.AppDSN, "okf")
+			assertMisconfigured(t, err,
+				"okf.concept policy admin_read is the admin_read exemption but does not read exactly "+
+					"(tenant_id >= CASE WHEN (current_setting('okf.admin'::text, true) = 'on'::text) "+
+					"THEN '00000000-0000-0000-0000-000000000000'::uuid ELSE NULL::uuid END)")
+		})
+	}
+}
+
+// ANDed with tenant_isolation, it would hide every row from every tenant.
+func TestVerifyRejectsARestrictiveAdminPolicy(t *testing.T) {
+	execDDL(t, db.OwnerDSN,
+		"DROP POLICY admin_read ON okf.concept",
+		fmt.Sprintf("CREATE POLICY admin_read ON okf.concept AS RESTRICTIVE FOR SELECT USING (%s)", adminQual),
+	)
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", adminQual))
+		execDDL(t, db.OwnerDSN,
+			"DROP POLICY admin_read ON okf.concept",
+			fmt.Sprintf("CREATE POLICY admin_read ON okf.concept FOR SELECT USING (%s)", adminQual),
+		)
 	})
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err,
-		"okf.concept policy admin_read is the admin_read exemption but reads neither "+
-			"okf.current_tenant nor okf.admin, so nothing gates the rows it admits")
+		"okf.concept policy admin_read is the admin_read exemption but is RESTRICTIVE, "+
+			"so it hides every row from every tenant")
 }
 
 // FOR ALL on the admin GUC would let an admin write into any tenant. Recreated rather
@@ -339,4 +371,20 @@ func TestVerifyRejectsATableWithoutForcedRLS(t *testing.T) {
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err, "okf.concept does not FORCE row-level security")
+}
+
+// A restrictive tenant policy is ANDed with admin_read, so no tenant can read a row.
+func TestVerifyRejectsARestrictiveTenantPolicy(t *testing.T) {
+	execDDL(t, db.OwnerDSN,
+		"DROP POLICY tenant_isolation ON okf.concept",
+		fmt.Sprintf("CREATE POLICY tenant_isolation ON okf.concept AS RESTRICTIVE USING (%s) WITH CHECK (%s)",
+			tenantQual, tenantQual),
+	)
+	t.Cleanup(func() {
+		execDDL(t, db.OwnerDSN, "DROP POLICY tenant_isolation ON okf.concept", restoreTenantPolicy)
+	})
+
+	err := verifyDSN(t, db.AppDSN, "okf")
+	assertMisconfigured(t, err,
+		"okf.concept has no row-level security policy scoping it to one tenant")
 }

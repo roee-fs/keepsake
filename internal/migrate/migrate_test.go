@@ -381,22 +381,17 @@ func TestANonDefaultSchemaMigrates(t *testing.T) {
 	}
 }
 
-func findMigration(t *testing.T, revision string) migration {
-	t.Helper()
-	for _, m := range migrations {
-		if m.revision == revision {
-			return m
-		}
+// A fresh database at each revision an older Python release left it at. The fixture
+// is built from the same embedded templates as Up itself.
+func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
+	for _, left := range []string{"0002", "0003"} {
+		t.Run(left, func(t *testing.T) { upgradeFrom(t, left) })
 	}
-	t.Fatalf("no embedded migration %s", revision)
-	return migration{}
 }
 
-// A fresh database with alembic_version at 0002, as an older Python release left it.
-// The fixture is built from the same embedded templates as Up itself.
-func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
+func upgradeFrom(t *testing.T, left string) {
 	ctx := context.Background()
-	schema := "okf_from_0002"
+	schema := "okf_from_" + left
 	conn := connect(t, db.OwnerDSN)
 
 	tx, err := conn.Begin(ctx)
@@ -416,18 +411,20 @@ func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
 	)`, schema)); err != nil {
 		t.Fatal(err)
 	}
-	for _, revision := range []string{"0001", "0002"} {
-		m := findMigration(t, revision)
+	for _, m := range migrations {
+		if m.revision > left {
+			break
+		}
 		var sql strings.Builder
 		if err := m.tmpl.Execute(&sql, f); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tx.Exec(ctx, sql.String()); err != nil {
-			t.Fatalf("migration %s: %v", revision, err)
+			t.Fatalf("migration %s: %v", m.revision, err)
 		}
 	}
 	if _, err := tx.Exec(ctx, fmt.Sprintf(
-		"INSERT INTO %s.alembic_version (version_num) VALUES ('0002')", schema)); err != nil {
+		"INSERT INTO %s.alembic_version (version_num) VALUES ($1)", schema), left); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -443,8 +440,8 @@ func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "0003" {
-		t.Fatalf("version_num = %s, want 0003", version)
+	if version != "0004" {
+		t.Fatalf("version_num = %s, want 0004", version)
 	}
 }
 

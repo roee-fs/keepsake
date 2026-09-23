@@ -35,7 +35,7 @@ const tablesQuery = `
 // policiesQuery reads both expressions: USING alone leaves WITH CHECK (true) free to admit
 // another tenant's inserts, and an INSERT-only policy carries no USING at all.
 const policiesQuery = `
-	SELECT c.relname, p.polname, p.polcmd,
+	SELECT c.relname, p.polname, p.polcmd, p.polpermissive,
 	       pg_catalog.pg_get_expr(p.polqual, p.polrelid),
 	       pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
 	FROM pg_catalog.pg_policy p
@@ -47,6 +47,11 @@ const policiesQuery = `
 // policy reaching a write is not the exemption.
 const selectOnly = "r"
 
+// adminQual is admin_read as migration 0004 writes it, whitespace collapsed. Any looser
+// test, such as mentioning the GUC, also passes a policy that admits every row.
+const adminQual = "(tenant_id >= CASE WHEN (current_setting('" + AdminGUC + "'::text, true) = " +
+	"'on'::text) THEN '00000000-0000-0000-0000-000000000000'::uuid ELSE NULL::uuid END)"
+
 // MisconfiguredDatabase is raised at startup. Crashing loudly beats serving cross-tenant reads.
 type MisconfiguredDatabase struct{ Msg string }
 
@@ -56,47 +61,44 @@ func misconfigured(format string, args ...any) error {
 	return &MisconfiguredDatabase{Msg: fmt.Sprintf(format, args...)}
 }
 
-func containsAll(expressions []string, guc string) bool {
-	for _, e := range expressions {
-		if !strings.Contains(e, guc) {
-			return false
-		}
-	}
-	return true
-}
-
 // policyFault says why a policy fails to confine the rows it admits, or "" if it does.
 //
 // The sentence is read off a crash-looping pod, so each case names the clause that
 // actually failed.
-func policyFault(policy, cmd string, expressions []string) string {
+func policyFault(policy, cmd string, permissive bool, expressions []string) string {
 	if len(expressions) == 0 {
 		return "applies no expression, so it admits every row"
 	}
-	if containsAll(expressions, TenantGUC) {
+	if policy != AdminPolicy {
+		for _, e := range expressions {
+			if !strings.Contains(e, TenantGUC) {
+				return fmt.Sprintf("does not read %s, so it does not restrict rows to one tenant", TenantGUC)
+			}
+		}
 		return ""
 	}
-	if policy != AdminPolicy {
-		return fmt.Sprintf("does not read %s, so it does not restrict rows to one tenant", TenantGUC)
-	}
 	// The single exemption, for the admin console's cross-tenant read. Pinned to the
-	// name, the command and the GUC: widen any one and a policy that admits another
-	// tenant's rows to a write starts passing this check.
+	// name, the command, permissiveness and the exact expression: loosen any one and
+	// a policy that admits another tenant's rows starts passing this check.
 	if cmd != selectOnly {
 		return fmt.Sprintf("is the %s exemption but is not FOR SELECT, so it would "+
 			"admit another tenant's rows to a write", AdminPolicy)
 	}
-	if !containsAll(expressions, AdminGUC) {
-		return fmt.Sprintf("is the %s exemption but reads neither %s nor "+
-			"%s, so nothing gates the rows it admits", AdminPolicy, TenantGUC, AdminGUC)
+	if !permissive {
+		return fmt.Sprintf("is the %s exemption but is RESTRICTIVE, so it hides every "+
+			"row from every tenant", AdminPolicy)
+	}
+	if len(expressions) != 1 || strings.Join(strings.Fields(expressions[0]), " ") != adminQual {
+		return fmt.Sprintf("is the %s exemption but does not read exactly %s", AdminPolicy, adminQual)
 	}
 	return ""
 }
 
 type policyRow struct {
-	name  string
-	cmd   string
-	exprs []string
+	name       string
+	cmd        string
+	permissive bool
+	exprs      []string
 }
 
 // Verify raises unless row-level security actually constrains the connected role.
@@ -136,8 +138,9 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 		}
 		for polRows.Next() {
 			var table, name, cmd string
+			var permissive bool
 			var qual, check *string
-			if err := polRows.Scan(&table, &name, &cmd, &qual, &check); err != nil {
+			if err := polRows.Scan(&table, &name, &cmd, &permissive, &qual, &check); err != nil {
 				polRows.Close()
 				return err
 			}
@@ -149,7 +152,7 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			if check != nil {
 				exprs = append(exprs, *check)
 			}
-			policies[table] = append(policies[table], policyRow{name, cmd, exprs})
+			policies[table] = append(policies[table], policyRow{name, cmd, permissive, exprs})
 		}
 		polRows.Close()
 		if err := polRows.Err(); err != nil {
@@ -177,12 +180,12 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			if !forced {
 				return misconfigured("%s.%s does not FORCE row-level security", schema, name)
 			}
-			// A tenant policy, not merely a policy: admin_read on its own leaves the
-			// table unreadable by every tenant while the console still reads all of it.
+			// A permissive tenant policy, not merely a policy: admin_read on its own,
+			// or a restrictive tenant policy, leaves the table unreadable by every tenant.
 			hasTenantPolicy := false
 			for _, p := range policies[name] {
-				if hasTenantPolicy {
-					break
+				if hasTenantPolicy || !p.permissive {
+					continue
 				}
 				for _, e := range p.exprs {
 					if strings.Contains(e, TenantGUC) {
@@ -199,7 +202,7 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			// however strict its siblings are. Every expression it does apply must
 			// read a GUC: reads and writes are gated by different ones.
 			for _, p := range policies[name] {
-				if fault := policyFault(p.name, p.cmd, p.exprs); fault != "" {
+				if fault := policyFault(p.name, p.cmd, p.permissive, p.exprs); fault != "" {
 					return misconfigured("%s.%s policy %s %s", schema, name, p.name, fault)
 				}
 			}

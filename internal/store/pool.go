@@ -21,7 +21,7 @@ var acquireTimeout = 30 * time.Second
 const nilTenant = "00000000-0000-0000-0000-000000000000"
 
 // Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
-// set here and nowhere else. Ported from 2de90d2:src/keepsake/store/pool.py.
+// set here and nowhere else. Ported from 8f2af2e:src/keepsake/store/pool.py.
 type Store struct {
 	pool       *pgxpool.Pool
 	searchPath string
@@ -87,9 +87,10 @@ func (s *Store) Raw(ctx context.Context, fn func(pgx.Tx) error) error {
 
 // Scope yields a connection scoped to tenant for the life of one transaction.
 func (s *Store) Scope(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) error) error {
+	// okf.admin off explicitly: a role or DSN default of 'on' would widen every read.
 	return s.tx(ctx, pgx.TxOptions{},
-		"SELECT set_config('search_path', $1, true), set_config($2, $3, true)",
-		[]any{s.searchPath, TenantGUC, tenant.String()}, fn)
+		"SELECT set_config('search_path', $1, true), set_config($2, 'off', true), set_config($3, $4, true)",
+		[]any{s.searchPath, AdminGUC, TenantGUC, tenant.String()}, fn)
 }
 
 // AdminScope yields a read-only connection that reads every tenant, for the

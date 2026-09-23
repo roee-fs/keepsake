@@ -1,4 +1,4 @@
-// Ported from 2de90d2:tests/test_isolation.py: tenant isolation as seen through Store, the
+// Ported from 8f2af2e:tests/test_isolation.py: tenant isolation as seen through Store, the
 // only place the GUC is set. 2de90d2:tests/test_migration.py proves the policies; these prove
 // the connection handling above them scopes every statement and leaves no scope
 // behind on a pooled connection.
@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -580,5 +581,60 @@ func TestIsUnavailableDoesNotClassifyAnUnrelatedDeadline(t *testing.T) {
 	}
 	if store.IsUnavailable(err) {
 		t.Errorf("IsUnavailable(%v) = true, want false for a query-level deadline", err)
+	}
+}
+
+// A role, database or DSN default of okf.admin=on would open admin_read to /mcp.
+func TestASessionDefaultAdminGUCDoesNotWidenAScopedRead(t *testing.T) {
+	s := openApp(t)
+	one, two := uuid.New(), uuid.New()
+	paths := []string{"ambient/" + one.String(), "ambient/" + two.String()}
+	for i, tenant := range []uuid.UUID{one, two} {
+		path := paths[i]
+		if err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+			return insert(ctx, tx, tenant, path)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ambient, err := store.Open(ctx, db.AppDSN+"&options=-c%20okf.admin%3Don", "okf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ambient.Close()
+	var seen map[uuid.UUID]bool
+	if err := ambient.Scope(ctx, one, func(tx pgx.Tx) error {
+		seen, err = owners(ctx, tx, paths)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[uuid.UUID]bool{one: true}; !reflect.DeepEqual(seen, want) {
+		t.Fatalf("owners = %v, want %v", seen, want)
+	}
+}
+
+// admin_read is ORed into every SELECT; a bare GUC test there hid tenant_id.
+func TestAScopedPointReadKeepsTheTenantIndex(t *testing.T) {
+	s := openApp(t)
+	var plan []string
+	err := s.Scope(ctx, uuid.New(), func(tx pgx.Tx) error {
+		// A table this small would otherwise be scanned whatever the policy says.
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT path FROM okf.concept WHERE path = 'x'")
+		if err != nil {
+			return err
+		}
+		plan, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(plan, "\n"); !strings.Contains(joined, "Index Cond: ((tenant_id = ") {
+		t.Fatal(joined)
 	}
 }

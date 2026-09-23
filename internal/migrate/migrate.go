@@ -1,5 +1,5 @@
 // Package migrate replays the Alembic migrations under
-// 2de90d2:src/keepsake/store/migrations/versions/ in place, without Python or Alembic
+// 8f2af2e:src/keepsake/store/migrations/versions/ in place, without Python or Alembic
 // installed. It reads and writes the same <schema>.alembic_version table Alembic
 // does, so a database Alembic migrated upgrades from wherever it left off.
 package migrate
