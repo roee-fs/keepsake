@@ -13,6 +13,13 @@ import (
 // psycopg_pool's default wait. A var, not a const, so tests can shrink it.
 var acquireTimeout = 30 * time.Second
 
+// SetAcquireTimeout overrides acquireTimeout for a test and returns a restorer.
+func SetAcquireTimeout(d time.Duration) func() {
+	orig := acquireTimeout
+	acquireTimeout = d
+	return func() { acquireTimeout = orig }
+}
+
 // nilTenant casts to uuid without raising and matches no tenant. tenant_isolation's
 // USING clause casts TenantGUC to uuid whichever way Postgres plans admin_read's
 // OR, and Postgres does not promise short-circuiting; an unset GUC reads as an

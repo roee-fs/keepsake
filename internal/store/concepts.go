@@ -42,6 +42,9 @@ type ConceptStore struct {
 
 func NewConceptStore(s *Store) *ConceptStore { return &ConceptStore{s: s} }
 
+// PoolSize is the most connections the store holds at once.
+func (cs *ConceptStore) PoolSize() int { return int(cs.s.pool.Config().MaxConns) }
+
 // Create inserts a concept. created is false when the path is already taken.
 func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string) (version int, created bool, err error) {
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {

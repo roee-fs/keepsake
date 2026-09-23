@@ -150,7 +150,7 @@ func arguments(raw json.RawMessage) (map[string]any, error) {
 	return out, nil
 }
 
-func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler) mcp.ToolHandler {
+func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw := req.Params.Arguments
 		if len(raw) == 0 || string(raw) == "null" {
@@ -168,6 +168,12 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler)
 		args, err := arguments(raw)
 		if err != nil {
 			return nil, err
+		}
+		select {
+		case slot <- struct{}{}:
+			defer func() { <-slot }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 		result, err := call(ctx, t, args)
 		var te *ToolError
@@ -199,8 +205,10 @@ func NewMCPHandler(t *Tools) http.Handler {
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
 	tools := toolDefinitions()
+	// Sized to the pool, so a burst queues here instead of timing out on an acquire.
+	slot := make(chan struct{}, t.c.PoolSize())
 	for _, tool := range tools {
-		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name]))
+		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name], slot))
 	}
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {

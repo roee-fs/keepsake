@@ -15,7 +15,9 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -480,6 +482,49 @@ func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	t.Cleanup(func() { admin(t, `GRANT SELECT ON okf.concept TO okf_app`) })
 	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err == nil {
 		t.Fatalf("got a result, want a protocol error: %+v", res)
+	}
+}
+
+// A burst past the pool queues for a connection rather than timing out on one.
+func TestABurstPastThePoolQueuesInsteadOfTimingOut(t *testing.T) {
+	t.Setenv("KEEPSAKE_POOL_SIZE", "2")
+	session := connect(t, newTools(t))
+	defer store.SetAcquireTimeout(100 * time.Millisecond)()
+
+	conn, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `LOCK TABLE okf.concept IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan string, 6)
+	for range 6 {
+		wg.Go(func() {
+			res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
+			switch {
+			case err != nil:
+				errs <- err.Error()
+			case res.IsError:
+				errs <- res.Content[0].(*mcp.TextContent).Text
+			}
+		})
+	}
+	time.Sleep(300 * time.Millisecond)
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
 	}
 }
 
