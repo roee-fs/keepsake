@@ -19,11 +19,18 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// testTenant is deterministic per test name, so create/read (below) can share one
-// tenant across the many calls one test makes without threading it through every
-// call, the way pytest's function-scoped tenant fixture does implicitly.
+var tenantCache sync.Map // *testing.T -> uuid.UUID
+
+// testTenant is a fresh uuid, generated once per test and cached, so create/read
+// (below) can share one tenant across the many calls one test makes without
+// threading it through every call, the way pytest's function-scoped tenant
+// fixture does. It must be random, not derived from t.Name(): TestMain starts one
+// database for the whole test binary and never resets it between tests, so under
+// `go test -count=2` a name-derived tenant would be the same UUID both runs and
+// see the first run's rows.
 func testTenant(t *testing.T) uuid.UUID {
-	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(t.Name()))
+	v, _ := tenantCache.LoadOrStore(t, uuid.New())
+	return v.(uuid.UUID)
 }
 
 var fixtureCache sync.Map // *testing.T -> *store.ConceptStore
@@ -521,7 +528,10 @@ func TestPageOfEveryTenantReturnsBoth(t *testing.T) {
 func TestPageOfEveryTenantBreaksATiedPathByTenantId(t *testing.T) {
 	cs, tenant := fixture(t)
 	other := uuid.New()
-	path := "decisions/retry-policy"
+	// Unique per run, not a bare literal: an admin-scope query sees every tenant
+	// that ever wrote this path, and TestMain's database is never reset between
+	// `go test -count=N` runs.
+	path := "decisions/retry-policy/" + tenant.String()
 	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: path, Type: "Concept"}, "seed"); err != nil {
 		t.Fatal(err)
 	}
@@ -603,10 +613,14 @@ func TestActivityReturnsRecentRevisionsNewestFirst(t *testing.T) {
 func TestActivityOfEveryTenantTagsEachRowWithItsOwnTenant(t *testing.T) {
 	other := uuid.New()
 	cs, tenant := fixture(t)
-	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "decisions/policy", Type: "Concept"}, "seed"); err != nil {
+	// Unique per run: Activity(nil, 10)'s tenant-wide window can still hold an
+	// earlier run's row for a bare literal path, since TestMain's database is
+	// never reset between `go test -count=N` runs.
+	path := "decisions/policy/" + tenant.String()
+	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: path, Type: "Concept"}, "seed"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := cs.Create(ctx, other, okf.Concept{Path: "decisions/policy", Type: "Concept"}, "seed"); err != nil {
+	if _, _, err := cs.Create(ctx, other, okf.Concept{Path: path, Type: "Concept"}, "seed"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -616,12 +630,12 @@ func TestActivityOfEveryTenantTagsEachRowWithItsOwnTenant(t *testing.T) {
 	}
 	var samePath []store.Revision
 	for _, r := range revs {
-		if r.Path == "decisions/policy" {
+		if r.Path == path {
 			samePath = append(samePath, r)
 		}
 	}
 	if len(samePath) != 2 {
-		t.Fatalf("revisions for decisions/policy = %+v, want 2", samePath)
+		t.Fatalf("revisions for %s = %+v, want 2", path, samePath)
 	}
 	seen := map[uuid.UUID]bool{samePath[0].TenantID: true, samePath[1].TenantID: true}
 	if !seen[tenant] || !seen[other] {
