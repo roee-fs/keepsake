@@ -286,6 +286,7 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 }
 
 func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(stderr, nil)))
 	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
 	if err != nil {
 		return 0, err
@@ -308,7 +309,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	}
 	defer closeApp()
 	addr := net.JoinHostPort(o.host, strconv.Itoa(port))
-	slog.New(slog.NewTextHandler(stderr, nil)).Info("listening", "addr", addr)
+	slog.Info("listening", "addr", addr)
 	return 0, listen(addr, h)
 }
 

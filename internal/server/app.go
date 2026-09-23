@@ -6,7 +6,7 @@ import (
 	"context"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -79,7 +79,7 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 			// to /mcp. Unguarded because gating it would break the login page.
 			fallback = slashRedirect(mux, staticConsole(root.FS()))
 		} else {
-			log.Printf("no console bundle at %s; serving API and MCP only", dir)
+			slog.Warn("no console bundle; serving API and MCP only", "dir", dir)
 		}
 	}
 	// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.

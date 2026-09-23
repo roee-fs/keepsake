@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -165,7 +165,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func internalError(w http.ResponseWriter, err error) {
-	log.Printf("api: %v", err)
+	slog.Error("api", "err", err)
 	// Starlette's PlainTextResponse: no trailing newline, unlike http.Error.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusInternalServerError)

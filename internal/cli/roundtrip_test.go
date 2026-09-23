@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -116,6 +117,8 @@ func create(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, path string)
 func run(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
+	// serve points slog at stderr, which dies with this call.
+	defer slog.SetDefault(slog.Default())
 	code := Main(args, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
