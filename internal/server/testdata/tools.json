@@ -1,0 +1,235 @@
+[
+  {
+    "name": "okf_list",
+    "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "prefix": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_search",
+    "description": "Find concepts by keyword, ranked by relevance. Returns cards \u2014 path, type, title, description, score \u2014 and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required \u2014 ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "prefix": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "score": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "path",
+              "type",
+              "title",
+              "description",
+              "score"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_grep",
+    "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want \u2014 an identifier, a config key, a URL \u2014 and okf_search's word matching is too loose. `limit` is required.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        }
+      },
+      "required": [
+        "pattern",
+        "limit"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "snippet"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_read",
+    "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it. Returns null if nothing is stored at that path. Take paths from okf_list, okf_search or okf_grep.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_create",
+    "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is \u2014 Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with okf_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "frontmatter": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "path",
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_update",
+    "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "frontmatter": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "name": "okf_relate",
+    "description": "Record that one concept relates to another by appending a link from `from_path` to `to_path`. The edge then shows up as an outbound link on the source and as a backlink on the target.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from_path": {
+          "type": "string"
+        },
+        "to_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_path",
+        "to_path"
+      ],
+      "additionalProperties": false
+    }
+  }
+]
