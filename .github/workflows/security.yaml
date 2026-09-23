@@ -25,11 +25,25 @@ jobs:
       # The one write scope here, and only on this job: CodeQL uploads its
       # findings to the Security tab rather than printing them.
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Go is the server; Python is only e2e/ and the chart tests.
+          - language: go
+            build-mode: autobuild
+          - language: python
+            build-mode: none
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
-          languages: python
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           # The default suite skips checks it considers noisy. This is a
           # multi-tenant isolation boundary; we would rather triage the noise.
           queries: security-and-quality
@@ -40,10 +54,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # uv.lock is committed, so this reads the exact resolved tree rather than
-      # the ranges in pyproject.toml. Clean as of this commit, so failing the job
-      # on a finding costs nothing today and is the point of having it.
+      # go.mod and uv.lock pin exact versions, so this reads the resolved trees
+      # rather than ranges. Clean as of this commit, so failing the job on a
+      # finding costs nothing today and is the point of having it.
       - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
         with:
           scan-args: |-
+            --lockfile=go.mod
             --lockfile=uv.lock
