@@ -51,6 +51,8 @@ test enforces it and the release workflow refuses otherwise.
   - Admin API timestamps are always in UTC. The instant is unchanged.
   - An unmatched admin route answers 404 or 405 with a plain-text body. `HEAD`
     works on every `GET` route.
+  - A trailing-slash redirect is still a 307 to the same place, but its
+    `Location` is relative, not absolute, and a `GET` gets a short HTML body.
   - A login body with invalid UTF-8 or a lone surrogate answers 422, not 500.
 
 ### Security
