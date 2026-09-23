@@ -21,10 +21,6 @@ updates:
       dev:
         dependency-type: development
         patterns: ["*"]
-      runtime:
-        dependency-type: production
-        patterns: ["*"]
-        update-types: [minor, patch]
 
   - package-ecosystem: gomod
     directory: /
