@@ -43,6 +43,11 @@ otherwise.
 - A GitOps install (Argo CD, or `helm template | kubectl apply`) must set
   `admin.existingSecret`. `lookup` returns nothing under `helm template`, so an
   unguarded install regenerates the admin password on every sync.
+- A rollback to 0.1.0 MUST first take the schema back to revision 0002, as the
+  owner role. 0.1.0's startup check rejects the `admin_read` policy, and
+  `helm rollback` does not revert a migration. Run it from this release's image:
+  `python -c "from alembic import command; from keepsake.cli import _alembic;
+  command.downgrade(_alembic('<owner DSN>'), '0002')"`.
 
 ## 0.1.0 — 2026-09-15
 

@@ -38,7 +38,7 @@ _TABLES = """
 # Both expressions: USING alone leaves WITH CHECK (true) free to admit another
 # tenant's inserts, and an INSERT-only policy carries no USING at all.
 _POLICIES = """
-    SELECT c.relname, p.polname, p.polcmd,
+    SELECT c.relname, p.polname, p.polcmd, p.polpermissive,
            pg_catalog.pg_get_expr(p.polqual, p.polrelid),
            pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
     FROM pg_catalog.pg_policy p
@@ -56,8 +56,18 @@ class MisconfiguredDatabase(RuntimeError):
 # reaching a write is not the exemption.
 _SELECT_ONLY = "r"
 
+# admin_read as migration 0004 writes it, whitespace collapsed. Any looser test, such
+# as mentioning the GUC, also passes a policy that admits every row.
+_ADMIN_QUAL = (
+    f"(tenant_id >= CASE WHEN (current_setting('{ADMIN_GUC}'::text, true) = "
+    "'on'::text) THEN '00000000-0000-0000-0000-000000000000'::uuid "
+    "ELSE NULL::uuid END)"
+)
 
-def _policy_fault(policy: str, cmd: str, expressions: list[str]) -> str | None:
+
+def _policy_fault(
+    policy: str, cmd: str, permissive: bool, expressions: list[str]
+) -> str | None:
     """Why a policy fails to confine the rows it admits, or None if it does.
 
     The sentence is read off a crash-looping pod, so each case names the clause
@@ -65,22 +75,26 @@ def _policy_fault(policy: str, cmd: str, expressions: list[str]) -> str | None:
     """
     if not expressions:
         return "applies no expression, so it admits every row"
-    if all(TENANT_GUC in e for e in expressions):
-        return None
     if policy != ADMIN_POLICY:
+        if all(TENANT_GUC in e for e in expressions):
+            return None
         return f"does not read {TENANT_GUC}, so it does not restrict rows to one tenant"
     # The single exemption, for the admin console's cross-tenant read. Pinned to the
-    # name, the command and the GUC: widen any one and a policy that admits another
-    # tenant's rows to a write starts passing this check.
+    # name, the command, permissiveness and the exact expression: loosen any one and
+    # a policy that admits another tenant's rows starts passing this check.
     if cmd != _SELECT_ONLY:
         return (
             f"is the {ADMIN_POLICY} exemption but is not FOR SELECT, so it would "
             "admit another tenant's rows to a write"
         )
-    if not all(ADMIN_GUC in e for e in expressions):
+    if not permissive:
         return (
-            f"is the {ADMIN_POLICY} exemption but reads neither {TENANT_GUC} nor "
-            f"{ADMIN_GUC}, so nothing gates the rows it admits"
+            f"is the {ADMIN_POLICY} exemption but is RESTRICTIVE, so it hides every "
+            "row from every tenant"
+        )
+    if [" ".join(e.split()) for e in expressions] != [_ADMIN_QUAL]:
+        return (
+            f"is the {ADMIN_POLICY} exemption but does not read exactly {_ADMIN_QUAL}"
         )
     return None
 
@@ -112,13 +126,15 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 "an owner bypasses row-level security"
             )
 
-        policies: defaultdict[str, list[tuple[str, str, list[str]]]] = defaultdict(list)
-        for table, policy, cmd, qual, check in conn.execute(
+        policies: defaultdict[str, list[tuple[str, str, bool, list[str]]]] = (
+            defaultdict(list)
+        )
+        for table, policy, cmd, permissive, qual, check in conn.execute(
             _POLICIES, (schema,)
         ).fetchall():
             # A null expression is one Postgres does not apply, not an empty one.
             policies[table].append(
-                (policy, cmd, [e for e in (qual, check) if e is not None])
+                (policy, cmd, permissive, [e for e in (qual, check) if e is not None])
             )
 
         for name, enabled, forced, owned in conn.execute(_TABLES, (schema,)).fetchall():
@@ -135,10 +151,12 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
                 raise MisconfiguredDatabase(
                     f"{schema}.{name} does not FORCE row-level security"
                 )
-            # A tenant policy, not merely a policy: admin_read on its own leaves the
-            # table unreadable by every tenant while the console still reads all of it.
+            # A permissive tenant policy, not merely a policy: admin_read on its own,
+            # or a restrictive tenant policy, leaves the table unreadable by every tenant.
             if not any(
-                TENANT_GUC in e for _, _, exprs in policies[name] for e in exprs
+                permissive and TENANT_GUC in e
+                for _, _, permissive, exprs in policies[name]
+                for e in exprs
             ):
                 raise MisconfiguredDatabase(
                     f"{schema}.{name} has no row-level security policy scoping it"
@@ -147,8 +165,8 @@ def verify(store: Store, schema: str = SCHEMA) -> None:
             # Permissive policies are ORed, so one that ignores the GUC opens the table
             # however strict its siblings are. Every expression it does apply must
             # read a GUC: reads and writes are gated by different ones.
-            for policy, cmd, expressions in policies[name]:
-                fault = _policy_fault(policy, cmd, expressions)
+            for policy, cmd, permissive, expressions in policies[name]:
+                fault = _policy_fault(policy, cmd, permissive, expressions)
                 if fault is not None:
                     raise MisconfiguredDatabase(
                         f"{schema}.{name} policy {policy} {fault}"
