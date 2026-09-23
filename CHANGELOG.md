@@ -44,7 +44,7 @@ test enforces it and the release workflow refuses otherwise.
     of the sentence differs.
   - A malformed MCP request on the handshake-era transport (no
     `mcp-protocol-version` header, or a handshake version) gets the same HTTP
-    status and JSON-RPC error code, but a different message. On either
+    status and JSON-RPC error code, but its message MAY differ. On either
     transport, a method keepsake does not serve answers -32601 even where its
     params are invalid and Python answered -32602.
   - Floats in JSON keep their value, but their text MAY differ (`1e-05` vs
@@ -56,6 +56,12 @@ test enforces it and the release workflow refuses otherwise.
     `Location` is relative, not absolute, and a `GET` gets a short HTML body.
   - A login body with invalid UTF-8 or a lone surrogate answers 422, not 500.
   - There is no per-request access log, unlike uvicorn's.
+  - At most `KEEPSAKE_POOL_SIZE - 1` tool calls (at least one) hold a
+    connection at once, so the console always has one. Further calls queue,
+    where Python answered "temporarily unavailable" after a 30-second wait.
+  - `migrate` against a database stamped with a revision this release does not
+    know prints `keepsake: Can't locate revision identified by '<id>'` and exits
+    1. Python raised a traceback, also with exit 1.
 
 ### Security
 

@@ -109,8 +109,11 @@ func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle
 				if err == nil && !created {
 					// The bundle is the operator's authority: there is no version to compare.
 					updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
-						_, _, err := overwrite(ctx, tx, row, w.c.Path)
-						return err
+						// No expected version, so no row means the path is gone; the open batch holds the connection.
+						if err := row.Scan(new(int)); !errors.Is(err, pgx.ErrNoRows) {
+							return err
+						}
+						return &NotFoundError{w.c.Path}
 					})
 				}
 				return err

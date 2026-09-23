@@ -10,8 +10,7 @@ import (
 	"github.com/jackc/puddle/v2"
 )
 
-// IsUnavailable reports whether err means the database is down or unreachable, as
-// 2de90d2:src/keepsake/server/tools.py classifies psycopg.OperationalError.
+// IsUnavailable reports whether err means the database is down, as 2de90d2:src/keepsake/server/tools.py reads OperationalError.
 func IsUnavailable(err error) bool {
 	if err == nil {
 		return false
