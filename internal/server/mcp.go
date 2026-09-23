@@ -232,7 +232,8 @@ func NewMCPHandler(t *Tools) http.Handler {
 		}
 		// TransportSecurityMiddleware checks this first, even with rebinding protection off.
 		if r.Method == http.MethodPost && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			// Starlette's bare Response sends no Content-Type; nil stops net/http sniffing one.
+			w.Header()["Content-Type"] = nil
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "Invalid Content-Type header")
 			return

@@ -836,3 +836,17 @@ func TestProtocolErrorsArePythons(t *testing.T) {
 		}
 	}
 }
+
+func TestAContentTypeRefusalIsPythons(t *testing.T) {
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	resp, err := http.Post(srv.URL, "text/plain", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if _, set := resp.Header["Content-Type"]; resp.StatusCode != 400 || set || string(body) != "Invalid Content-Type header" {
+		t.Fatalf("%d %v %q", resp.StatusCode, resp.Header, body)
+	}
+}
