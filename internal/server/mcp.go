@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -221,11 +222,42 @@ func NewMCPHandler(t *Tools) http.Handler {
 		DisableLocalhostProtection: true,
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && !acceptsJSON(r.Header.Values("Accept")) {
+			notAcceptable(w, r)
+			return
+		}
 		// JSON responses never stream, so a client accepting only application/json is
 		// served, as the Python server serves it; go-sdk insists on both types.
 		r.Header.Add("Accept", "text/event-stream")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// acceptsJSON is check_accept_headers in mcp/server/streamable_http.py.
+func acceptsJSON(accept []string) bool {
+	for _, part := range strings.Split(strings.Join(accept, ","), ",") {
+		mt, _, _ := strings.Cut(part, ";")
+		switch strings.ToLower(strings.TrimSpace(mt)) {
+		case "application/json", "application/*", "*/*":
+			return true
+		}
+	}
+	return false
+}
+
+// handshakeVersions route a request to Python's legacy transport; any other
+// mcp-protocol-version header value goes to its modern one.
+var handshakeVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+
+// notAcceptable answers 406 as whichever Python transport the request reaches.
+func notAcceptable(w http.ResponseWriter, r *http.Request) {
+	if v := r.Header.Values("Mcp-Protocol-Version"); len(v) > 0 && !slices.Contains(handshakeVersions, v[0]) {
+		w.WriteHeader(http.StatusNotAcceptable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotAcceptable)
+	io.WriteString(w, `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Not Acceptable: Client must accept application/json"}}`)
 }
 
 // pyDumps renders v as Python's json.dumps does by default: ", " and ": "

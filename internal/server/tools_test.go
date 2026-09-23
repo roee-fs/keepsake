@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -624,5 +625,33 @@ func TestUnavailableIsAToolError(t *testing.T) {
 	text := res.Content[0].(*mcp.TextContent).Text
 	if !res.IsError || text != "the knowledge store is temporarily unavailable; try again shortly" {
 		t.Fatalf("got IsError=%v %q", res.IsError, text)
+	}
+}
+
+// The wants are the Python server's answers: a legacy request gets a JSON-RPC error,
+// a modern one (a non-handshake mcp-protocol-version) an empty 406.
+func TestAnUnacceptableAcceptIsPythons406(t *testing.T) {
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	for _, tc := range []struct{ accept, version, wantType, wantBody string }{
+		{"text/html", "", "application/json", `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Not Acceptable: Client must accept application/json"}}`},
+		{"text/event-stream", "2025-11-25", "application/json", `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Not Acceptable: Client must accept application/json"}}`},
+		{"text/html", "2026-07-28", "", ""},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", tc.accept)
+		if tc.version != "" {
+			req.Header.Set("Mcp-Protocol-Version", tc.version)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotAcceptable || resp.Header.Get("Content-Type") != tc.wantType || string(body) != tc.wantBody {
+			t.Errorf("%q %q: %d %q %s", tc.accept, tc.version, resp.StatusCode, resp.Header.Get("Content-Type"), body)
+		}
 	}
 }
