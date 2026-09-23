@@ -11,7 +11,6 @@ package store_test
 import (
 	"context"
 	"errors"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -37,18 +36,10 @@ var (
 const probeAttempts = 64
 
 func TestMain(m *testing.M) {
-	d, cleanup, err := pgtest.Start(ctx)
-	if err != nil {
-		panic(err)
-	}
-	if err := migrate.Up(ctx, d.OwnerDSN, "okf"); err != nil {
-		cleanup()
-		panic(err)
-	}
-	db = d
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
+	pgtest.Main(m, func(d *pgtest.DB) error {
+		db = d
+		return migrate.Up(ctx, d.OwnerDSN, "okf")
+	})
 }
 
 func openApp(t *testing.T) *store.Store {
@@ -398,16 +389,6 @@ func TestScopeDoesNotLeakAcrossPooledConnections(t *testing.T) {
 	probeUntilScopedConnectionReturns(t, s, scoped)
 }
 
-// terminateAppBackends kills every backend currently logged in as okf_app, from
-// admin, the way an operator's restart or failover would.
-func terminateAppBackends(t *testing.T, admin *pgx.Conn) {
-	t.Helper()
-	if _, err := admin.Exec(ctx,
-		"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'okf_app'"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestIsUnavailable is new: no Python test kills backends. It also locks okf_app
 // out of new connections, not just existing ones: with login still allowed, the
 // pool's ping-on-acquire silently discards a killed connection and dials a fresh
@@ -425,24 +406,7 @@ func TestIsUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	admin, err := pgx.Connect(ctx, db.AdminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Cleanups run LIFO, so this closes admin only after restoreLogin, registered
-	// below, has had its chance to use it.
-	t.Cleanup(func() { admin.Close(context.Background()) })
-
-	restoreLogin := func() {
-		if _, err := admin.Exec(context.Background(), "ALTER ROLE okf_app LOGIN"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := admin.Exec(ctx, "ALTER ROLE okf_app NOLOGIN"); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(restoreLogin)
-	terminateAppBackends(t, admin)
+	restore := db.LockOut(t)
 
 	scopeErr := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil })
 	if scopeErr == nil {
@@ -453,7 +417,7 @@ func TestIsUnavailable(t *testing.T) {
 	}
 	// Restored now, not just in Cleanup: the unique-violation check below needs a
 	// working connection of its own.
-	restoreLogin()
+	restore()
 
 	s2 := openApp(t)
 	dup := uuid.New()
@@ -485,12 +449,7 @@ func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	admin, err := pgx.Connect(ctx, db.AdminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Close(ctx)
-	terminateAppBackends(t, admin)
+	db.TerminateApp(t)
 
 	if err := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil }); err != nil {
 		t.Fatalf("Scope after a terminated backend with login still allowed: %v", err)

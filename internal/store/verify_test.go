@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
 )
 
@@ -33,21 +34,6 @@ func verifyDSN(t *testing.T, dsn, schema string) error {
 	}
 	defer s.Close()
 	return store.Verify(ctx, s, schema)
-}
-
-// execDDL runs DDL the checks react to, one statement at a time, autocommitted.
-func execDDL(t *testing.T, dsn string, statements ...string) {
-	t.Helper()
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(ctx)
-	for _, s := range statements {
-		if _, err := conn.Exec(ctx, s); err != nil {
-			t.Fatal(err)
-		}
-	}
 }
 
 // asRole swaps the credentials in dsn for role's, keeping the same host, port and database.
@@ -136,9 +122,9 @@ func TestVerifyRejectsASuperuser(t *testing.T) {
 // BYPASSRLS is what an operator grants when isolation queries start failing.
 func TestVerifyRejectsABypassrlsRole(t *testing.T) {
 	const role, password = "okf_bypassrls", "bypassrls"
-	execDDL(t, db.AdminDSN,
+	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s LOGIN NOSUPERUSER BYPASSRLS PASSWORD '%s'", role, password))
-	t.Cleanup(func() { execDDL(t, db.AdminDSN, fmt.Sprintf("DROP ROLE %s", role)) })
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, fmt.Sprintf("DROP ROLE %s", role)) })
 
 	err := verifyDSN(t, asRole(t, db.AppDSN, role, password), "okf")
 	assertMisconfigured(t, err,
@@ -154,7 +140,7 @@ func TestVerifyRejectsTheSchemaOwner(t *testing.T) {
 // Owning a table in someone else's schema is its own way out of RLS.
 func TestVerifyRejectsATableOwner(t *testing.T) {
 	const role, password, table = "okf_tableowner", "owns", "owned_elsewhere"
-	execDDL(t, db.AdminDSN,
+	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '%s'", role, password),
 		fmt.Sprintf("GRANT USAGE ON SCHEMA okf TO %s", role),
 		fmt.Sprintf("CREATE TABLE okf.%s (tenant_id uuid NOT NULL)", table),
@@ -163,7 +149,7 @@ func TestVerifyRejectsATableOwner(t *testing.T) {
 		fmt.Sprintf("ALTER TABLE okf.%s FORCE ROW LEVEL SECURITY", table),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.AdminDSN,
+		pgtest.Exec(t, db.AdminDSN,
 			fmt.Sprintf("DROP TABLE okf.%s", table),
 			fmt.Sprintf("REVOKE USAGE ON SCHEMA okf FROM %s", role),
 			fmt.Sprintf("DROP ROLE %s", role),
@@ -179,12 +165,12 @@ func TestVerifyRejectsATableOwner(t *testing.T) {
 // A NOINHERIT member inherits nothing until it runs SET ROLE, and then it owns.
 func TestVerifyRejectsANoinheritMemberOfTheSchemaOwner(t *testing.T) {
 	const role, password = "okf_noinherit", "noinherit"
-	execDDL(t, db.AdminDSN,
+	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '%s'", role, password),
 		fmt.Sprintf("GRANT okf_owner TO %s", role),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.AdminDSN,
+		pgtest.Exec(t, db.AdminDSN,
 			fmt.Sprintf("REVOKE okf_owner FROM %s", role),
 			fmt.Sprintf("DROP ROLE %s", role),
 		)
@@ -197,9 +183,9 @@ func TestVerifyRejectsANoinheritMemberOfTheSchemaOwner(t *testing.T) {
 
 // A partitioned parent is relkind 'p', and holds the policy for its partitions.
 func TestVerifyRejectsAPartitionedTableWithoutRLS(t *testing.T) {
-	execDDL(t, db.OwnerDSN,
+	pgtest.Exec(t, db.OwnerDSN,
 		"CREATE TABLE okf.parted (tenant_id uuid NOT NULL) PARTITION BY RANGE (tenant_id)")
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, "DROP TABLE okf.parted") })
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, "DROP TABLE okf.parted") })
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err, "okf.parted has row-level security disabled")
@@ -214,8 +200,8 @@ func TestVerifyShadowingTablesDoNotChangeTheVerdict(t *testing.T) {
 		create = append(create, decoyDDL(d.name, d.columns, d.values)...)
 		drop = append(drop, fmt.Sprintf("DROP TABLE okf.%s", d.name))
 	}
-	execDDL(t, db.OwnerDSN, create...)
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, drop...) })
+	pgtest.Exec(t, db.OwnerDSN, create...)
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, drop...) })
 
 	if err := verifyDSN(t, db.AppDSN, "okf"); err != nil {
 		t.Fatal(err)
@@ -225,12 +211,12 @@ func TestVerifyShadowingTablesDoNotChangeTheVerdict(t *testing.T) {
 // pg_user omits NOLOGIN roles, so this one reads as absent there, not as super.
 func TestVerifyRejectsASuperuserReachedBySetRole(t *testing.T) {
 	const role = "okf_masked"
-	execDDL(t, db.AdminDSN,
+	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s SUPERUSER NOLOGIN", role),
 		fmt.Sprintf("GRANT %s TO okf_app", role),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.AdminDSN,
+		pgtest.Exec(t, db.AdminDSN,
 			fmt.Sprintf("REVOKE %s FROM okf_app", role),
 			fmt.Sprintf("DROP ROLE %s", role),
 		)
@@ -243,9 +229,9 @@ func TestVerifyRejectsASuperuserReachedBySetRole(t *testing.T) {
 
 // USING (true) leaves RLS enabled and forced while serving every tenant's rows.
 func TestVerifyRejectsAPermissivePolicy(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "ALTER POLICY tenant_isolation ON okf.concept USING (true)")
+	pgtest.Exec(t, db.OwnerDSN, "ALTER POLICY tenant_isolation ON okf.concept USING (true)")
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN,
+		pgtest.Exec(t, db.OwnerDSN,
 			fmt.Sprintf("ALTER POLICY tenant_isolation ON okf.concept USING (%s)", tenantQual))
 	})
 
@@ -257,9 +243,9 @@ func TestVerifyRejectsAPermissivePolicy(t *testing.T) {
 
 // A correct USING with WITH CHECK (true) reads one tenant and writes any.
 func TestVerifyRejectsAPermissiveWithCheck(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "ALTER POLICY tenant_isolation ON okf.concept WITH CHECK (true)")
+	pgtest.Exec(t, db.OwnerDSN, "ALTER POLICY tenant_isolation ON okf.concept WITH CHECK (true)")
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN,
+		pgtest.Exec(t, db.OwnerDSN,
 			fmt.Sprintf("ALTER POLICY tenant_isolation ON okf.concept WITH CHECK (%s)", tenantQual))
 	})
 
@@ -279,9 +265,9 @@ func TestVerifyRejectsAWidenedAdminPolicy(t *testing.T) {
 		"current_setting('okf.administrator', true) IS NULL",
 	} {
 		t.Run(qual, func(t *testing.T) {
-			execDDL(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", qual))
+			pgtest.Exec(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", qual))
 			t.Cleanup(func() {
-				execDDL(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", adminQual))
+				pgtest.Exec(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", adminQual))
 			})
 
 			// The message must name the clause that failed, not the first one checked.
@@ -296,12 +282,12 @@ func TestVerifyRejectsAWidenedAdminPolicy(t *testing.T) {
 
 // ANDed with tenant_isolation, it would hide every row from every tenant.
 func TestVerifyRejectsARestrictiveAdminPolicy(t *testing.T) {
-	execDDL(t, db.OwnerDSN,
+	pgtest.Exec(t, db.OwnerDSN,
 		"DROP POLICY admin_read ON okf.concept",
 		fmt.Sprintf("CREATE POLICY admin_read ON okf.concept AS RESTRICTIVE FOR SELECT USING (%s)", adminQual),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN,
+		pgtest.Exec(t, db.OwnerDSN,
 			"DROP POLICY admin_read ON okf.concept",
 			fmt.Sprintf("CREATE POLICY admin_read ON okf.concept FOR SELECT USING (%s)", adminQual),
 		)
@@ -316,12 +302,12 @@ func TestVerifyRejectsARestrictiveAdminPolicy(t *testing.T) {
 // FOR ALL on the admin GUC would let an admin write into any tenant. Recreated rather
 // than altered: ALTER POLICY cannot change which commands a policy applies to.
 func TestVerifyRejectsAnAdminPolicyThatCoversWrites(t *testing.T) {
-	execDDL(t, db.OwnerDSN,
+	pgtest.Exec(t, db.OwnerDSN,
 		"DROP POLICY admin_read ON okf.concept_revision",
 		fmt.Sprintf("CREATE POLICY admin_read ON okf.concept_revision USING (%s)", adminQual),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN,
+		pgtest.Exec(t, db.OwnerDSN,
 			"DROP POLICY admin_read ON okf.concept_revision",
 			fmt.Sprintf("CREATE POLICY admin_read ON okf.concept_revision FOR SELECT USING (%s)", adminQual),
 		)
@@ -335,9 +321,9 @@ func TestVerifyRejectsAnAdminPolicyThatCoversWrites(t *testing.T) {
 
 // FOR INSERT carries no USING, and rejecting it would crash-loop a correct install.
 func TestVerifyAcceptsAPolicyWithOnlyAWithCheckClause(t *testing.T) {
-	execDDL(t, db.OwnerDSN,
+	pgtest.Exec(t, db.OwnerDSN,
 		fmt.Sprintf("CREATE POLICY insert_only ON okf.concept FOR INSERT WITH CHECK (%s)", tenantQual))
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, "DROP POLICY insert_only ON okf.concept") })
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, "DROP POLICY insert_only ON okf.concept") })
 
 	if err := verifyDSN(t, db.AppDSN, "okf"); err != nil {
 		t.Fatal(err)
@@ -345,8 +331,8 @@ func TestVerifyAcceptsAPolicyWithOnlyAWithCheckClause(t *testing.T) {
 }
 
 func TestVerifyRejectsATableWithNoPolicy(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "DROP POLICY tenant_isolation ON okf.concept")
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, restoreTenantPolicy) })
+	pgtest.Exec(t, db.OwnerDSN, "DROP POLICY tenant_isolation ON okf.concept")
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, restoreTenantPolicy) })
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err, "okf.concept has no row-level security policy scoping it to one tenant")
@@ -358,16 +344,16 @@ func TestVerifyRejectsAMissingSchema(t *testing.T) {
 }
 
 func TestVerifyRejectsATableWithRLSDisabled(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "ALTER TABLE okf.concept DISABLE ROW LEVEL SECURITY")
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, "ALTER TABLE okf.concept ENABLE ROW LEVEL SECURITY") })
+	pgtest.Exec(t, db.OwnerDSN, "ALTER TABLE okf.concept DISABLE ROW LEVEL SECURITY")
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, "ALTER TABLE okf.concept ENABLE ROW LEVEL SECURITY") })
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err, "okf.concept has row-level security disabled")
 }
 
 func TestVerifyRejectsATableWithoutForcedRLS(t *testing.T) {
-	execDDL(t, db.OwnerDSN, "ALTER TABLE okf.concept NO FORCE ROW LEVEL SECURITY")
-	t.Cleanup(func() { execDDL(t, db.OwnerDSN, "ALTER TABLE okf.concept FORCE ROW LEVEL SECURITY") })
+	pgtest.Exec(t, db.OwnerDSN, "ALTER TABLE okf.concept NO FORCE ROW LEVEL SECURITY")
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, "ALTER TABLE okf.concept FORCE ROW LEVEL SECURITY") })
 
 	err := verifyDSN(t, db.AppDSN, "okf")
 	assertMisconfigured(t, err, "okf.concept does not FORCE row-level security")
@@ -375,13 +361,13 @@ func TestVerifyRejectsATableWithoutForcedRLS(t *testing.T) {
 
 // A restrictive tenant policy is ANDed with admin_read, so no tenant can read a row.
 func TestVerifyRejectsARestrictiveTenantPolicy(t *testing.T) {
-	execDDL(t, db.OwnerDSN,
+	pgtest.Exec(t, db.OwnerDSN,
 		"DROP POLICY tenant_isolation ON okf.concept",
 		fmt.Sprintf("CREATE POLICY tenant_isolation ON okf.concept AS RESTRICTIVE USING (%s) WITH CHECK (%s)",
 			tenantQual, tenantQual),
 	)
 	t.Cleanup(func() {
-		execDDL(t, db.OwnerDSN, "DROP POLICY tenant_isolation ON okf.concept", restoreTenantPolicy)
+		pgtest.Exec(t, db.OwnerDSN, "DROP POLICY tenant_isolation ON okf.concept", restoreTenantPolicy)
 	})
 
 	err := verifyDSN(t, db.AppDSN, "okf")

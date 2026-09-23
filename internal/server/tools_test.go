@@ -41,45 +41,17 @@ const secret = "zqxjkbody"
 var toolNames = []string{"okf_create", "okf_grep", "okf_list", "okf_read", "okf_relate", "okf_search", "okf_update"}
 
 func TestMain(m *testing.M) {
-	d, cleanup, err := pgtest.Start(ctx)
-	if err != nil {
-		panic(err)
-	}
-	if err := migrate.Up(ctx, d.OwnerDSN, "okf"); err != nil {
-		cleanup()
-		panic(err)
-	}
-	db = d
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
+	pgtest.Main(m, func(d *pgtest.DB) error {
+		db = d
+		return migrate.Up(ctx, d.OwnerDSN, "okf")
+	})
 }
 
-func conceptStore(t *testing.T) *store.ConceptStore {
-	t.Helper()
-	s, err := store.Open(ctx, db.AppDSN, "okf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	return store.NewConceptStore(s)
-}
+func conceptStore(t *testing.T) *store.ConceptStore { return pgtest.ConceptStore(t, db.AppDSN) }
 
 func newTools(t *testing.T) *Tools {
 	t.Helper()
 	return NewTools(conceptStore(t), uuid.New(), "mcp")
-}
-
-func admin(t *testing.T, sql string) {
-	t.Helper()
-	conn, err := pgx.Connect(ctx, db.AdminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(ctx)
-	if _, err := conn.Exec(ctx, sql); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func connect(t *testing.T, tools *Tools) *mcp.ClientSession {
@@ -479,8 +451,8 @@ func TestACallMissingARequiredArgumentIsAnErrorResult(t *testing.T) {
 // agent to retry a request that was never wrong, and hide the bug.
 func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	session := connect(t, newTools(t))
-	admin(t, `REVOKE SELECT ON okf.concept FROM okf_app`)
-	t.Cleanup(func() { admin(t, `GRANT SELECT ON okf.concept TO okf_app`) })
+	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM okf_app`)
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO okf_app`) })
 	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err == nil {
 		t.Fatalf("got a result, want a protocol error: %+v", res)
 	}
@@ -499,8 +471,8 @@ func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 	if logs.Len() != 0 {
 		t.Fatalf("a tool error was logged: %s", logs.String())
 	}
-	admin(t, `REVOKE SELECT ON okf.concept FROM okf_app`)
-	t.Cleanup(func() { admin(t, `GRANT SELECT ON okf.concept TO okf_app`) })
+	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM okf_app`)
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO okf_app`) })
 	session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
 	if !strings.Contains(logs.String(), "okf_list") || !strings.Contains(logs.String(), "permission denied") {
 		t.Fatalf("the defect was not logged: %q", logs.String())
@@ -681,10 +653,7 @@ func TestTheWireToolListingIsPythons(t *testing.T) {
 func TestUnavailableIsAToolError(t *testing.T) {
 	session := connect(t, newTools(t)) // a go-sdk client session over httptest
 	// Terminating backends alone is not enough: the pre-acquire ping would reconnect.
-	// NOLOGIN makes the reconnect fail too, which is what a database that is down looks like.
-	admin(t, `ALTER ROLE okf_app NOLOGIN`)
-	t.Cleanup(func() { admin(t, `ALTER ROLE okf_app LOGIN`) })
-	admin(t, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'okf_app'`)
+	db.LockOut(t)
 
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
 	if err != nil {

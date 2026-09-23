@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -22,19 +21,10 @@ var db *pgtest.DB
 // Ported from 2de90d2:tests/conftest.py's session-scoped fixtures: one container shared by
 // every test in the package, migrated once, as the owner runs it in production.
 func TestMain(m *testing.M) {
-	ctx := context.Background()
-	d, cleanup, err := pgtest.Start(ctx)
-	if err != nil {
-		panic(err)
-	}
-	if err := Up(ctx, d.OwnerDSN, "okf"); err != nil {
-		cleanup()
-		panic(err)
-	}
-	db = d
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
+	pgtest.Main(m, func(d *pgtest.DB) error {
+		db = d
+		return Up(context.Background(), d.OwnerDSN, "okf")
+	})
 }
 
 func connect(t *testing.T, dsn string) *pgx.Conn {
@@ -51,17 +41,7 @@ func connect(t *testing.T, dsn string) *pgx.Conn {
 // check see only okf.
 func scratchSchema(t *testing.T, schema string) string {
 	t.Helper()
-	t.Cleanup(func() {
-		conn, err := pgx.Connect(context.Background(), db.OwnerDSN)
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		defer conn.Close(context.Background())
-		if _, err := conn.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE"); err != nil {
-			t.Error(err)
-		}
-	})
+	t.Cleanup(func() { pgtest.Exec(t, db.OwnerDSN, "DROP SCHEMA IF EXISTS "+schema+" CASCADE") })
 	return schema
 }
 

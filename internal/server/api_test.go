@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 
 const adminPassword = "test-admin-password"
 
+var adminAuth = sync.OnceValue(func() *Auth { return NewAuth(adminPassword) })
+
 type console struct {
 	t      *testing.T
 	h      http.Handler
@@ -35,7 +38,7 @@ type console struct {
 func newConsole(t *testing.T) *console {
 	t.Helper()
 	cs := conceptStore(t)
-	return &console{t: t, h: NewAPI(cs, NewAuth(adminPassword)), cs: cs}
+	return &console{t: t, h: NewAPI(cs, adminAuth()), cs: cs}
 }
 
 func (c *console) do(r *http.Request) *httptest.ResponseRecorder {

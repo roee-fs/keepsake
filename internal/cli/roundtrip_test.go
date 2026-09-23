@@ -28,20 +28,12 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	d, cleanup, err := pgtest.Start(ctx)
-	if err != nil {
-		panic(err)
-	}
-	if err := migrate.Up(ctx, d.OwnerDSN, "okf"); err != nil {
-		cleanup()
-		panic(err)
-	}
-	db = d
 	// KEEPSAKE_UI defaults on, so BuildApp refuses to start without a password.
 	os.Setenv("KEEPSAKE_ADMIN_PASSWORD", "test-admin-password")
-	code := m.Run()
-	cleanup()
-	os.Exit(code)
+	pgtest.Main(m, func(d *pgtest.DB) error {
+		db = d
+		return migrate.Up(ctx, d.OwnerDSN, "okf")
+	})
 }
 
 const doc = `---
@@ -54,15 +46,7 @@ custom_vendor_field: keep-me
 The spec sits beneath the convention. Beneath that, the café.
 `
 
-func conceptStore(t *testing.T) *store.ConceptStore {
-	t.Helper()
-	s, err := store.Open(ctx, db.AppDSN, "okf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	return store.NewConceptStore(s)
-}
+func conceptStore(t *testing.T) *store.ConceptStore { return pgtest.ConceptStore(t, db.AppDSN) }
 
 func writeFile(t *testing.T, dir, name, text string) {
 	t.Helper()

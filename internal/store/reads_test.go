@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -764,7 +765,7 @@ func TestDailyWritesBoundsTheFirstDayAtMidnight(t *testing.T) {
 	cs, tenant := fixture(t)
 	create(t, okf.Concept{Path: "edge/in", Type: "Concept"})
 	create(t, okf.Concept{Path: "edge/out", Type: "Concept"})
-	execDDL(t, db.AdminDSN,
+	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = current_date - 6 "+
 			"WHERE tenant_id = '%s' AND path = 'edge/in'", tenant),
 		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = (current_date - 6)::timestamptz - interval '1 microsecond' "+

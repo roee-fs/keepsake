@@ -7,26 +7,30 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
 
 const password = "correct-password"
 
+// auth is shared: each NewAuth runs scrypt, and the key only changes with the password.
+var auth = sync.OnceValue(func() *Auth { return NewAuth(password) })
+
 func TestTheRightPasswordIsAccepted(t *testing.T) {
-	if !NewAuth(password).CheckPassword(password) {
+	if !auth().CheckPassword(password) {
 		t.Fatal("the right password was rejected")
 	}
 }
 
 func TestAWrongPasswordIsRejected(t *testing.T) {
-	if NewAuth(password).CheckPassword("wrong") {
+	if auth().CheckPassword("wrong") {
 		t.Fatal("a wrong password was accepted")
 	}
 }
 
 func TestANonASCIIPasswordIsRejectedRatherThanRaising(t *testing.T) {
-	if NewAuth(password).CheckPassword("pässwörd") {
+	if auth().CheckPassword("pässwörd") {
 		t.Fatal("a wrong non-ASCII password was accepted")
 	}
 }
@@ -39,27 +43,27 @@ func TestANonASCIIConfiguredPasswordStillAuthenticates(t *testing.T) {
 }
 
 func TestAFreshlyIssuedCookieIsAccepted(t *testing.T) {
-	a := NewAuth(password)
+	a := auth()
 	if !a.Valid(a.Issue(time.Hour)) {
 		t.Fatal("a fresh cookie was rejected")
 	}
 }
 
 func TestACookieSignedWithAnotherPasswordIsRejected(t *testing.T) {
-	if NewAuth("old-password").Valid(NewAuth(password).Issue(time.Hour)) {
+	if NewAuth("old-password").Valid(auth().Issue(time.Hour)) {
 		t.Fatal("a password change MUST revoke old cookies")
 	}
 }
 
 func TestAnExpiredCookieIsRejected(t *testing.T) {
-	a := NewAuth(password)
+	a := auth()
 	if a.Valid(a.Issue(-time.Second)) {
 		t.Fatal("an expired cookie was accepted")
 	}
 }
 
 func TestAMalformedCookieIsRejected(t *testing.T) {
-	a := NewAuth(password)
+	a := auth()
 	good := a.Issue(time.Hour)
 	for _, c := range []string{"", ".", "abc", good[:len(good)-1], "+" + good, "٤" + good} {
 		if a.Valid(c) {
@@ -104,14 +108,14 @@ func TestAdminPasswordIsFineWhenMissingAndUIDisabled(t *testing.T) {
 }
 
 func TestRequireSessionRejectsAMissingCookie(t *testing.T) {
-	a := NewAuth(password)
+	a := auth()
 	if a.session(httptest.NewRequest(http.MethodGet, "/", nil)) {
 		t.Fatal("a request without a cookie passed the guard")
 	}
 }
 
 func TestRequireSessionAcceptsAValidCookie(t *testing.T) {
-	a := NewAuth(password)
+	a := auth()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.AddCookie(&http.Cookie{Name: cookieName, Value: a.Issue(time.Hour)})
 	if !a.session(r) {
