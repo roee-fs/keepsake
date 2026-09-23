@@ -3,6 +3,7 @@
 package store
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"regexp"
@@ -32,43 +33,22 @@ const (
 // migration creating it and the check recognising it must agree on the name.
 const AdminPolicy = "admin_read"
 
-// Schema reads KEEPSAKE_SCHEMA, defaulting to "okf". It panics with the Python
-// ValueError message if the value is not a usable schema name.
-func Schema() string {
+// Schema reads KEEPSAKE_SCHEMA, defaulting to "okf" only when it is unset.
+func Schema() (string, error) {
 	name, ok := os.LookupEnv("KEEPSAKE_SCHEMA")
 	if !ok {
 		name = "okf"
 	}
-	schema, err := ValidatedSchema(name)
-	if err != nil {
-		panic(err.Error())
-	}
-	return schema
+	return ValidatedSchema(name)
 }
 
 // PoolSize reads KEEPSAKE_POOL_SIZE, defaulting to 10. It refuses a bad value with a
 // sentence rather than a strconv error.
 func PoolSize() (int, error) {
-	value := os.Getenv("KEEPSAKE_POOL_SIZE")
-	if value == "" {
-		value = "10"
-	}
+	value := cmp.Or(os.Getenv("KEEPSAKE_POOL_SIZE"), "10")
 	n, err := strconv.Atoi(value)
-	if err != nil || n < 1 || !isDecimal(value) {
+	if err != nil || n < 1 || !okf.IsDecimal(value) {
 		return 0, fmt.Errorf("KEEPSAKE_POOL_SIZE must be a positive integer: %s", okf.PyReprString(value))
 	}
 	return n, nil
-}
-
-// isDecimal matches Python's str.isdecimal(): non-empty and every character a decimal digit.
-func isDecimal(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }

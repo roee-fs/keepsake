@@ -101,12 +101,11 @@ func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 				writeJSON(w, http.StatusUnauthorized, detail{"Unauthorized"})
 				return
 			}
-			select {
-			case slot <- struct{}{}:
-				defer func() { <-slot }()
-			case <-r.Context().Done():
+			release, ok := acquire(r.Context(), slot)
+			if !ok {
 				return
 			}
+			defer release()
 			serve(h, w, r)
 		})
 	}

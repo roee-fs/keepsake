@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/scrypt"
+
+	"github.com/roee-fs/keepsake/okf"
 )
 
 const cookieName = "keepsake_session"
@@ -73,7 +75,7 @@ func (a *Auth) Issue(ttl time.Duration) string {
 
 func (a *Auth) Valid(cookie string) bool {
 	expiry, digest, _ := strings.Cut(cookie, ".")
-	if expiry == "" || strings.Trim(expiry, "0123456789") != "" {
+	if !okf.IsDecimal(expiry) {
 		return false
 	}
 	if !hmac.Equal([]byte(digest), []byte(hex.EncodeToString(mac(a.key, expiry)))) {

@@ -22,6 +22,9 @@ func (n NonFinite) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("okf: frontmatter holds %s, which JSON cannot store", string(n))
 }
 
+// IsDecimal is Python's str.isdecimal() over ASCII: non-empty and every byte a digit.
+func IsDecimal(s string) bool { return s != "" && strings.Trim(s, "0123456789") == "" }
+
 // pyStr is Python's str() over the value domain.
 func pyStr(v any) string {
 	if s, ok := v.(string); ok {

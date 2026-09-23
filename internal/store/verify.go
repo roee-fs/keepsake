@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -49,8 +50,8 @@ const selectOnly = "r"
 
 // adminQual is admin_read as migration 0004 writes it, whitespace collapsed. Any looser
 // test, such as mentioning the GUC, also passes a policy that admits every row.
-const adminQual = "(tenant_id >= CASE WHEN (current_setting('" + AdminGUC + "'::text, true) = " +
-	"'on'::text) THEN '00000000-0000-0000-0000-000000000000'::uuid ELSE NULL::uuid END)"
+var adminQual = "(tenant_id >= CASE WHEN (current_setting('" + AdminGUC + "'::text, true) = " +
+	"'on'::text) THEN '" + nilTenant + "'::uuid ELSE NULL::uuid END)"
 
 // MisconfiguredDatabase is raised at startup. Crashing loudly beats serving cross-tenant reads.
 type MisconfiguredDatabase struct{ Msg string }
@@ -61,34 +62,32 @@ func misconfigured(format string, args ...any) error {
 	return &MisconfiguredDatabase{Msg: fmt.Sprintf(format, args...)}
 }
 
+func readsTenant(expr string) bool { return strings.Contains(expr, TenantGUC) }
+
 // policyFault says why a policy fails to confine the rows it admits, or "" if it does.
-//
-// The sentence is read off a crash-looping pod, so each case names the clause that
-// actually failed.
-func policyFault(policy, cmd string, permissive bool, expressions []string) string {
-	if len(expressions) == 0 {
+// The sentence is read off a crash-looping pod, so each case names the failing clause.
+func policyFault(p policyRow) string {
+	if len(p.exprs) == 0 {
 		return "applies no expression, so it admits every row"
 	}
-	if policy != AdminPolicy {
-		for _, e := range expressions {
-			if !strings.Contains(e, TenantGUC) {
-				return fmt.Sprintf("does not read %s, so it does not restrict rows to one tenant", TenantGUC)
-			}
+	if p.name != AdminPolicy {
+		if slices.ContainsFunc(p.exprs, func(e string) bool { return !readsTenant(e) }) {
+			return fmt.Sprintf("does not read %s, so it does not restrict rows to one tenant", TenantGUC)
 		}
 		return ""
 	}
 	// The single exemption, for the admin console's cross-tenant read. Pinned to the
 	// name, the command, permissiveness and the exact expression: loosen any one and
 	// a policy that admits another tenant's rows starts passing this check.
-	if cmd != selectOnly {
+	if p.cmd != selectOnly {
 		return fmt.Sprintf("is the %s exemption but is not FOR SELECT, so it would "+
 			"admit another tenant's rows to a write", AdminPolicy)
 	}
-	if !permissive {
+	if !p.permissive {
 		return fmt.Sprintf("is the %s exemption but is RESTRICTIVE, so it hides every "+
 			"row from every tenant", AdminPolicy)
 	}
-	if len(expressions) != 1 || strings.Join(strings.Fields(expressions[0]), " ") != adminQual {
+	if len(p.exprs) != 1 || strings.Join(strings.Fields(p.exprs[0]), " ") != adminQual {
 		return fmt.Sprintf("is the %s exemption but does not read exactly %s", AdminPolicy, adminQual)
 	}
 	return ""
@@ -182,19 +181,9 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			}
 			// A permissive tenant policy, not merely a policy: admin_read on its own,
 			// or a restrictive tenant policy, leaves the table unreadable by every tenant.
-			hasTenantPolicy := false
-			for _, p := range policies[name] {
-				if hasTenantPolicy || !p.permissive {
-					continue
-				}
-				for _, e := range p.exprs {
-					if strings.Contains(e, TenantGUC) {
-						hasTenantPolicy = true
-						break
-					}
-				}
-			}
-			if !hasTenantPolicy {
+			if !slices.ContainsFunc(policies[name], func(p policyRow) bool {
+				return p.permissive && slices.ContainsFunc(p.exprs, readsTenant)
+			}) {
 				return misconfigured("%s.%s has no row-level security policy scoping it"+
 					" to one tenant", schema, name)
 			}
@@ -202,7 +191,7 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 			// however strict its siblings are. Every expression it does apply must
 			// read a GUC: reads and writes are gated by different ones.
 			for _, p := range policies[name] {
-				if fault := policyFault(p.name, p.cmd, p.permissive, p.exprs); fault != "" {
+				if fault := policyFault(p); fault != "" {
 					return misconfigured("%s.%s policy %s %s", schema, name, p.name, fault)
 				}
 			}

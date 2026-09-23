@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,8 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// acquireTimeout bounds only the wait to acquire a pooled connection, mirroring
-// psycopg_pool's default wait. A var, not a const, so tests can shrink it.
+// acquireTimeout bounds only the wait to acquire a pooled connection, as psycopg_pool's does.
 var acquireTimeout = 30 * time.Second
 
 // SetAcquireTimeout overrides acquireTimeout for a test and returns a restorer.
@@ -20,12 +20,8 @@ func SetAcquireTimeout(d time.Duration) func() {
 	return func() { acquireTimeout = orig }
 }
 
-// nilTenant casts to uuid without raising and matches no tenant. tenant_isolation's
-// USING clause casts TenantGUC to uuid whichever way Postgres plans admin_read's
-// OR, and Postgres does not promise short-circuiting; an unset GUC reads as an
-// empty string, which fails an uuid cast. This value gives that cast something to
-// land on instead.
-const nilTenant = "00000000-0000-0000-0000-000000000000"
+// nilTenant gives admin_read's uuid cast of an unset TenantGUC a value that matches no tenant.
+var nilTenant = uuid.Nil.String()
 
 // Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
 // set here and nowhere else. Ported from 8f2af2e:src/keepsake/store/pool.py.
@@ -49,16 +45,10 @@ func Open(ctx context.Context, dsn, schema string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	// MaxConns, not just the default of 4: a pool that never grows past a
-	// handful of connections caps the whole pod's concurrent writes there.
 	cfg.MaxConns = int32(poolSize)
 	cfg.MinConns = 1
-	// A pooled connection does not notice the server going away, so a dead one
-	// would otherwise be handed to the next acquirer as an unexplained transport
-	// failure. Ping every acquire, matching pool.py's check=ConnectionPool.check_connection:
-	// on a failed ping, pgxpool destroys that connection and tries another rather
-	// than failing the caller's request (see pgxpool.Pool.Acquire's retry loop).
-	cfg.ShouldPing = func(context.Context, pgxpool.ShouldPingParams) bool { return true }
+	// Every acquire, as pool.py's check_connection: pgxpool replaces a dead connection instead of failing the caller.
+	cfg.ShouldPing = func(ctx context.Context, _ pgxpool.ShouldPingParams) bool { return true }
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -67,57 +57,65 @@ func Open(ctx context.Context, dsn, schema string) (*Store, error) {
 	return &Store{pool: pool, searchPath: schema + ", pg_catalog"}, nil
 }
 
+// OpenVerified opens the store and refuses it unless Verify passes.
+func OpenVerified(ctx context.Context, dsn, schema string) (*Store, error) {
+	s, err := Open(ctx, dsn, schema)
+	if err != nil {
+		return nil, err
+	}
+	if err := Verify(ctx, s, schema); err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
 // Close releases the pool's connections.
 func (s *Store) Close() { s.pool.Close() }
 
 // Healthy reports whether the pool can hand out a working connection right now.
-// It answers rather than raises: the one thing a readiness probe must never do
-// is fail to produce a verdict.
+// It answers rather than raises: a readiness probe must always produce a verdict.
 func (s *Store) Healthy(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	// The acquire pings, and replaces a dead connection, so it is the whole check.
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
 		return false
 	}
-	defer conn.Release()
-	var one int
-	return conn.QueryRow(ctx, "SELECT 1").Scan(&one) == nil
+	conn.Release()
+	return true
 }
 
 // Raw yields a connection with no tenant scope, read-only so it cannot become a
 // write path into every tenant's rows at once. For startup checks only.
 func (s *Store) Raw(ctx context.Context, fn func(pgx.Tx) error) error {
-	return s.tx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly},
-		"SELECT set_config('search_path', $1, true)", []any{s.searchPath}, fn)
+	return s.tx(ctx, fmt.Sprintf("BEGIN READ ONLY; SELECT set_config('search_path', '%s', true)", s.searchPath), fn)
 }
 
 // Scope yields a connection scoped to tenant for the life of one transaction.
 func (s *Store) Scope(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) error) error {
 	// okf.admin off explicitly: a role or DSN default of 'on' would widen every read.
-	return s.tx(ctx, pgx.TxOptions{},
-		"SELECT set_config('search_path', $1, true), set_config($2, 'off', true), set_config($3, $4, true)",
-		[]any{s.searchPath, AdminGUC, TenantGUC, tenant.String()}, fn)
+	return s.tx(ctx, fmt.Sprintf(
+		"BEGIN; SELECT set_config('search_path', '%s', true), set_config('%s', 'off', true), set_config('%s', '%s', true)",
+		s.searchPath, AdminGUC, TenantGUC, tenant), fn)
 }
 
 // AdminScope yields a read-only connection that reads every tenant, for the
-// admin console only. Read-only, and the policy behind it is FOR SELECT: an
-// admin has no write path into a tenant it did not name. okf.admin is
-// self-asserted, so anything holding the app DSN can set it with or without
-// this method; authentication happens above this method, never inside it.
+// admin console only. The policy behind it is FOR SELECT, so an admin has no
+// write path into a tenant. okf.admin is self-asserted: authentication happens
+// above this method, never inside it.
 func (s *Store) AdminScope(ctx context.Context, fn func(pgx.Tx) error) error {
-	return s.tx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly},
-		"SELECT set_config('search_path', $1, true), set_config($2, 'on', true), set_config($3, $4, true)",
-		[]any{s.searchPath, AdminGUC, TenantGUC, nilTenant}, fn)
+	return s.tx(ctx, fmt.Sprintf(
+		"BEGIN READ ONLY; SELECT set_config('search_path', '%s', true), set_config('%s', 'on', true), set_config('%s', '%s', true)",
+		s.searchPath, AdminGUC, TenantGUC, nilTenant), fn)
 }
 
-// tx acquires with a bounded wait, then runs setup and fn on the caller's own ctx
-// for the rest of the transaction's life: psycopg_pool's timeout, which this
-// mirrors, covers only the acquire, not the transaction an acquired connection
-// then runs. set_config's is_local argument is SET LOCAL and, unlike SET, takes a
-// parameter; a session-scoped value would outlive the transaction and be
-// inherited by whoever next takes this connection from the pool.
-func (s *Store) tx(ctx context.Context, opts pgx.TxOptions, setup string, args []any, fn func(pgx.Tx) error) error {
+// tx runs fn in a transaction opened by begin, which sets its GUCs in the same round trip.
+// Every value begin interpolates is a validated schema, a GUC constant or a uuid.
+// set_config's is_local is SET LOCAL: a session value would leak to the connection's next user.
+func (s *Store) tx(ctx context.Context, begin string, fn func(pgx.Tx) error) error {
+	// The timeout covers only the acquire, as psycopg_pool's does, not the transaction.
 	acquireCtx, cancel := context.WithTimeout(ctx, acquireTimeout)
 	conn, err := s.pool.Acquire(acquireCtx)
 	cancel()
@@ -125,18 +123,11 @@ func (s *Store) tx(ctx context.Context, opts pgx.TxOptions, setup string, args [
 		return &acquireError{err}
 	}
 	defer conn.Release()
-
-	return pgx.BeginTxFunc(ctx, conn, opts, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, setup, args...); err != nil {
-			return err
-		}
-		return fn(tx)
-	})
+	return pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{BeginQuery: begin}, fn)
 }
 
-// acquireError marks an error as having occurred while acquiring a pooled
-// connection, so IsUnavailable can tell a real acquire timeout from an unrelated
-// deadline a caller's own fn happened to hit.
+// acquireError marks an error from acquiring a pooled connection, so IsUnavailable
+// can tell an acquire timeout from a deadline the caller's own fn hit.
 type acquireError struct{ err error }
 
 func (e *acquireError) Error() string { return e.err.Error() }

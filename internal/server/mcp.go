@@ -151,6 +151,16 @@ func arguments(raw json.RawMessage) (map[string]any, error) {
 	return out, nil
 }
 
+// acquire takes a place in slot, or reports false once ctx ends first.
+func acquire(ctx context.Context, slot chan struct{}) (release func(), ok bool) {
+	select {
+	case slot <- struct{}{}:
+		return func() { <-slot }, true
+	case <-ctx.Done():
+		return nil, false
+	}
+}
+
 func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw := req.Params.Arguments
@@ -170,12 +180,11 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		if err != nil {
 			return nil, err
 		}
-		select {
-		case slot <- struct{}{}:
-			defer func() { <-slot }()
-		case <-ctx.Done():
+		release, ok := acquire(ctx, slot)
+		if !ok {
 			return nil, ctx.Err()
 		}
+		defer release()
 		result, err := call(ctx, t, args)
 		var te *ToolError
 		switch {
@@ -207,8 +216,8 @@ func NewMCPHandler(t *Tools) http.Handler {
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})
 	tools := toolDefinitions()
-	// Sized to the pool, so a burst queues here instead of timing out on an acquire.
-	slot := make(chan struct{}, t.c.PoolSize())
+	// One fewer than the pool, so a burst queues here and the console keeps a connection.
+	slot := make(chan struct{}, max(t.c.PoolSize()-1, 1))
 	for _, tool := range tools {
 		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name], slot))
 	}

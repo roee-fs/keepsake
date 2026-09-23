@@ -35,7 +35,7 @@ const choices = "{import,export,validate,migrate,serve}"
 // namespace holding a Service named keepsake, so this never fails. Only serve reads it.
 func EnvPort() int {
 	value := os.Getenv("KEEPSAKE_PORT")
-	if value == "" || strings.Trim(value, "0123456789") != "" {
+	if !okf.IsDecimal(value) {
 		return defaultPort
 	}
 	// `0` and `70000` are decimal and are not ports.
@@ -224,16 +224,6 @@ func tenantID(value string) (uuid.UUID, error) {
 	return id, nil
 }
 
-// schema is store.Schema, with Python's import-time ValueError as an error rather than a panic.
-func schema() (name string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("%v", r)
-		}
-	}()
-	return store.Schema(), nil
-}
-
 // bound opens a store and parses a tenant for one command. The func closes the store.
 func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, func(), error) {
 	id, err := tenantID(o.tenant)
@@ -244,19 +234,14 @@ func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, fun
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
-	name, err := schema()
+	name, err := store.Schema()
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
-	s, err := store.Open(ctx, dsn, name)
+	// Verified because RLS is the only thing keeping one tenant's concepts out of
+	// another's bundle: a privileged DSN would export every tenant, silently.
+	s, err := store.OpenVerified(ctx, dsn, name)
 	if err != nil {
-		return nil, uuid.UUID{}, nil, err
-	}
-	// Nothing here filters by tenant: RLS is the only thing keeping one tenant's
-	// concepts out of another's bundle. A privileged DSN, the same one migrate needs,
-	// would export every tenant at once, silently.
-	if err := store.Verify(ctx, s, name); err != nil {
-		s.Close()
 		return nil, uuid.UUID{}, nil, err
 	}
 	return store.NewConceptStore(s), id, s.Close, nil
@@ -310,7 +295,7 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	name, err := schema()
+	name, err := store.Schema()
 	if err != nil {
 		return 0, err
 	}
@@ -326,7 +311,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	name, err := schema()
+	name, err := store.Schema()
 	if err != nil {
 		return 0, err
 	}

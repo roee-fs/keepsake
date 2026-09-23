@@ -30,25 +30,19 @@ func TestValidatedSchemaAcceptsBareIdentifiers(t *testing.T) {
 func TestSchemaDefaultsToOkf(t *testing.T) {
 	t.Setenv("KEEPSAKE_SCHEMA", "")
 	os.Unsetenv("KEEPSAKE_SCHEMA")
-	if got := Schema(); got != "okf" {
-		t.Errorf("Schema() = %q, want okf", got)
+	if got, err := Schema(); err != nil || got != "okf" {
+		t.Errorf("Schema() = %q, %v, want okf", got, err)
 	}
 }
 
-func TestSchemaPanicsOnAnUnusableName(t *testing.T) {
+func TestSchemaRefusesAnUnusableName(t *testing.T) {
 	for _, name := range []string{"not-usable", ""} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("KEEPSAKE_SCHEMA", name)
-			defer func() {
-				r := recover()
-				if r == nil {
-					t.Fatal("Schema() did not panic")
-				}
-				if want := "not a usable schema name: '" + name + "'"; r != want {
-					t.Errorf("panic = %v, want %s", r, want)
-				}
-			}()
-			Schema()
+			_, err := Schema()
+			if want := "not a usable schema name: '" + name + "'"; err == nil || err.Error() != want {
+				t.Errorf("err = %v, want %s", err, want)
+			}
 		})
 	}
 }

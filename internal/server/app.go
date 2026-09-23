@@ -41,12 +41,8 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	s, err := store.Open(ctx, cfg.DSN, cfg.Schema)
+	s, err := store.OpenVerified(ctx, cfg.DSN, cfg.Schema)
 	if err != nil {
-		return nil, nil, err
-	}
-	if err := store.Verify(ctx, s, cfg.Schema); err != nil {
-		s.Close()
 		return nil, nil, err
 	}
 

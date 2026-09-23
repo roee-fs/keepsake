@@ -1,11 +1,5 @@
-// Concept writes. Two statements, never one upsert: an upsert guarded by a version
-// predicate would silently create a row the caller believed it was updating.
-//
-// Tables are named unqualified: Store.Scope sets search_path to the validated
-// schema plus pg_catalog and nothing else, so a literal prefix would only break a
-// non-default schema.
-//
-// Ported from 8f2af2e:src/keepsake/store/concepts.py (the write half; reads are Task 9).
+// Concept writes, ported from 8f2af2e:src/keepsake/store/concepts.py. Tables are
+// unqualified because Scope sets search_path to the validated schema.
 package store
 
 import (
