@@ -657,9 +657,9 @@ func TestAnUnacceptableAcceptIsPythons406(t *testing.T) {
 	}
 }
 
-// pythonWire is testdata/python_wire.json: requests and the result the Python server
+// wireCase is one entry of testdata/python_wire.json: requests and the result the Python server
 // (2de90d2) answered them with, on an empty tenant.
-type pythonWire struct {
+type wireCase struct {
 	Name    string
 	Headers map[string]string
 	Request json.RawMessage
@@ -673,7 +673,7 @@ func wireResults(t *testing.T, names ...string) map[string][2]json.RawMessage {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cases []pythonWire
+	var cases []wireCase
 	if err := json.Unmarshal(raw, &cases); err != nil {
 		t.Fatal(err)
 	}
@@ -741,6 +741,98 @@ func TestOtherMethodsArePythons405(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != tc.allow || string(body) != tc.body {
 			t.Errorf("%s %q: %d allow %q %s", tc.method, tc.version, resp.StatusCode, resp.Header.Get("Allow"), body)
+		}
+	}
+}
+
+// The wants are the Python server's status and JSON-RPC error code for the same
+// request; the message text is divergence 11's. Code 0 means no JSON-RPC error body,
+// and -1 a result.
+func TestProtocolErrorsArePythons(t *testing.T) {
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	const meta = `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	const badMeta = `"_meta":{"io.modelcontextprotocol/protocolVersion":"1999-01-01","io.modelcontextprotocol/clientCapabilities":{}}`
+	legacy := map[string]string{"Mcp-Protocol-Version": "2025-11-25"}
+	modern := func(method string, extra ...string) map[string]string {
+		h := map[string]string{"Mcp-Protocol-Version": "2026-07-28", "Mcp-Method": method}
+		for i := 0; i < len(extra); i += 2 {
+			h[extra[i]] = extra[i+1]
+		}
+		return h
+	}
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		body    string
+		status  int
+		code    int
+	}{
+		{"legacy parse", legacy, `{`, 400, -32700},
+		{"legacy scalar", legacy, `"x"`, 400, -32602},
+		{"legacy null", legacy, `null`, 400, -32602},
+		{"legacy batch", legacy, `[{"jsonrpc":"2.0","id":1,"method":"tools/list"}]`, 400, -32602},
+		{"legacy empty batch", legacy, `[]`, 400, -32602},
+		{"legacy jsonrpc 1.0", legacy, `{"jsonrpc":"1.0","id":1,"method":"tools/list"}`, 400, -32602},
+		{"legacy method not a string", legacy, `{"jsonrpc":"2.0","id":1,"method":5}`, 400, -32602},
+		{"legacy notification params array", legacy, `{"jsonrpc":"2.0","method":"x","params":[1]}`, 400, -32602},
+		{"legacy result array", legacy, `{"jsonrpc":"2.0","id":1,"result":[]}`, 400, -32602},
+		{"legacy id bool", legacy, `{"jsonrpc":"2.0","id":true,"method":"tools/list"}`, 202, 0},
+		{"legacy id float", legacy, `{"jsonrpc":"2.0","id":1.5,"method":"tools/list"}`, 202, 0},
+		{"legacy id null", legacy, `{"jsonrpc":"2.0","id":null,"method":"tools/list"}`, 202, 0},
+		{"legacy unknown method", legacy, `{"jsonrpc":"2.0","id":1,"method":"foo/bar"}`, 200, -32601},
+		{"legacy unknown notification", legacy, `{"jsonrpc":"2.0","method":"foo/bar"}`, 202, 0},
+		{"legacy resources/list", legacy, `{"jsonrpc":"2.0","id":1,"method":"resources/list"}`, 200, -32601},
+		{"legacy prompts/list", legacy, `{"jsonrpc":"2.0","id":1,"method":"prompts/list"}`, 200, -32601},
+		{"legacy logging/setLevel", legacy, `{"jsonrpc":"2.0","id":1,"method":"logging/setLevel","params":{"level":"info"}}`, 200, -32601},
+		{"legacy initialize without params", legacy, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, 200, -32602},
+		{"legacy tools/call without name", legacy, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`, 200, -32602},
+		{"legacy tools/call arguments array", legacy, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":[1]}}`, 200, -32602},
+		{"legacy ping", legacy, `{"jsonrpc":"2.0","id":1,"method":"ping"}`, 200, -1},
+		{"text content type", map[string]string{"Content-Type": "text/plain"}, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, 400, 0},
+		{"modern parse", modern("tools/list"), `{`, 400, -32700},
+		{"modern scalar", modern("tools/list"), `"x"`, 400, -32600},
+		{"modern batch", modern("tools/list"), `[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta + `}}]`, 400, -32600},
+		{"modern jsonrpc 1.0", modern("tools/list"), `{"jsonrpc":"1.0","id":1,"method":"tools/list","params":{` + meta + `}}`, 400, -32600},
+		{"modern tools/call without name", modern("tools/call"), `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{` + meta + `}}`, 400, -32602},
+		{"modern tools/call arguments array", modern("tools/call", "Mcp-Name", "okf_list"), `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":[1],` + meta + `}}`, 400, -32602},
+		{"modern resources/list", modern("resources/list"), `{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{` + meta + `}}`, 404, -32601},
+		{"modern unknown method", modern("foo/bar"), `{"jsonrpc":"2.0","id":1,"method":"foo/bar","params":{` + meta + `}}`, 404, -32601},
+		{"modern ping", modern("ping"), `{"jsonrpc":"2.0","id":1,"method":"ping","params":{` + meta + `}}`, 404, -32601},
+		{"modern method mismatch", modern("tools/call"), `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta + `}}`, 400, -32020},
+		{"modern missing _meta", modern("tools/list"), `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, 400, -32602},
+		{"unknown version without _meta", map[string]string{"Mcp-Protocol-Version": "1999-01-01"}, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, 400, -32602},
+		{"unknown version in _meta", modern("tools/list", "Mcp-Protocol-Version", "1999-01-01"), `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + badMeta + `}}`, 400, -32022},
+		{"unknown header, modern _meta", modern("tools/list", "Mcp-Protocol-Version", "1999-01-01"), `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta + `}}`, 400, -32020},
+		{"empty version header", map[string]string{"Mcp-Protocol-Version": ""}, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, 400, -32602},
+	} {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(tc.body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		for k, v := range tc.headers {
+			req.Header[http.CanonicalHeaderKey(k)] = []string{v}
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		var body struct {
+			Result json.RawMessage
+			Error  *struct{ Code int }
+		}
+		code := 0
+		if json.Unmarshal(raw, &body) == nil {
+			switch {
+			case body.Error != nil:
+				code = body.Error.Code
+			case body.Result != nil:
+				code = -1
+			}
+		}
+		if resp.StatusCode != tc.status || code != tc.code {
+			t.Errorf("%s: got %d %d, want %d %d: %s", tc.name, resp.StatusCode, code, tc.status, tc.code, raw)
 		}
 	}
 }

@@ -93,9 +93,130 @@ func first(m *okf.Map, keys ...string) *okf.Map {
 	return out
 }
 
-// pythonResults rewrites go-sdk's successful JSON-RPC results into Python's shapes for
-// the request's era. Errors, notifications and anything unparsed pass through unchanged.
-func pythonResults(next http.Handler) http.Handler {
+// pythonMethods are the requests Python's server answers in each era. go-sdk
+// answers more (resources/list, logging/setLevel, ...); Python says -32601.
+var pythonMethods = map[bool][]string{
+	false: {"initialize", "ping", "tools/list", "tools/call"},
+	true:  {"server/discover", "tools/list", "tools/call"},
+}
+
+const (
+	codeParse         = -32700
+	codeInvalidReq    = -32600
+	codeNotFound      = -32601
+	codeInvalidParams = -32602
+	codeHeader        = -32020
+	codeVersion       = -32022
+)
+
+// rpcError answers a JSON-RPC error. Divergence 11: status and code are Python's,
+// the message may be worded differently.
+func rpcError(w http.ResponseWriter, status int, id any, code int, msg string, data ...any) {
+	e := obj("code", code, "message", msg)
+	if len(data) > 0 {
+		e.Set("data", data[0])
+	}
+	b, _ := json.Marshal(obj("jsonrpc", "2.0", "id", id, "error", e))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(b)
+}
+
+// validID is a JSON-RPC id pydantic accepts: a string or an integral number.
+func validID(v any) bool {
+	switch v := v.(type) {
+	case string:
+		return true
+	case json.Number:
+		f, err := v.Float64()
+		return err == nil && f == float64(int64(f))
+	}
+	return false
+}
+
+// validMessage is jsonrpc_message_adapter: a request, a notification, a response or an error.
+func validMessage(m *okf.Map) bool {
+	if v, _ := m.Get("jsonrpc"); v != "2.0" {
+		return false
+	}
+	if method, ok := m.Get("method"); ok {
+		params, has := m.Get("params")
+		_, isObj := params.(*okf.Map)
+		_, isString := method.(string)
+		return isString && (!has || params == nil || isObj)
+	}
+	id, _ := m.Get("id")
+	result, hasResult := m.Get("result")
+	errObj, hasError := m.Get("error")
+	_, resultObj := result.(*okf.Map)
+	_, errorObj := errObj.(*okf.Map)
+	return (validID(id) || id == nil) && (hasResult && resultObj || hasError && errorObj)
+}
+
+// envelopeLadder is Python's modern ladder for a request whose mcp-protocol-version header
+// names no known version: it returns the status, code and message, or 0.
+func envelopeLadder(params *okf.Map) (int, string) {
+	meta, _ := params.Get("_meta")
+	m, ok := meta.(*okf.Map)
+	if !ok {
+		return codeInvalidParams, "params._meta must be an object carrying the required envelope keys"
+	}
+	pv, hasPV := m.Get("io.modelcontextprotocol/protocolVersion")
+	if _, hasCaps := m.Get("io.modelcontextprotocol/clientCapabilities"); !hasPV || !hasCaps {
+		return codeInvalidParams, "params._meta is missing the required envelope key(s)"
+	}
+	if s, ok := pv.(string); !ok {
+		return codeInvalidParams, "the protocol-version envelope value must be a string"
+	} else if s != "2026-07-28" {
+		return codeVersion, "Unsupported protocol version"
+	}
+	return codeHeader, "mcp-protocol-version header does not match the request envelope's protocol version"
+}
+
+// badParams is the params validation Python runs before dispatch, for the requests
+// whose params go-sdk would accept or check later.
+func badParams(method string, params *okf.Map, r *http.Request) bool {
+	get := func(k string) (any, bool) {
+		if params == nil {
+			return nil, false
+		}
+		return params.Get(k)
+	}
+	switch method {
+	case "tools/call":
+		name, hasName := get("name")
+		args, hasArgs := get("arguments")
+		_, argsObj := args.(*okf.Map)
+		if modernEra(r) && (r.Header.Get("Mcp-Method") != method || hasName && r.Header.Get("Mcp-Name") != name) {
+			return false // go-sdk's header checks answer -32020, as Python's do.
+		}
+		_, nameString := name.(string)
+		return !hasName || !nameString || hasArgs && args != nil && !argsObj
+	case "initialize":
+		if modernEra(r) {
+			return false
+		}
+		pv, _ := get("protocolVersion")
+		caps, _ := get("capabilities")
+		info, _ := get("clientInfo")
+		_, pvString := pv.(string)
+		_, capsObj := caps.(*okf.Map)
+		i, infoObj := info.(*okf.Map)
+		if !pvString || !capsObj || !infoObj {
+			return true
+		}
+		name, _ := i.Get("name")
+		version, _ := i.Get("version")
+		_, n := name.(string)
+		_, v := version.(string)
+		return !n || !v
+	}
+	return false
+}
+
+// pythonWire answers what Python's transports reject before dispatch with Python's
+// status and code, and rewrites go-sdk's successful results into Python's shapes.
+func pythonWire(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			next.ServeHTTP(w, r)
@@ -107,34 +228,89 @@ func pythonResults(next http.Handler) http.Handler {
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		var call struct{ Method string }
-		json.Unmarshal(body, &call)
-		shape := shapes[call.Method]
-		if shape == nil {
+		modern := modernEra(r)
+		if !json.Valid(body) {
+			rpcError(w, http.StatusBadRequest, nil, codeParse, "Parse error")
+			return
+		}
+		var msg okf.Map
+		if bytes.TrimSpace(body)[0] != '{' || json.Unmarshal(body, &msg) != nil || !validMessage(&msg) {
+			if modern {
+				rpcError(w, http.StatusBadRequest, nil, codeInvalidReq, "Body must be a single JSON-RPC request or notification object")
+			} else {
+				rpcError(w, http.StatusBadRequest, nil, codeInvalidParams, "Validation error")
+			}
+			return
+		}
+		m, _ := msg.Get("method")
+		method, _ := m.(string)
+		id, hasID := msg.Get("id")
+		p, _ := msg.Get("params")
+		params, _ := p.(*okf.Map)
+		isRequest := method != "" && hasID && validID(id)
+		if method != "" && !isRequest {
+			if !modern {
+				// Python forwards a notification unanswered; pydantic reads a request
+				// whose id is not a string or integer as one.
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
 			next.ServeHTTP(w, r)
+			return
+		}
+		if v := r.Header.Values("Mcp-Protocol-Version"); isRequest && len(v) > 0 && v[0] != "2026-07-28" && !slices.Contains(handshakeVersions, v[0]) {
+			if params == nil {
+				params = okf.NewMap()
+			}
+			code, text := envelopeLadder(params)
+			rpcError(w, http.StatusBadRequest, id, code, text)
+			return
+		}
+		if isRequest && badParams(method, params, r) {
+			status := http.StatusOK
+			if modern {
+				status = http.StatusBadRequest
+			}
+			rpcError(w, status, id, codeInvalidParams, "Invalid request parameters")
 			return
 		}
 		buf := &buffered{header: w.Header()}
 		next.ServeHTTP(buf, r)
 		out := buf.body.Bytes()
-		var msg okf.Map
-		if buf.code == http.StatusOK && json.Unmarshal(out, &msg) == nil {
-			if result, ok := msg.Get("result"); ok {
+		code := buf.code
+		var res okf.Map
+		switch {
+		case isRequest && code == http.StatusBadRequest && bytes.HasPrefix(out, []byte("JSON RPC not handled")),
+			isRequest && code == http.StatusOK && json.Unmarshal(out, &res) == nil && has(&res, "result") && !slices.Contains(pythonMethods[modern], method):
+			status := http.StatusOK
+			if modern {
+				status = http.StatusNotFound
+			}
+			rpcError(w, status, id, codeNotFound, "Method not found", method)
+			return
+		case code == http.StatusOK && shapes[method] != nil && json.Unmarshal(out, &res) == nil:
+			if result, ok := res.Get("result"); ok {
 				if m, ok := result.(*okf.Map); ok {
-					shape(m, modernEra(r))
-					msg.Set("result", pyModel(m))
-					if b, err := json.Marshal(&msg); err == nil {
+					shapes[method](m, modern)
+					res.Set("result", pyModel(m))
+					if b, err := json.Marshal(&res); err == nil {
 						out = b
 					}
 				}
 			}
 		}
 		w.Header().Del("Content-Length")
-		if buf.code != 0 {
-			w.WriteHeader(buf.code)
+		if code != 0 {
+			w.WriteHeader(code)
 		}
 		w.Write(out)
 	})
+}
+
+func has(m *okf.Map, k string) bool {
+	_, ok := m.Get(k)
+	return ok
 }
 
 // buffered holds a response so its result can be rewritten before it is sent.

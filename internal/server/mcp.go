@@ -224,10 +224,17 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// auth stops being `none`: this is a setting that outlives its justification.
 		DisableLocalhostProtection: true,
 	})
-	h := pythonResults(sdk)
+	h := pythonWire(sdk)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && modernEra(r) {
 			methodNotAllowed(w, r)
+			return
+		}
+		// TransportSecurityMiddleware checks this first, even with rebinding protection off.
+		if r.Method == http.MethodPost && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "Invalid Content-Type header")
 			return
 		}
 		if r.Method == http.MethodPost && !acceptsJSON(r.Header.Values("Accept")) {
