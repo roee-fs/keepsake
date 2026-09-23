@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/roee-fs/keepsake/okf"
@@ -222,8 +223,8 @@ func (d *pyDecoder) str(i int) (any, int, *pyJSONError) {
 		if u >= 0xd800 && u <= 0xdbff && d.has(i, "\\u") {
 			if u2, ok := d.hex4(i + 2); !ok {
 				return nil, 0, &pyJSONError{"Invalid \\uXXXX escape", i + 1}
-			} else if u2 >= 0xdc00 && u2 <= 0xdfff {
-				u = 0x10000 + (u-0xd800)<<10 | (u2 - 0xdc00)
+			} else if r := utf16.DecodeRune(u, u2); r != utf8.RuneError {
+				u = r
 				i += 6
 			}
 		}

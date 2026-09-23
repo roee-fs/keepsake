@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -138,17 +139,24 @@ func schemaErrors(err error) string {
 	return strings.Join(leaves, "; ")
 }
 
-// arguments decodes the raw arguments keeping frontmatter key order and exact numbers.
-func arguments(raw json.RawMessage) (map[string]any, error) {
-	m := okf.NewMap()
-	if err := json.Unmarshal(raw, m); err != nil {
-		return nil, err
+// plain is v with every *okf.Map a map[string]any, the tree jsonschema validates.
+func plain(v any) any {
+	switch v := v.(type) {
+	case *okf.Map:
+		out := make(map[string]any, v.Len())
+		for _, k := range v.Keys() {
+			x, _ := v.Get(k)
+			out[k] = plain(x)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, x := range v {
+			out[i] = plain(x)
+		}
+		return out
 	}
-	out := map[string]any{}
-	for _, k := range m.Keys() {
-		out[k], _ = m.Get(k)
-	}
-	return out, nil
+	return v
 }
 
 // acquire takes a place in slot, or reports false once ctx ends first.
@@ -167,18 +175,19 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		if len(raw) == 0 || string(raw) == "null" {
 			raw = json.RawMessage("{}")
 		}
-		instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-		if err != nil {
+		// An okf.Map keeps frontmatter key order and exact numbers.
+		m := okf.NewMap()
+		if err := json.Unmarshal(raw, m); err != nil {
 			return nil, err
 		}
 		// The advertised schema, enforced before dispatch, so a wrong shape comes back
 		// as something the agent can correct.
-		if err := schema.Validate(instance); err != nil {
+		if err := schema.Validate(plain(m)); err != nil {
 			return failed(name + ": " + schemaErrors(err)), nil
 		}
-		args, err := arguments(raw)
-		if err != nil {
-			return nil, err
+		args := map[string]any{}
+		for _, k := range m.Keys() {
+			args[k], _ = m.Get(k)
 		}
 		release, ok := acquire(ctx, slot)
 		if !ok {
@@ -221,17 +230,41 @@ func NewMCPHandler(t *Tools) http.Handler {
 	for _, tool := range tools {
 		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name], slot))
 	}
+	// Built once per era; each request gets its own result for go-sdk to add _meta to.
+	toolsList := map[era]*okf.Map{}
+	for _, e := range []era{legacy, modern} {
+		m, err := shape("tools/list", e, &toolList{Tools: tools})
+		if err != nil {
+			panic(err)
+		}
+		toolsList[e] = m
+	}
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-			if method == "tools/list" {
-				return &toolList{Tools: tools}, nil
+			e, _ := ctx.Value(eraKey{}).(era)
+			if strings.HasPrefix(method, "notifications/") {
+				return next(ctx, method, req)
 			}
+			if !pythonServes(method, e) {
+				return nil, methodNotFound(method)
+			}
+			if method == "tools/list" {
+				return &shaped{m: toolsList[e]}, nil
+			}
+			var res mcp.Result
+			var err error
 			if call, ok := req.(*mcp.CallToolRequest); ok && handlers[call.Params.Name] == nil {
 				// An error result, not a protocol error: an agent can correct itself from a
 				// tool result and cannot from a transport failure.
-				return failed("no such tool: " + call.Params.Name), nil
+				res = failed("no such tool: " + call.Params.Name)
+			} else if res, err = next(ctx, method, req); err != nil || shapes[method] == nil {
+				return res, err
 			}
-			return next(ctx, method, req)
+			m, err := shape(method, e, res)
+			if err != nil {
+				return nil, err
+			}
+			return &shaped{m: m}, nil
 		}
 	})
 	sdk := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
@@ -242,11 +275,11 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// would reject every real request. refuseBrowsers covers DNS rebinding.
 		DisableLocalhostProtection: true,
 	})
-	h := pythonWire(sdk)
 	// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
 	return limitBody(mcp.DefaultMaxRequestBodyBytes, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && modernEra(r) {
-			methodNotAllowed(w, r)
+		e := eraOf(r)
+		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && e != legacy {
+			methodNotAllowed(w, r.Method, e)
 			return
 		}
 		// TransportSecurityMiddleware checks this first, even with rebinding protection off.
@@ -258,13 +291,16 @@ func NewMCPHandler(t *Tools) http.Handler {
 			return
 		}
 		if r.Method == http.MethodPost && !acceptsJSON(r.Header.Values("Accept")) {
-			notAcceptable(w, r)
+			notAcceptable(w, e)
+			return
+		}
+		if r.Method == http.MethodPost && rejected(w, r, e) {
 			return
 		}
 		// JSON responses never stream, so a client accepting only application/json is
 		// served, as the Python server serves it; go-sdk insists on both types.
 		r.Header.Add("Accept", "text/event-stream")
-		h.ServeHTTP(w, r)
+		sdk.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), eraKey{}, e)))
 	}))
 }
 
@@ -280,10 +316,6 @@ func acceptsJSON(accept []string) bool {
 	return false
 }
 
-// handshakeVersions route a request to Python's legacy transport; any other
-// mcp-protocol-version header value goes to its modern one.
-var handshakeVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
-
 // tooLarge is Starlette's bare 413 for a body over the limit.
 func tooLarge(w http.ResponseWriter) {
 	w.Header()["Content-Type"] = nil
@@ -293,31 +325,27 @@ func tooLarge(w http.ResponseWriter) {
 
 // methodNotAllowed answers a method other than POST as whichever Python transport
 // the request reaches. A legacy GET is left to go-sdk: Python streams it forever.
-func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	if modernEra(r) {
+func methodNotAllowed(w http.ResponseWriter, method string, e era) {
+	if e != legacy {
 		w.Header().Set("Allow", "POST")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	msg := "Method Not Allowed: Session termination not supported"
-	if r.Method != http.MethodDelete {
+	if method != http.MethodDelete {
 		msg = "Method Not Allowed"
 		w.Header().Set("Allow", "GET, POST, DELETE")
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusMethodNotAllowed)
-	fmt.Fprintf(w, `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":%q}}`, msg)
+	rpcError(w, http.StatusMethodNotAllowed, nil, codeInvalidReq, msg)
 }
 
 // notAcceptable answers 406 as whichever Python transport the request reaches.
-func notAcceptable(w http.ResponseWriter, r *http.Request) {
-	if modernEra(r) {
+func notAcceptable(w http.ResponseWriter, e era) {
+	if e != legacy {
 		w.WriteHeader(http.StatusNotAcceptable)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotAcceptable)
-	io.WriteString(w, `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Not Acceptable: Client must accept application/json"}}`)
+	rpcError(w, http.StatusNotAcceptable, nil, codeInvalidReq, "Not Acceptable: Client must accept application/json")
 }
 
 // pyDumps renders v as Python's json.dumps does by default: ", " and ": "
@@ -390,8 +418,8 @@ func pyString(sb *strings.Builder, s string) {
 		case r >= ' ' && r <= '~':
 			sb.WriteRune(r)
 		case r > 0xffff:
-			r -= 0x10000
-			fmt.Fprintf(sb, `\u%04x\u%04x`, 0xd800+(r>>10), 0xdc00+(r&0x3ff))
+			r1, r2 := utf16.EncodeRune(r)
+			fmt.Fprintf(sb, `\u%04x\u%04x`, r1, r2)
 		default:
 			fmt.Fprintf(sb, `\u%04x`, r)
 		}
