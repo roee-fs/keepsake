@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -20,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -350,31 +350,54 @@ func revisions(rs []store.Revision) []revisionOut {
 	return out
 }
 
-// credentials reads the login body. FastAPI only parses a JSON content type, and
-// anything but an object with a string password fails validation.
-func credentials(r *http.Request) (string, bool) {
-	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || !(mt == "application/json" || strings.HasPrefix(mt, "application/") && strings.HasSuffix(mt, "+json")) {
-		return "", false
-	}
+// credentials validates the login body as FastAPI validates Credentials: only a
+// JSON content type is parsed, with Python's json. It answers the error itself.
+func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
+		internalError(w, err)
 		return "", false
 	}
-	var body map[string]any
-	if json.Unmarshal(raw, &body) != nil {
+	invalid := func(typ string, loc []any, msg string, input any, ctx map[string]any) (string, bool) {
+		writeJSON(w, http.StatusUnprocessableEntity, detail{[]fieldError{{typ, loc, msg, input, ctx}}})
 		return "", false
 	}
-	pw, ok := body["password"].(string)
-	return pw, ok
+	if len(raw) == 0 {
+		return invalid("missing", []any{"body"}, "Field required", nil, nil)
+	}
+	var body any = string(raw)
+	// email.message's get_content_type, which FastAPI asks.
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(r.Header.Get("Content-Type"), ";", 2)[0]))
+	if main, sub, _ := strings.Cut(ct, "/"); main == "application" && !strings.Contains(sub, "/") && (sub == "json" || strings.HasSuffix(sub, "+json")) {
+		raw = bytes.TrimPrefix(raw, []byte("\uFEFF"))
+		if !utf8.Valid(raw) {
+			writeJSON(w, http.StatusBadRequest, detail{"There was an error parsing the body"})
+			return "", false
+		}
+		v, msg, pos := pyJSON([]rune(string(raw)))
+		if msg != "" {
+			return invalid("json_invalid", []any{"body", pos}, "JSON decode error", okf.NewMap(), map[string]any{"error": msg})
+		}
+		body = v
+	}
+	m, ok := body.(*okf.Map)
+	if !ok {
+		return invalid("model_attributes_type", []any{"body"}, "Input should be a valid dictionary or object to extract fields from", body, nil)
+	}
+	pw, ok := m.Get("password")
+	if !ok {
+		return invalid("missing", []any{"body", "password"}, "Field required", m, nil)
+	}
+	password, ok := pw.(string)
+	if !ok {
+		return invalid("string_type", []any{"body", "password"}, "Input should be a valid string", pw, nil)
+	}
+	return password, true
 }
 
 func (a *api) login(w http.ResponseWriter, r *http.Request) {
-	password, ok := credentials(r)
+	password, ok := credentials(w, r)
 	if !ok {
-		writeJSON(w, http.StatusUnprocessableEntity, detail{[]any{map[string]any{
-			"type": "model_attributes_type", "loc": []string{"body"}, "msg": "Input should be a valid dictionary or object to extract fields from", "input": nil,
-		}}})
 		return
 	}
 	if !a.auth.CheckPassword(password) {

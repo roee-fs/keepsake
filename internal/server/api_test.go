@@ -601,3 +601,87 @@ func TestUUIDErrorsArePydantics(t *testing.T) {
 		}
 	}
 }
+
+// The wants are the Python server's answers to the same bodies.
+func TestLoginBodyErrorsAreFastAPIs(t *testing.T) {
+	c := newConsole(t)
+	for _, tc := range []struct{ ct, body, want string }{
+		{"", "", `{"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}`},
+		{"application/json", `{"pw":1}`, `{"detail":[{"type":"missing","loc":["body","password"],"msg":"Field required","input":{"pw":1}}]}`},
+		{"Application/JSON ; charset=utf-8", `{"password":1}`, `{"detail":[{"type":"string_type","loc":["body","password"],"msg":"Input should be a valid string","input":1}]}`},
+		{"application/vnd.x+json", "\ufeff" + `{"password":1}`, `{"detail":[{"type":"string_type","loc":["body","password"],"msg":"Input should be a valid string","input":1}]}`},
+		{"application/json", `[1]`, `{"detail":[{"type":"model_attributes_type","loc":["body"],"msg":"Input should be a valid dictionary or object to extract fields from","input":[1]}]}`},
+		{"application/json", `{`, `{"detail":[{"type":"json_invalid","loc":["body",1],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting property name enclosed in double quotes"}}]}`},
+		{"text/plain", `{"password":1}`, `{"detail":[{"type":"model_attributes_type","loc":["body"],"msg":"Input should be a valid dictionary or object to extract fields from","input":"{\"password\":1}"}]}`},
+		{"application/json", "{\"password\":\"\xff\"}", `{"detail":"There was an error parsing the body"}`},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(tc.body))
+		if tc.ct != "" {
+			r.Header.Set("Content-Type", tc.ct)
+		}
+		if got := c.do(r).Body.String(); got != tc.want {
+			t.Errorf("%q %q:\n got %s\nwant %s", tc.ct, tc.body, got, tc.want)
+		}
+	}
+}
+
+// The wants are CPython 3.14's json.loads, as JSONDecodeError (msg, pos).
+func TestPyJSONErrorsAreCPythons(t *testing.T) {
+	for _, tc := range []struct {
+		in, msg string
+		pos     int
+	}{
+		{"{", "Expecting property name enclosed in double quotes", 1},
+		{"[", "Expecting value", 1},
+		{"", "Expecting value", 0},
+		{" ", "Expecting value", 1},
+		{"{\"a\"", "Expecting ':' delimiter", 4},
+		{"{\"a\" 1}", "Expecting ':' delimiter", 5},
+		{"{\"a\":}", "Expecting value", 5},
+		{"{\"a\":1", "Expecting ',' delimiter", 6},
+		{"{\"a\":1,}", "Illegal trailing comma before end of object", 6},
+		{"{\"a\":1 \"b\"}", "Expecting ',' delimiter", 7},
+		{"{a:1}", "Expecting property name enclosed in double quotes", 1},
+		{"{\"a\":1,\"b\"}", "Expecting ':' delimiter", 10},
+		{"[1,]", "Illegal trailing comma before end of array", 2},
+		{"[1 2]", "Expecting ',' delimiter", 3},
+		{"[1", "Expecting ',' delimiter", 2},
+		{"\"abc", "Unterminated string starting at", 0},
+		{"\"a\\", "Unterminated string starting at", 0},
+		{"\"a\\x\"", "Invalid \\escape", 2},
+		{"\"a\\u12\"", "Invalid \\uXXXX escape", 3},
+		{"\"a\\u12G4\"", "Invalid \\uXXXX escape", 3},
+		{"\"a\u0001\"", "Invalid control character at", 2},
+		{"1 2", "Extra data", 2},
+		{"-", "Expecting value", 0},
+		{"-x", "Expecting value", 0},
+		{"01", "Extra data", 1},
+		{"1.", "Extra data", 1},
+		{"1.e5", "Extra data", 1},
+		{"1e", "Extra data", 1},
+		{"nul", "Expecting value", 0},
+		{"tru", "Expecting value", 0},
+		{"{\"a\":[1,{\"b\":}]}", "Expecting value", 13},
+		{"[,]", "Expecting value", 1},
+		{"{,}", "Expecting property name enclosed in double quotes", 1},
+		{"{\"a\":1,,}", "Expecting property name enclosed in double quotes", 7},
+		{"\"\u65e5\u672c\\q\"", "Invalid \\escape", 3},
+		{"\u65e5", "Expecting value", 0},
+		{"{\"\u65e5\":1,}", "Illegal trailing comma before end of object", 6},
+		{"[1,\n]", "Illegal trailing comma before end of array", 2},
+		{"{\"a\"\n:\n1\n,\n}", "Illegal trailing comma before end of object", 9},
+		{"\"\\u1234", "Unterminated string starting at", 0},
+		{"\"\\u123", "Invalid \\uXXXX escape", 2},
+		{"\"\\ud800\\u12\"", "Invalid \\uXXXX escape", 8},
+		{"\"\\ud800\\uzzzz\"x", "Invalid \\uXXXX escape", 8},
+		{"{\"a\":1}x", "Extra data", 7},
+		{"[1.5e+3,-0,true,false,null]]", "Extra data", 27},
+		{"{\"password\":\"x\"", "Expecting ',' delimiter", 15},
+		{"  {\"password\": 1}  ,", "Extra data", 19},
+		{"[NaN, -Infinity, 1.5e+3, \"\\ud83c\\udf89\"]", "", 0},
+	} {
+		if _, msg, pos := pyJSON([]rune(tc.in)); msg != tc.msg || pos != tc.pos {
+			t.Errorf("pyJSON(%q) = %q at %d, want %q at %d", tc.in, msg, pos, tc.msg, tc.pos)
+		}
+	}
+}
