@@ -219,9 +219,8 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// A session would pin an agent to one replica; several sit behind one Service.
 		Stateless:    true,
 		JSONResponse: true,
-		// The Host header is a cluster Service name, and no browser can reach the pod,
-		// so the localhost-only default would reject every real request. Restore it when
-		// auth stops being `none`: this is a setting that outlives its justification.
+		// The Host header is a cluster Service name, so the localhost-only default
+		// would reject every real request. refuseBrowsers covers DNS rebinding.
 		DisableLocalhostProtection: true,
 	})
 	h := pythonWire(sdk)

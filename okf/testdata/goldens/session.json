@@ -2,16 +2,16 @@
   {
     "password": "test-admin-password",
     "expiry": 4102444800,
-    "cookie": "4102444800.1272f5c16499d658edc51d5dc3b7a7c091455d6ec30497d96542b1b8ac86973d"
+    "cookie": "4102444800.96a56210b6b8f29a85d162a243d18670e318871c681c918c150441ab6924d18e"
   },
   {
     "password": "pässwörd",
     "expiry": 4102444800,
-    "cookie": "4102444800.818575ceafd8a54688c4c9b000a266bef0b10c5f5e545b4a0238ac114765738f"
+    "cookie": "4102444800.3b97885e72286e4ee7cb0eafc3e46ecc8766c09035fe2749b709a508fb04ee68"
   },
   {
     "password": "🎉",
     "expiry": 4102444800,
-    "cookie": "4102444800.5a8407f07e5fdd7d318dcfd2f71c16b85e19d73a259dc9504f78a87e31c11c9c"
+    "cookie": "4102444800.58e3395ac4dc000f8de2c55617c763052e6cb3043e641e4c576dc2e78740f6c4"
   }
 ]

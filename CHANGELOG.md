@@ -61,8 +61,10 @@ test enforces it and the release workflow refuses otherwise.
 
 ### Upgrading
 
-- Existing databases upgrade in place, open console sessions stay valid, and
-  the chart needs no value change.
+- Existing databases upgrade in place, and the chart needs no value change.
+- The session key moved from HMAC to scrypt, so console sessions issued before
+  that change stop verifying and operators sign in once more. A session the
+  Python server issued after it stays valid on the Go server.
 - The migration adds a policy that an earlier release's startup check does not
   recognise. During `helm upgrade` the migration hook runs before the new pods
   roll, so running pods are unaffected — but an old pod that restarts inside that

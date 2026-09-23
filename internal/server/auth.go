@@ -1,5 +1,5 @@
 // The admin session: one password, one signed cookie, no server-side state.
-// Ported from 2de90d2:src/keepsake/server/auth.py.
+// Ported from 8f2af2e:src/keepsake/server/auth.py.
 package server
 
 import (
@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/scrypt"
 )
 
 const cookieName = "keepsake_session"
@@ -28,7 +30,8 @@ func UIEnabled() bool {
 
 // AdminPassword reads KEEPSAKE_ADMIN_PASSWORD, refusing when the console is on without one.
 func AdminPassword() (string, error) {
-	password := os.Getenv("KEEPSAKE_ADMIN_PASSWORD")
+	// A password input cannot submit a newline, and `echo pw | base64` appends one.
+	password := strings.TrimRight(os.Getenv("KEEPSAKE_ADMIN_PASSWORD"), "\r\n")
 	if UIEnabled() && password == "" {
 		return "", &MisconfiguredAdmin{Msg: "KEEPSAKE_ADMIN_PASSWORD is unset but the admin console is enabled"}
 	}
@@ -42,9 +45,14 @@ type Auth struct {
 }
 
 // NewAuth derives the cookie key from the password, so changing the password
-// revokes every outstanding cookie.
+// revokes every outstanding cookie. scrypt, because a leaked cookie lets anyone
+// test password guesses offline at the key's cost.
 func NewAuth(password string) *Auth {
-	return &Auth{password: password, key: mac([]byte(password), "keepsake-session")}
+	key, err := scrypt.Key([]byte(password), []byte("keepsake-session"), 1<<14, 8, 1, 32)
+	if err != nil {
+		panic(err)
+	}
+	return &Auth{password: password, key: key}
 }
 
 func mac(key []byte, msg string) []byte {

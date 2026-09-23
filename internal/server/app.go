@@ -85,7 +85,21 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 	// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
 	mux.Handle("/api", fallback)
 	mux.Handle("/", fallback)
-	return mux, func() { closeRoot(); s.Close() }, nil
+	return refuseBrowsers(mux), func() { closeRoot(); s.Close() }, nil
+}
+
+// refuseBrowsers answers Starlette's bare 403 to any /mcp request carrying an Origin
+// header. A browser sends Origin on every POST and an MCP client sends none, so this
+// stops a DNS-rebound page without a Host allowlist of the cluster's Service names.
+func refuseBrowsers(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Header["Origin"]; ok && r.URL.Path == "/mcp" {
+			w.Header()["Content-Type"] = nil
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // slashRedirect answers an unmatched path as Starlette's router does: with a 307 to

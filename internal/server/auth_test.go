@@ -1,4 +1,4 @@
-// Ported from 2de90d2:tests/test_auth.py, plus the cookie-compatibility check across the cutover.
+// Ported from 8f2af2e:tests/test_auth.py, plus the cookie-compatibility check across the cutover.
 package server
 
 import (
@@ -77,6 +77,17 @@ func TestAdminPasswordIsFatalWhenMissingAndUIEnabled(t *testing.T) {
 	var m *MisconfiguredAdmin
 	if !errors.As(err, &m) || err.Error() != "KEEPSAKE_ADMIN_PASSWORD is unset but the admin console is enabled" {
 		t.Fatalf("err = %v, want MisconfiguredAdmin", err)
+	}
+}
+
+// `echo pw | base64` stores a newline that no password input can submit.
+func TestATrailingNewlineInTheConfiguredPasswordIsIgnored(t *testing.T) {
+	for _, ending := range []string{"\n", "\r\n"} {
+		t.Setenv("KEEPSAKE_ADMIN_PASSWORD", password+ending)
+		pw, err := AdminPassword()
+		if err != nil || !NewAuth(pw).CheckPassword(password) {
+			t.Errorf("a configured password ending %q rejected the password", ending)
+		}
 	}
 }
 

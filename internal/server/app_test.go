@@ -227,3 +227,42 @@ func TestADirectoryWithAnIndexIsServedAsStarletteServesIt(t *testing.T) {
 		t.Fatalf("/sub/ = %d %q", resp.StatusCode, body)
 	}
 }
+
+// A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows. The
+// refusal comes before the body limit and the method checks.
+func TestMCPRefusesABrowserOrigin(t *testing.T) {
+	base := withStatic(t)
+	for _, c := range []struct {
+		method, path, origin, body string
+		status                     int
+	}{
+		{"POST", "/mcp", "http://evil.example:8000", toolsList, 403},
+		{"POST", "/mcp", "", toolsList, 403},
+		{"POST", "/mcp?x=1", "x", toolsList, 403},
+		{"POST", "/mcp", "x", strings.Repeat(" ", 5<<20), 403},
+		{"GET", "/mcp", "x", "", 403},
+		{"DELETE", "/mcp", "x", "", 403},
+		{"PUT", "/mcp", "x", "", 403},
+		{"GET", "/readyz", "x", "", 200},
+	} {
+		req, err := http.NewRequest(c.method, base+c.path, strings.NewReader(c.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header["Origin"] = []string{c.origin}
+		resp, err := noRedirect.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != c.status {
+			t.Errorf("%s %s Origin %q = %d, want %d", c.method, c.path, c.origin, resp.StatusCode, c.status)
+		}
+		if c.status == 403 && (len(body) != 0 || resp.Header["Content-Type"] != nil) {
+			t.Errorf("%s %s = %v, %d bytes, want Starlette's bare 403", c.method, c.path, resp.Header, len(body))
+		}
+	}
+}
