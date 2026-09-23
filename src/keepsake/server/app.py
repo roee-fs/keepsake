@@ -55,6 +55,20 @@ class _ConsoleStaticFiles(StaticFiles):
             # A stale hashed asset URL also 200s as the shell. That is the tradeoff.
             return await super().get_response("index.html", scope)
 
+    def file_response(
+        self,
+        full_path: str | os.PathLike[str],
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        # The shell names this build's hashed assets, so a cached copy outlives an
+        # upgrade and loads chunks the new image no longer has.
+        if os.path.basename(full_path) == "index.html":
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
 
 class _RefuseBrowsers:
     """Refuse any /mcp request that carries an Origin header.
@@ -134,11 +148,11 @@ def build_app(config: Config) -> Starlette:
     app.router.add_route("/readyz", _readyz, methods=["GET"])
     if ui_enabled():
         app.mount("/api", create_api(concepts, Auth(password)))
-        # Mounted last: it matches every path, so an earlier position would swallow
-        # /api and /mcp. Unguarded because gating it would break the login page.
         static_dir = os.environ.get("KEEPSAKE_STATIC_DIR", _DEFAULT_STATIC_DIR)
         if os.path.isdir(static_dir):
-            app.mount("/", _ConsoleStaticFiles(directory=static_dir, html=True))
+            # The router's fallback, not a Mount("/"), so /mcp/ still redirects to /mcp.
+            # Unguarded because gating it would break the login page.
+            app.router.default = _ConsoleStaticFiles(directory=static_dir, html=True)
         else:
             logger.info("no console bundle at %s; serving API and MCP only", static_dir)
     # Process exit covers this in a pod, but not in a test or an embedding host, where

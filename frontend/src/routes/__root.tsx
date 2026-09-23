@@ -1,4 +1,4 @@
-import { createRootRoute, Link, Outlet, useRouterState } from '@tanstack/react-router'
+import { createRootRoute, Link, Outlet, retainSearchParams, useRouterState } from '@tanstack/react-router'
 import { logoutSessionDelete } from '../client'
 
 export const Route = createRootRoute({
@@ -7,6 +7,8 @@ export const Route = createRootRoute({
   validateSearch: (search: Record<string, unknown>): { tenant?: string } => ({
     tenant: typeof search.tenant === 'string' ? search.tenant : undefined,
   }),
+  // A link with no search of its own would otherwise drop the selected tenant.
+  search: { middlewares: [retainSearchParams(['tenant'])] },
 })
 
 async function logout() {
@@ -54,8 +56,6 @@ function RootLayout() {
         </Link>
         <Link
           to="/graph"
-          // The graph needs a tenant, so it keeps the one already selected.
-          search={true}
           className={NAV_LINK}
           activeProps={NAV_ACTIVE}
           inactiveProps={NAV_INACTIVE}
