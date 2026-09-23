@@ -34,7 +34,6 @@ test enforces it and the release workflow refuses otherwise.
     with `<file>: unsupported YAML tag <tag>`.
   - `import` and `validate` report a file that is not valid UTF-8, or whose
     frontmatter is not a mapping, as an error with exit 1 instead of a traceback.
-  - `validate` refuses NaN and Infinity with exit 1, as `import` already did.
   - YAML syntax errors keep the `<file>: ` prefix, but the parser's wording after
     it differs.
   - A CLI usage error still exits 2, but its message differs. Long flags MUST be

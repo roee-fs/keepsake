@@ -544,6 +544,15 @@ func TestImportRefusesNaNAndWritesNothing(t *testing.T) {
 	}
 }
 
+// Python's validate never serialises frontmatter, so NaN is no error there.
+func TestValidateAcceptsNaN(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "b.md", "---\ntype: Concept\nv: [1, .nan]\n---\nx\n")
+	if errs, err := ValidateBundle(dir); err != nil || len(errs) != 0 {
+		t.Fatal(errs, err)
+	}
+}
+
 func TestImportAndValidateFollowASymlinkedRoot(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
 	real := bundle(t, tmp, doc, "layers.md")

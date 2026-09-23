@@ -335,3 +335,37 @@ func TestImportManyIsOneTransaction(t *testing.T) {
 		t.Fatalf("count = %d, want 0: the first concept must not survive the second's failure", count)
 	}
 }
+
+// A re-import overwrites a taken path and logs it, in bundle order, even when the bundle names it twice.
+func TestImportManyOverwritesTakenPathsInBundleOrder(t *testing.T) {
+	s := openApp(t)
+	cs := store.NewConceptStore(s)
+	tenant := uuid.New()
+	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "a", Type: "Concept", Body: "1"}}, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	bundle := []okf.Concept{
+		{Path: "a", Type: "Concept", Body: "2"},
+		{Path: "b", Type: "Concept", Body: "b"},
+		{Path: "a", Type: "Concept", Body: "3"},
+	}
+	if n, err := cs.ImportMany(ctx, tenant, bundle, "agent"); err != nil || n != 3 {
+		t.Fatalf("ImportMany = %d, %v", n, err)
+	}
+	if c, err := cs.Read(ctx, tenant, "a"); err != nil || c.Version != 3 || c.Body != "3" {
+		t.Fatalf("Read(a) = %+v, %v, want version 3 with body 3", c, err)
+	}
+	var log []string
+	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, "SELECT concat_ws(' ', path, version, op, snapshot->>'body', snapshot->>'version') "+
+			"FROM concept_revision ORDER BY path, version")
+		if err != nil {
+			return err
+		}
+		log, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	if want := []string{"a 1 create 1 1", "a 2 update 2 2", "a 3 update 3 3", "b 1 create b 1"}; err != nil || !reflect.DeepEqual(log, want) {
+		t.Fatalf("revisions = %q, %v, want %q", log, err, want)
+	}
+}

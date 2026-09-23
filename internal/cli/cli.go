@@ -73,8 +73,8 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"import":   {dsn: true, tenant: true, directory: true, run: runImport},
-	"export":   {dsn: true, tenant: true, directory: true, run: runExport},
+	"import":   {dsn: true, tenant: true, directory: true, run: runBundle(ImportBundle, "imported")},
+	"export":   {dsn: true, tenant: true, directory: true, run: runBundle(ExportBundle, "exported")},
 	"validate": {directory: true, run: runValidate},
 	"migrate":  {dsn: true, run: runMigrate},
 	"serve":    {dsn: true, tenant: true, run: runServe},
@@ -247,32 +247,21 @@ func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, fun
 	return store.NewConceptStore(s), id, s.Close, nil
 }
 
-func runImport(ctx context.Context, o *options, stdout, _ io.Writer) (int, error) {
-	cs, tenant, closeStore, err := bound(ctx, o)
-	if err != nil {
-		return 0, err
+// runBundle runs import or export against the bound store and reports the count.
+func runBundle(fn func(context.Context, *store.ConceptStore, uuid.UUID, string) (int, error), verb string) func(context.Context, *options, io.Writer, io.Writer) (int, error) {
+	return func(ctx context.Context, o *options, stdout, _ io.Writer) (int, error) {
+		cs, tenant, closeStore, err := bound(ctx, o)
+		if err != nil {
+			return 0, err
+		}
+		defer closeStore()
+		n, err := fn(ctx, cs, tenant, o.directory)
+		if err != nil {
+			return 0, err
+		}
+		fmt.Fprintf(stdout, "%s %d concepts\n", verb, n)
+		return 0, nil
 	}
-	defer closeStore()
-	n, err := ImportBundle(ctx, cs, tenant, o.directory)
-	if err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(stdout, "imported %d concepts\n", n)
-	return 0, nil
-}
-
-func runExport(ctx context.Context, o *options, stdout, _ io.Writer) (int, error) {
-	cs, tenant, closeStore, err := bound(ctx, o)
-	if err != nil {
-		return 0, err
-	}
-	defer closeStore()
-	n, err := ExportBundle(ctx, cs, tenant, o.directory)
-	if err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(stdout, "exported %d concepts\n", n)
-	return 0, nil
 }
 
 func runValidate(_ context.Context, o *options, _, stderr io.Writer) (int, error) {

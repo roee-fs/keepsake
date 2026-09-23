@@ -42,14 +42,15 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 	if err != nil {
 		return nil, err
 	}
-	var rels []string
+	// pathlib orders paths by their parts, not by their full string.
+	var rels [][]string
 	err = filepath.WalkDir(resolved, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
 			rel, err := filepath.Rel(resolved, p)
-			rels = append(rels, filepath.ToSlash(rel))
+			rels = append(rels, strings.Split(filepath.ToSlash(rel), "/"))
 			return err
 		}
 		return nil
@@ -57,13 +58,11 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 	if err != nil {
 		return nil, err
 	}
-	// pathlib orders paths by their parts, not by their full string.
-	slices.SortFunc(rels, func(a, b string) int {
-		return slices.Compare(strings.Split(a, "/"), strings.Split(b, "/"))
-	})
+	slices.SortFunc(rels, slices.Compare)
 
 	var concepts []okf.Concept
-	for _, rel := range rels {
+	for _, parts := range rels {
+		rel := strings.Join(parts, "/")
 		path := strings.TrimSuffix(rel, ".md")
 		if okf.ReservedPaths[path] {
 			continue
@@ -78,14 +77,16 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 			// The parser names the frontmatter it was handed, never the file it came from.
 			return nil, fmt.Errorf("%s: %v", file, err)
 		}
-		// Python lets json.dumps write NaN, which Postgres then refuses mid-import.
-		if nonFinite(concept.Frontmatter) {
-			return nil, fmt.Errorf("%s: frontmatter holds NaN or Infinity, which JSON cannot store", file)
-		}
-		// Storing an invalid concept is worse than refusing it: a later okf_update
-		// merges the stored empty type back in and fails on a field nobody touched.
-		if errs := okf.Validate(concept); strict && len(errs) > 0 {
-			return nil, fmt.Errorf("%s: %s", file, strings.Join(errs, "; "))
+		if strict {
+			// Python lets json.dumps write NaN, which Postgres then refuses mid-import.
+			if nonFinite(concept.Frontmatter) {
+				return nil, fmt.Errorf("%s: frontmatter holds NaN or Infinity, which JSON cannot store", file)
+			}
+			// Storing an invalid concept is worse than refusing it: a later okf_update
+			// merges the stored empty type back in and fails on a field nobody touched.
+			if errs := okf.Validate(concept); len(errs) > 0 {
+				return nil, fmt.Errorf("%s: %s", file, strings.Join(errs, "; "))
+			}
 		}
 		concepts = append(concepts, concept)
 	}
@@ -116,10 +117,9 @@ func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 		return 0, err
 	}
 	n, err := cs.ImportMany(ctx, tenant, concepts, actor)
-	if errors.Is(err, store.ErrNotFound) {
-		// Python renders the KeyError's path; ErrNotFound wraps it as "not found: <path>".
-		path := strings.TrimPrefix(err.Error(), store.ErrNotFound.Error()+": ")
-		return 0, fmt.Errorf("%s was removed while the bundle was importing", path)
+	var nf *store.NotFoundError
+	if errors.As(err, &nf) {
+		return 0, fmt.Errorf("%s was removed while the bundle was importing", nf.Path)
 	}
 	return n, err
 }
@@ -165,13 +165,17 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 		}
 		paths[i] = c.Path
 	}
+	made := map[string]bool{}
 	for i, c := range concepts {
 		text, err := okf.Serialize(c)
 		if err != nil {
 			return 0, err
 		}
-		if err := dir.MkdirAll(filepath.Dir(targets[i]), 0o777); err != nil {
-			return 0, err
+		if d := filepath.Dir(targets[i]); !made[d] {
+			if err := dir.MkdirAll(d, 0o777); err != nil {
+				return 0, err
+			}
+			made[d] = true
 		}
 		if err := dir.WriteFile(targets[i], []byte(text), 0o666); err != nil {
 			return 0, err

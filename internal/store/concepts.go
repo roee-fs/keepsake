@@ -18,10 +18,40 @@ import (
 // ErrNotFound reports that a path has no concept in the tenant's scope.
 var ErrNotFound = errors.New("not found")
 
-// fields is every column a write sets, in Concept's own field order. The INSERT
-// column list, its placeholder run and the UPDATE SET clause are all derived from
-// this, so a seventh field cannot reach one statement and not another.
+// NotFoundError is ErrNotFound for one path.
+type NotFoundError struct{ Path string }
+
+func (e *NotFoundError) Error() string        { return ErrNotFound.Error() + ": " + e.Path }
+func (e *NotFoundError) Is(target error) bool { return target == ErrNotFound }
+
+// fields is every column a write sets, in Concept's own field order. Every write
+// statement is derived from it, so a seventh field cannot reach one and not another.
 var fields = []string{"type", "title", "description", "body", "frontmatter", "links"}
+
+// revise appends the revision of w's row, completing the snapshot with its version.
+const revise = "INSERT INTO concept_revision (tenant_id, path, version, op, snapshot, updated_by) " +
+	"SELECT $%d, $%d, version, '%s', $%d::jsonb || jsonb_build_object('version', version), $%d FROM w RETURNING version"
+
+// insertSQL creates a concept and its first revision, or returns no row if the path is taken.
+var insertSQL = func() string {
+	n := len(fields)
+	return fmt.Sprintf("WITH w AS (INSERT INTO concept (tenant_id, path, %s, updated_by) VALUES (%s) "+
+		"ON CONFLICT (tenant_id, path) DO NOTHING RETURNING version) "+revise,
+		strings.Join(fields, ", "), placeholders(n+3), 1, 2, "create", n+4, n+3)
+}()
+
+// updateSQL overwrites a concept and appends its revision. $%d is expected_version:
+// NULL is last-write-wins. It returns no row on a stale version or a missing path.
+var updateSQL = func() string {
+	n := len(fields)
+	assignments := make([]string, n)
+	for i, f := range fields {
+		assignments[i] = fmt.Sprintf("%s=$%d", f, i+1)
+	}
+	return fmt.Sprintf("WITH w AS (UPDATE concept SET %s, updated_by=$%d, version=version+1, updated_at=now() "+
+		"WHERE path=$%d AND ($%d::int IS NULL OR version=$%d) RETURNING version) "+revise,
+		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3, n+4, n+2, "update", n+5, n+1)
+}()
 
 // Conflict is a stale expected version. CurrentBody is the text to merge against.
 type Conflict struct {
@@ -41,41 +71,62 @@ func (cs *ConceptStore) PoolSize() int { return int(cs.s.pool.Config().MaxConns)
 
 // Create inserts a concept. created is false when the path is already taken.
 func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string) (version int, created bool, err error) {
+	w, err := newWrite(c)
+	if err != nil {
+		return 0, false, err
+	}
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		version, created, err = insert(ctx, tx, tenant, c, actor)
+		version, created, err = scanInsert(tx.QueryRow(ctx, insertSQL, w.insertArgs(tenant, actor)...))
 		return err
 	})
 	return version, created, err
 }
 
 // Update writes a concept. expected makes it a compare-and-swap; nil is
-// last-write-wins. err wraps ErrNotFound if the path does not exist.
+// last-write-wins. err is a *NotFoundError if the path does not exist.
 func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *Conflict, err error) {
+	w, err := newWrite(c)
+	if err != nil {
+		return 0, nil, err
+	}
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		version, conflict, err = overwrite(ctx, tx, tenant, c, actor, expected)
+		version, conflict, err = overwrite(ctx, tx, tx.QueryRow(ctx, updateSQL, w.updateArgs(tenant, actor, expected)...), c.Path)
 		return err
 	})
 	return version, conflict, err
 }
 
 // ImportMany stores a whole bundle in one transaction, last write winning per
-// path. err wraps ErrNotFound if a path is deleted underneath the import.
+// path: every insert in one batch, then an overwrite for each path already taken.
+// err is a *NotFoundError if a path is deleted underneath the import.
 func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (int, error) {
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		for _, c := range bundle {
-			_, created, err := insert(ctx, tx, tenant, c, actor)
-			if err != nil {
-				return err
-			}
-			if !created {
-				// The bundle is the authority the operator is replaying, so
-				// there is no version to compare and no conflict to resolve.
-				if _, _, err := overwrite(ctx, tx, tenant, c, actor, nil); err != nil {
-					return err
-				}
-			}
+	writes := make([]write, len(bundle))
+	for i, c := range bundle {
+		var err error
+		if writes[i], err = newWrite(c); err != nil {
+			return 0, err
 		}
-		return nil
+	}
+	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		var inserts, updates pgx.Batch
+		for _, w := range writes {
+			inserts.Queue(insertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
+				_, created, err := scanInsert(row)
+				if err == nil && !created {
+					// The bundle is the authority the operator is replaying, so there
+					// is no version to compare and no conflict to resolve.
+					updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
+						_, _, err := overwrite(ctx, tx, row, w.c.Path)
+						return err
+					})
+				}
+				return err
+			})
+		}
+		if err := tx.SendBatch(ctx, &inserts).Close(); err != nil {
+			return err
+		}
+		return tx.SendBatch(ctx, &updates).Close()
 	})
 	if err != nil {
 		return 0, err
@@ -83,106 +134,67 @@ func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle
 	return len(bundle), nil
 }
 
-func insert(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, c okf.Concept, actor string) (version int, created bool, err error) {
-	fm, err := frontmatterJSON(c.Frontmatter)
-	if err != nil {
-		return 0, false, err
-	}
-	columns := append(append([]string{"tenant_id", "path"}, fields...), "updated_by")
-	query := fmt.Sprintf(
-		"INSERT INTO concept (%s) VALUES (%s) ON CONFLICT (tenant_id, path) DO NOTHING RETURNING version",
-		strings.Join(columns, ", "), placeholders(len(columns)))
-	err = tx.QueryRow(ctx, query,
-		tenant, c.Path, c.Type, c.Title, c.Description, c.Body, fm, links(c.Links), actor,
-	).Scan(&version)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	if err := revise(ctx, tx, tenant, c, version, "create", actor); err != nil {
-		return 0, false, err
-	}
-	return version, true, nil
+// write is a concept with its jsonb parameters marshalled once.
+type write struct {
+	c        okf.Concept
+	fm, snap []byte
 }
 
-func overwrite(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *Conflict, err error) {
-	fm, err := frontmatterJSON(c.Frontmatter)
-	if err != nil {
-		return 0, nil, err
-	}
-	assignments := make([]string, len(fields))
-	for i, f := range fields {
-		assignments[i] = fmt.Sprintf("%s=$%d", f, i+1)
-	}
-	n := len(fields)
-	query := fmt.Sprintf(
-		"UPDATE concept SET %s, updated_by=$%d, version=version+1, updated_at=now() "+
-			"WHERE path=$%d AND ($%d::int IS NULL OR version=$%d) RETURNING version",
-		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3)
-	err = tx.QueryRow(ctx, query,
-		c.Type, c.Title, c.Description, c.Body, fm, links(c.Links), actor, c.Path, expected,
-	).Scan(&version)
-	if err == nil {
-		if err := revise(ctx, tx, tenant, c, version, "update", actor); err != nil {
-			return 0, nil, err
+func newWrite(c okf.Concept) (write, error) {
+	// A nil Frontmatter is an unset field, so it is "{}" like Python's dataclass default.
+	fm := []byte("{}")
+	if c.Frontmatter != nil {
+		var err error
+		if fm, err = json.Marshal(c.Frontmatter); err != nil {
+			return write{}, err
 		}
-		return version, nil, nil
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, err
-	}
-
-	var currentVersion int
-	var currentBody string
-	err = tx.QueryRow(ctx, "SELECT version, body FROM concept WHERE path=$1", c.Path).Scan(&currentVersion, &currentBody)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, fmt.Errorf("%w: %s", ErrNotFound, c.Path)
-	}
-	if err != nil {
-		return 0, nil, err
-	}
-	return 0, &Conflict{CurrentVersion: currentVersion, CurrentBody: currentBody}, nil
-}
-
-func revise(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, c okf.Concept, version int, op, actor string) error {
-	snap, err := snapshotJSON(c, version)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx,
-		"INSERT INTO concept_revision (tenant_id, path, version, op, snapshot, updated_by) VALUES ($1,$2,$3,$4,$5,$6)",
-		tenant, c.Path, version, op, snap, actor)
-	return err
-}
-
-// snapshotJSON is asdict(c) | {"version": v}: path, type, title, description,
-// body, frontmatter, links, version, Concept's own field order.
-func snapshotJSON(c okf.Concept, version int) ([]byte, error) {
+	// asdict(c) without its version, which the statement adds.
 	snap := okf.NewMap()
 	snap.Set("path", c.Path)
 	snap.Set("type", c.Type)
 	snap.Set("title", c.Title)
 	snap.Set("description", c.Description)
 	snap.Set("body", c.Body)
-	fm := c.Frontmatter
-	if fm == nil {
-		fm = okf.NewMap()
-	}
-	snap.Set("frontmatter", fm)
+	snap.Set("frontmatter", json.RawMessage(fm))
 	snap.Set("links", links(c.Links))
-	snap.Set("version", version)
-	return json.Marshal(snap)
+	b, err := json.Marshal(snap)
+	return write{c, fm, b}, err
 }
 
-// frontmatterJSON binds Frontmatter into a jsonb parameter. A nil Frontmatter is
-// an unset field, not an absent one, so it is "{}" like Python's dataclass default.
-func frontmatterJSON(fm *okf.Map) ([]byte, error) {
-	if fm == nil {
-		return []byte("{}"), nil
+func (w write) insertArgs(tenant uuid.UUID, actor string) []any {
+	c := w.c
+	return []any{tenant, c.Path, c.Type, c.Title, c.Description, c.Body, w.fm, links(c.Links), actor, w.snap}
+}
+
+func (w write) updateArgs(tenant uuid.UUID, actor string, expected *int) []any {
+	c := w.c
+	return []any{c.Type, c.Title, c.Description, c.Body, w.fm, links(c.Links), actor, c.Path, expected, tenant, w.snap}
+}
+
+func scanInsert(row pgx.Row) (version int, created bool, err error) {
+	err = row.Scan(&version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, nil
 	}
-	return json.Marshal(fm)
+	return version, err == nil, err
+}
+
+// overwrite scans updateSQL's row, telling a stale version from a missing path when there is none.
+func overwrite(ctx context.Context, tx pgx.Tx, row pgx.Row, path string) (version int, conflict *Conflict, err error) {
+	err = row.Scan(&version)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return version, nil, err
+	}
+	var current Conflict
+	err = tx.QueryRow(ctx, "SELECT version, body FROM concept WHERE path=$1", path).Scan(&current.CurrentVersion, &current.CurrentBody)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil, &NotFoundError{path}
+	}
+	if err != nil {
+		return 0, nil, err
+	}
+	return 0, &current, nil
 }
 
 // links normalizes a nil slice to empty so it binds as "{}", not NULL.
