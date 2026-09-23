@@ -50,4 +50,6 @@ jobs:
           go-version-file: go.mod
       - run: gofmt -l . | tee /dev/stderr | (! read -r)
       - run: go vet ./...
+      # The test packages start containers at once; one flaky registry read failed them all.
+      - run: for _ in 1 2 3; do docker pull -q postgres:17 && break; sleep 10; done
       - run: go test -race ./...

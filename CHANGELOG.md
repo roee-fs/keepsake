@@ -55,6 +55,8 @@ test enforces it and the release workflow refuses otherwise.
   - A trailing-slash redirect is still a 307 to the same place, but its
     `Location` is relative, not absolute, and a `GET` gets a short HTML body.
   - A login body with invalid UTF-8 or a lone surrogate answers 422, not 500.
+  - Logout clears the cookie with the login cookie's `HttpOnly`, `SameSite` and
+    `Secure` attributes, where Starlette's `delete_cookie` sent `SameSite=lax`.
   - There is no per-request access log, unlike uvicorn's.
   - At most `KEEPSAKE_POOL_SIZE - 1` tool calls (at least one) hold a
     connection at once, so the console always has one. Further calls queue,

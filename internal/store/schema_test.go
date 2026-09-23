@@ -56,7 +56,7 @@ func TestPoolSizeDefaultsToTen(t *testing.T) {
 }
 
 func TestPoolSizeRejectsNonPositiveIntegers(t *testing.T) {
-	for _, value := range []string{"0", "-1", "abc", "1.5", "+1"} {
+	for _, value := range []string{"0", "-1", "abc", "1.5", "+1", "2147483648"} {
 		t.Setenv("KEEPSAKE_POOL_SIZE", value)
 		if _, err := PoolSize(); err == nil {
 			t.Errorf("PoolSize() with KEEPSAKE_POOL_SIZE=%q = nil error, want one", value)

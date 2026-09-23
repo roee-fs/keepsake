@@ -239,6 +239,6 @@ func (d *pyDecoder) hex4(i int) (rune, bool) {
 	if i+4 > len(d.s) {
 		return 0, false
 	}
-	n, err := strconv.ParseUint(string(d.s[i:i+4]), 16, 32)
+	n, err := strconv.ParseUint(string(d.s[i:i+4]), 16, 16)
 	return rune(n), err == nil
 }

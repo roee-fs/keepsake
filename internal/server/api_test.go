@@ -279,7 +279,7 @@ func TestAGoodPasswordSetsSecureOverTLS(t *testing.T) {
 func TestLogoutClearsTheCookie(t *testing.T) {
 	rec := newConsole(t).login().request(http.MethodDelete, "/session", "")
 	wantStatus(t, rec, http.StatusNoContent)
-	if ck := sessionCookie(t, rec); ck.MaxAge >= 0 || ck.Value != "" {
+	if ck := sessionCookie(t, rec); ck.MaxAge >= 0 || ck.Value != "" || !ck.HttpOnly || ck.SameSite != http.SameSiteStrictMode || ck.Secure {
 		t.Fatalf("cookie = %s", rec.Header().Get("Set-Cookie"))
 	}
 }

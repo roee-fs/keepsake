@@ -4,6 +4,7 @@ package store
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -43,7 +44,7 @@ func Schema() (string, error) {
 func PoolSize() (int, error) {
 	value := cmp.Or(os.Getenv("KEEPSAKE_POOL_SIZE"), "10")
 	n, err := strconv.Atoi(value)
-	if err != nil || n < 1 || !okf.IsDecimal(value) {
+	if err != nil || n < 1 || n > math.MaxInt32 || !okf.IsDecimal(value) {
 		return 0, fmt.Errorf("KEEPSAKE_POOL_SIZE must be a positive integer: %s", okf.PyReprString(value))
 	}
 	return n, nil

@@ -317,6 +317,14 @@ func (e *emitter) writeLineBreak(br string) {
 
 const noRune rune = -1
 
+// runeAt returns t[i], or noRune past the end.
+func runeAt(t []rune, i int) rune {
+	if i < 0 || i >= len(t) {
+		return noRune
+	}
+	return t[i]
+}
+
 func isBreak(r rune) bool { return r == '\n' || r == '\x85' || r == ' ' || r == ' ' }
 
 func isBlankOrEnd(r rune) bool { return r == 0 || r == ' ' || r == '\t' || r == '\r' || isBreak(r) }
@@ -422,10 +430,7 @@ func (e *emitter) writePlain(t []rune, split bool) {
 	spaces := false
 	start := 0
 	for end := 0; end <= len(t); end++ {
-		ch := noRune
-		if end < len(t) {
-			ch = t[end]
-		}
+		ch := runeAt(t, end)
 		if spaces {
 			if ch != ' ' {
 				if start+1 == end && e.column >= bestWidth && split {
@@ -455,10 +460,7 @@ func (e *emitter) writeSingleQuoted(t []rune, split bool) {
 	spaces, breaks := false, false
 	start := 0
 	for end := 0; end <= len(t); end++ {
-		ch := noRune
-		if end < len(t) {
-			ch = t[end]
-		}
+		ch := runeAt(t, end)
 		switch {
 		case spaces:
 			if ch != ' ' {
@@ -519,10 +521,7 @@ func (e *emitter) writeDoubleQuoted(t []rune, split bool) {
 	e.writeIndicator(`"`, true, false, false)
 	start := 0
 	for end := 0; end <= len(t); end++ {
-		ch := noRune
-		if end < len(t) {
-			ch = t[end]
-		}
+		ch := runeAt(t, end)
 		if ch == noRune || needsEscape(ch) {
 			if start < end {
 				e.write(t[start:end])

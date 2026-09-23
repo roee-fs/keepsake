@@ -47,6 +47,10 @@ jobs:
           # The default suite skips checks it considers noisy. This is a
           # multi-tenant isolation boundary; we would rather triage the noise.
           queries: security-and-quality
+          # Vendored upstream yaml.v3: its findings are upstream's, not ours.
+          config: |
+            paths-ignore:
+              - okf/internal/yaml
       - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
 
   osv:

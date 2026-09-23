@@ -528,9 +528,10 @@ func (p proxies) https(r *http.Request) bool {
 }
 
 func (a *api) logout(w http.ResponseWriter, r *http.Request) {
-	// Starlette's delete_cookie attributes.
+	// The login cookie's attributes, so the deletion is as locked down as the cookie.
 	http.SetCookie(w, &http.Cookie{
-		Name: cookieName, Path: "/", MaxAge: -1, Expires: time.Unix(0, 0), SameSite: http.SameSiteLaxMode,
+		Name: cookieName, Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: a.proxies.https(r),
 	})
 	w.WriteHeader(http.StatusNoContent)
 }
