@@ -461,6 +461,16 @@ func upgradeFrom(t *testing.T, left string) {
 	if version != "0004" {
 		t.Fatalf("version_num = %s, want 0004", version)
 	}
+
+	// The startup check pins admin_read to 0004's exact expression.
+	s, err := store.Open(ctx, db.AppDSN, schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := store.Verify(ctx, s, schema); err != nil {
+		t.Fatalf("the upgraded schema fails the startup check: %v", err)
+	}
 }
 
 // helm upgrade re-runs the hook against a database already at head. MUST succeed and
