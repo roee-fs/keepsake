@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -652,6 +653,60 @@ func TestAnUnacceptableAcceptIsPythons406(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusNotAcceptable || resp.Header.Get("Content-Type") != tc.wantType || string(body) != tc.wantBody {
 			t.Errorf("%q %q: %d %q %s", tc.accept, tc.version, resp.StatusCode, resp.Header.Get("Content-Type"), body)
+		}
+	}
+}
+
+// pythonWire is testdata/python_wire.json: requests and the result the Python server
+// (2de90d2) answered them with, on an empty tenant.
+type pythonWire struct {
+	Name    string
+	Headers map[string]string
+	Request json.RawMessage
+	Result  json.RawMessage
+}
+
+// wireResults posts each named case to the Go handler and returns the golden and got results.
+func wireResults(t *testing.T, names ...string) map[string][2]json.RawMessage {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/python_wire.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []pythonWire
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	out := map[string][2]json.RawMessage{}
+	for _, c := range cases {
+		if len(names) > 0 && !slices.Contains(names, c.Name) {
+			continue
+		}
+		req, _ := http.NewRequest(http.MethodPost, srv.URL, bytes.NewReader(c.Request))
+		for k, v := range c.Headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct{ Result json.RawMessage }
+		err = json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("%s: status %d: %v", c.Name, resp.StatusCode, err)
+		}
+		out[c.Name] = [2]json.RawMessage{c.Result, body.Result}
+	}
+	return out
+}
+
+func TestModernToolsListIsPythons(t *testing.T) {
+	for name, r := range wireResults(t, "modern tools/list") {
+		if !reflect.DeepEqual(tokens(r[1]), tokens(r[0])) {
+			t.Errorf("%s:\n got %s\nwant %s", name, r[1], r[0])
 		}
 	}
 }

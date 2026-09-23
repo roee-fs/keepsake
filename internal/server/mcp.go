@@ -212,7 +212,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 			return next(ctx, method, req)
 		}
 	})
-	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
+	sdk := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		// A session would pin an agent to one replica; several sit behind one Service.
 		Stateless:    true,
 		JSONResponse: true,
@@ -221,6 +221,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 		// auth stops being `none`: this is a setting that outlives its justification.
 		DisableLocalhostProtection: true,
 	})
+	h := pythonResults(sdk)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && !acceptsJSON(r.Header.Values("Accept")) {
 			notAcceptable(w, r)
@@ -251,7 +252,7 @@ var handshakeVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025
 
 // notAcceptable answers 406 as whichever Python transport the request reaches.
 func notAcceptable(w http.ResponseWriter, r *http.Request) {
-	if v := r.Header.Values("Mcp-Protocol-Version"); len(v) > 0 && !slices.Contains(handshakeVersions, v[0]) {
+	if modernEra(r) {
 		w.WriteHeader(http.StatusNotAcceptable)
 		return
 	}
