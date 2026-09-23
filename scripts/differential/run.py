@@ -945,7 +945,7 @@ async def drive(
                     outcomes["okf_update:conflict"] += 1
         for side, w in zip(SIDES, wires, strict=True):
             era = w.last.request.headers.get("mcp-protocol-version") if w.last else None
-            if (mode == "legacy") != (era == LEGACY_VERSION):
+            if era != (LEGACY_VERSION if mode == "legacy" else MODERN_VERSION):
                 diffs.append(f"{mode} client negotiated {era} with {side}")
     return diffs, gen
 

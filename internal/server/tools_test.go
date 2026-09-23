@@ -586,8 +586,8 @@ func TestTheEndpointAnswersAPlainJSONPost(t *testing.T) {
 	}
 }
 
-// What go-sdk puts on the wire, not what toolDefinitions returns: the SDK sorted
-// the tools by name and added cacheScope "public", which Python never sends.
+// The legacy wire, not what toolDefinitions returns: go-sdk alone would sort the
+// tools by name and add cache fields that Python's legacy listing does not carry.
 func TestTheWireToolListingIsPythons(t *testing.T) {
 	result := postToolsList(t)
 	if keys := slices.Sorted(maps.Keys(result)); !reflect.DeepEqual(keys, []string{"tools"}) {
