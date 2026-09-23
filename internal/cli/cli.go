@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -316,7 +317,7 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 	return 0, migrate.Up(ctx, dsn, name)
 }
 
-func runServe(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
+func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
 	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
 	if err != nil {
 		return 0, err
@@ -338,7 +339,9 @@ func runServe(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 		return 0, err
 	}
 	defer closeApp()
-	return 0, listen(net.JoinHostPort(o.host, strconv.Itoa(port)), h)
+	addr := net.JoinHostPort(o.host, strconv.Itoa(port))
+	slog.New(slog.NewTextHandler(stderr, nil)).Info("listening", "addr", addr)
+	return 0, listen(addr, h)
 }
 
 // Help text copied from argparse at 2de90d2, so -h reads the same.

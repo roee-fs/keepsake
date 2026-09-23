@@ -424,6 +424,14 @@ func TestServeHandsTheListenerTheVerifiedAppAndTheParsedPort(t *testing.T) {
 	}
 }
 
+func TestServeLogsTheListenAddress(t *testing.T) {
+	fakeListen(t)
+	_, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123")
+	if !strings.Contains(stderr, "addr=0.0.0.0:9123") {
+		t.Fatalf("stderr %q does not name the listen address", stderr)
+	}
+}
+
 func TestServeFallsBackWhenThePortVariableIsAServiceLink(t *testing.T) {
 	t.Setenv("KEEPSAKE_PORT", "tcp://10.96.0.1:8000")
 	served := fakeListen(t)

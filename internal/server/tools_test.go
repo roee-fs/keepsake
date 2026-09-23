@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -482,6 +483,27 @@ func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	t.Cleanup(func() { admin(t, `GRANT SELECT ON okf.concept TO okf_app`) })
 	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err == nil {
 		t.Fatalf("got a result, want a protocol error: %+v", res)
+	}
+}
+
+func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
+	var logs bytes.Buffer
+	orig := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(orig) })
+	session := connect(t, newTools(t))
+
+	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "../x"}}); err != nil {
+		t.Fatal(err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("a tool error was logged: %s", logs.String())
+	}
+	admin(t, `REVOKE SELECT ON okf.concept FROM okf_app`)
+	t.Cleanup(func() { admin(t, `GRANT SELECT ON okf.concept TO okf_app`) })
+	session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
+	if !strings.Contains(logs.String(), "okf_list") || !strings.Contains(logs.String(), "permission denied") {
+		t.Fatalf("the defect was not logged: %q", logs.String())
 	}
 }
 

@@ -54,6 +54,7 @@ test enforces it and the release workflow refuses otherwise.
   - A trailing-slash redirect is still a 307 to the same place, but its
     `Location` is relative, not absolute, and a `GET` gets a short HTML body.
   - A login body with invalid UTF-8 or a lone surrogate answers 422, not 500.
+  - There is no per-request access log, unlike uvicorn's.
 
 ### Security
 

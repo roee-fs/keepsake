@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -184,6 +185,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 			return failed(unavailable), nil
 		case err != nil:
 			// A defect here, not the agent's mistake: it stays a protocol error.
+			slog.Error("tool call failed", "tool", name, "err", err)
 			return nil, err
 		}
 		text, err := pyDumps(result)
