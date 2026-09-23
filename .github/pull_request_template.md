@@ -23,7 +23,7 @@ why, a limit you accepted deliberately.
 
 ---
 
-- [ ] `gofmt -l . && go vet ./...`
+- [ ] `test -z "$(gofmt -l .)" && go vet ./...`
 - [ ] `go test -race ./...`, including `layering_test.go`
 - [ ] `uv run ruff check e2e tests && uv run pytest tests`
 - [ ] If this changes the schema, it is a **new** migration and `helm upgrade`

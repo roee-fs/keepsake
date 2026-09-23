@@ -24,7 +24,7 @@ The Python tooling is only for `e2e/` and the chart tests. It needs
 Run what CI runs:
 
 ```bash
-gofmt -l .
+test -z "$(gofmt -l .)"
 go vet ./...
 go test -race ./...
 uv run ruff check e2e tests
