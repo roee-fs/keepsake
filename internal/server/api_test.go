@@ -557,3 +557,47 @@ func TestSecureFollowsUvicornsProxyHeaderRule(t *testing.T) {
 		})
 	}
 }
+
+func TestValidationDetailIsFastAPIs(t *testing.T) {
+	c := newConsole(t).login()
+	for _, tc := range []struct{ target, want string }{
+		{"/concepts?limit=201", `{"detail":[{"type":"less_than_equal","loc":["query","limit"],"msg":"Input should be less than or equal to 200","input":"201","ctx":{"le":200}}]}`},
+		{"/concepts?limit=x&offset=-1&tenant=x", `{"detail":[{"type":"uuid_parsing","loc":["query","tenant"],"msg":"Input should be a valid UUID, invalid character: found ` + "`x`" + ` at 1","input":"x","ctx":{"error":"invalid character: found ` + "`x`" + ` at 1"}},{"type":"int_parsing","loc":["query","limit"],"msg":"Input should be a valid integer, unable to parse string as an integer","input":"x"},{"type":"greater_than_equal","loc":["query","offset"],"msg":"Input should be greater than or equal to 0","input":"-1","ctx":{"ge":0}}]}`},
+	} {
+		rec := c.do(httptest.NewRequest(http.MethodGet, tc.target, nil))
+		if got := rec.Body.String(); got != tc.want {
+			t.Errorf("%s:\n got %s\nwant %s", tc.target, got, tc.want)
+		}
+	}
+}
+
+// The cases are pydantic 2's own answers, taken with TypeAdapter(UUID).validate_python.
+func TestUUIDErrorsArePydantics(t *testing.T) {
+	for in, want := range map[string]string{
+		"12345678123456781234567812345678":              "",
+		"CD613E30-D8F1-6ADF-91B7-584A2265B1F5":          "",
+		"{cd613e30-d8f1-6adf-91b7-584a2265b1f5}":        "",
+		"urn:uuid:cd613e30-d8f1-6adf-91b7-584a2265b1f5": "",
+		"URN:UUID:cd613e30-d8f1-6adf-91b7-584a2265b1f5": "invalid character: found `U` at 1",
+		"":                 "invalid length: expected length 32 for simple format, found 0",
+		"0123456789abcdef": "invalid length: expected length 32 for simple format, found 16",
+		"aé":               "invalid character: found `é` at 2",
+		"ab日":              "invalid character: found `日` at 3",
+		"{日}":              "invalid character: found `日` at 2",
+		"{":                "invalid character: found `{` at 1",
+		"{}":               "invalid group count: expected 5, found 1",
+		"urn:uuid:":        "invalid group count: expected 5, found 1",
+		"urn:uuid:cd613e30-d8f1-6adf-91b7-584a2265b1f": "invalid group length in group 4: expected 12, found 20",
+		"{cd613e30-d8f1-6adf-91b7-584a2265b1f5x}":      "invalid character: found `x` at 38",
+		"cd613e30-d8f16-adf-91b7-584a2265b1f5":         "invalid group length in group 1: expected 4, found 5",
+		"cd613e3-0d8f1-6adf-91b7-584a2265b1f5":         "invalid group length in group 0: expected 8, found 7",
+		"cd613e30-d8f1-6adf-91b7584a2265b1f5":          "invalid group count: expected 5, found 4",
+		"-----":                                        "invalid group count: expected 5, found 6",
+		"----":                                         "invalid group length in group 0: expected 8, found 0",
+		"cd613e30-d8f1-6adf-91b7-584a2265b1f5 ":        "invalid character: found ` ` at 37",
+	} {
+		if _, got := pyUUID(in); got != want {
+			t.Errorf("pyUUID(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

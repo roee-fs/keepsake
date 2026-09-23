@@ -139,8 +139,17 @@ type params struct {
 
 func query(r *http.Request) *params { return &params{q: r.URL.Query()} }
 
-func (p *params) fail(typ, name, msg string, input any) {
-	p.errs = append(p.errs, map[string]any{"type": typ, "loc": []string{"query", name}, "msg": msg, "input": input})
+// fieldError is one pydantic error in FastAPI's key order; ctx only where pydantic sets it.
+type fieldError struct {
+	Type  string         `json:"type"`
+	Loc   []any          `json:"loc"`
+	Msg   string         `json:"msg"`
+	Input any            `json:"input"`
+	Ctx   map[string]any `json:"ctx,omitempty"`
+}
+
+func (p *params) fail(typ, name, msg string, input any, ctx map[string]any) {
+	p.errs = append(p.errs, fieldError{typ, []any{"query", name}, msg, input, ctx})
 }
 
 // value takes the last of repeated values, as Starlette's QueryParams does.
@@ -155,7 +164,7 @@ func (p *params) value(name string) (string, bool) {
 func (p *params) required(name string) string {
 	v, ok := p.value(name)
 	if !ok {
-		p.fail("missing", name, "Field required", nil)
+		p.fail("missing", name, "Field required", nil, nil)
 	}
 	return v
 }
@@ -164,13 +173,13 @@ func (p *params) tenant(required bool) *uuid.UUID {
 	v, ok := p.value("tenant")
 	if !ok {
 		if required {
-			p.fail("missing", "tenant", "Field required", nil)
+			p.fail("missing", "tenant", "Field required", nil, nil)
 		}
 		return nil
 	}
-	id, err := uuid.Parse(v)
-	if err != nil {
-		p.fail("uuid_parsing", "tenant", "Input should be a valid UUID", v)
+	id, bad := pyUUID(v)
+	if bad != "" {
+		p.fail("uuid_parsing", "tenant", "Input should be a valid UUID, "+bad, v, map[string]any{"error": bad})
 		return nil
 	}
 	return &id
@@ -185,13 +194,56 @@ func (p *params) int(name string, def, lo, hi int) int {
 	n, err := strconv.Atoi(v)
 	switch {
 	case err != nil:
-		p.fail("int_parsing", name, "Input should be a valid integer, unable to parse string as an integer", v)
+		p.fail("int_parsing", name, "Input should be a valid integer, unable to parse string as an integer", v, nil)
 	case n < lo:
-		p.fail("greater_than_equal", name, fmt.Sprintf("Input should be greater than or equal to %d", lo), v)
+		p.fail("greater_than_equal", name, fmt.Sprintf("Input should be greater than or equal to %d", lo), v, map[string]any{"ge": lo})
 	case hi >= 0 && n > hi:
-		p.fail("less_than_equal", name, fmt.Sprintf("Input should be less than or equal to %d", hi), v)
+		p.fail("less_than_equal", name, fmt.Sprintf("Input should be less than or equal to %d", hi), v, map[string]any{"le": hi})
 	}
 	return n
+}
+
+// pyUUID parses s as pydantic does, through Rust uuid's parse_str. On failure it
+// returns the text of that crate's InvalidUuid::into_err, which pydantic quotes.
+func pyUUID(s string) (uuid.UUID, string) {
+	shaped := len(s) == 32 || len(s) == 36 ||
+		len(s) == 38 && s[0] == '{' && s[37] == '}' ||
+		len(s) == 45 && strings.HasPrefix(s, "urn:uuid:")
+	if id, err := uuid.Parse(s); shaped && err == nil {
+		return id, ""
+	}
+	body, offset, simple := s, 0, true
+	if len(s) >= 2 && s[0] == '{' && s[len(s)-1] == '}' {
+		body, offset, simple = s[1:len(s)-1], 1, false
+	} else if strings.HasPrefix(s, "urn:uuid:") {
+		body, offset, simple = s[9:], 9, false
+	}
+	hyphens := 0
+	var bounds [4]int
+	for i, r := range body {
+		switch {
+		case r == '-':
+			if hyphens < 4 {
+				bounds[hyphens] = i
+			}
+			hyphens++
+		case r >= 0x80 || !strings.ContainsRune("0123456789abcdefABCDEF", r):
+			return uuid.Nil, fmt.Sprintf("invalid character: found `%c` at %d", r, i+offset+1)
+		}
+	}
+	if hyphens == 0 && simple {
+		return uuid.Nil, fmt.Sprintf("invalid length: expected length 32 for simple format, found %d", len(s))
+	}
+	if hyphens != 4 {
+		return uuid.Nil, fmt.Sprintf("invalid group count: expected 5, found %d", hyphens+1)
+	}
+	starts, lengths := [5]int{0, 9, 14, 19, 24}, [5]int{8, 4, 4, 4, 12}
+	for i := range 4 {
+		if bounds[i] != starts[i+1]-1 {
+			return uuid.Nil, fmt.Sprintf("invalid group length in group %d: expected %d, found %d", i, lengths[i], bounds[i]-starts[i])
+		}
+	}
+	return uuid.Nil, fmt.Sprintf("invalid group length in group 4: expected 12, found %d", len(s)-starts[4])
 }
 
 // invalid answers 422 if any parameter failed.
