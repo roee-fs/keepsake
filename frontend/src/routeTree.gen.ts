@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GraphRouteImport } from './routes/graph'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ConceptsIndexRouteImport } from './routes/concepts.index'
 import { Route as ConceptsSplatRouteImport } from './routes/concepts.$'
@@ -17,6 +18,11 @@ import { Route as ConceptsSplatRouteImport } from './routes/concepts.$'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GraphRoute = GraphRouteImport.update({
+  id: '/graph',
+  path: '/graph',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -37,12 +43,14 @@ const ConceptsSplatRoute = ConceptsSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/graph': typeof GraphRoute
   '/login': typeof LoginRoute
   '/concepts/$': typeof ConceptsSplatRoute
   '/concepts/': typeof ConceptsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/graph': typeof GraphRoute
   '/login': typeof LoginRoute
   '/concepts/$': typeof ConceptsSplatRoute
   '/concepts': typeof ConceptsIndexRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/graph': typeof GraphRoute
   '/login': typeof LoginRoute
   '/concepts/$': typeof ConceptsSplatRoute
   '/concepts/': typeof ConceptsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/concepts/$' | '/concepts/'
+  fullPaths: '/' | '/graph' | '/login' | '/concepts/$' | '/concepts/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/concepts/$' | '/concepts'
-  id: '__root__' | '/' | '/login' | '/concepts/$' | '/concepts/'
+  to: '/' | '/graph' | '/login' | '/concepts/$' | '/concepts'
+  id: '__root__' | '/' | '/graph' | '/login' | '/concepts/$' | '/concepts/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GraphRoute: typeof GraphRoute
   LoginRoute: typeof LoginRoute
   ConceptsSplatRoute: typeof ConceptsSplatRoute
   ConceptsIndexRoute: typeof ConceptsIndexRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/graph': {
+      id: '/graph'
+      path: '/graph'
+      fullPath: '/graph'
+      preLoaderRoute: typeof GraphRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GraphRoute: GraphRoute,
   LoginRoute: LoginRoute,
   ConceptsSplatRoute: ConceptsSplatRoute,
   ConceptsIndexRoute: ConceptsIndexRoute,

@@ -13,6 +13,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
     "@tanstack/react-router": "^1.170.36",
+    "d3-force": "^3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
@@ -22,6 +23,7 @@
     "@hey-api/openapi-ts": "0.99.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-plugin": "^1.168.38",
+    "@types/d3-force": "^3",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
