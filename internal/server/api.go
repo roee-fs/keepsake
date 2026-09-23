@@ -114,7 +114,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func internalError(w http.ResponseWriter, err error) {
 	log.Printf("api: %v", err)
-	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	// Starlette's PlainTextResponse: no trailing newline, unlike http.Error.
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusInternalServerError)
+	io.WriteString(w, "Internal Server Error")
 }
 
 // reply answers v, or maps err the way FastAPI does: a GrepError is the caller's

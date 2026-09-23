@@ -614,6 +614,8 @@ func TestLoginBodyErrorsAreFastAPIs(t *testing.T) {
 		{"application/json", `{`, `{"detail":[{"type":"json_invalid","loc":["body",1],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting property name enclosed in double quotes"}}]}`},
 		{"text/plain", `{"password":1}`, `{"detail":[{"type":"model_attributes_type","loc":["body"],"msg":"Input should be a valid dictionary or object to extract fields from","input":"{\"password\":1}"}]}`},
 		{"application/json", "{\"password\":\"\xff\"}", `{"detail":"There was an error parsing the body"}`},
+		// Starlette's JSONResponse refuses NaN, and the 500 is its plain-text one.
+		{"application/json", "[NaN]", "Internal Server Error"},
 	} {
 		r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(tc.body))
 		if tc.ct != "" {
