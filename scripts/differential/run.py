@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import socket
 import subprocess
 import sys
 import tempfile
@@ -20,11 +21,12 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx2 as httpx
 import psycopg
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 
 from okf_core import parse
 
@@ -37,6 +39,14 @@ PASSWORD = "diff-admin-password"
 OPS = 2000
 SIDES = {"py": ("okf_py", 18001), "go": ("okf_go", 18002)}
 MAX_VERSION = 2_147_483_647
+# Versions are ints on both sides; divergence 4's float leniency MUST NOT reach them.
+VERSION_KEYS = {"version", "current_version", "expected_version"}
+LEGACY_VERSION = "2025-11-25"
+MODERN_VERSION = "2026-07-28"
+MODERN_META = {
+    "io.modelcontextprotocol/protocolVersion": MODERN_VERSION,
+    "io.modelcontextprotocol/clientCapabilities": {},
+}
 
 WORDS = [
     "dormant",
@@ -114,6 +124,7 @@ BAD_UUIDS = [
     "cd613e30-d8f1-6adf-91b7-584a2265b1f5 ",
 ]
 LONE_SURROGATE = b'"\\ud800"'
+INVALID_UTF8 = b"\xff"
 LOGIN_BODIES = [
     ("application/json", b"{"),
     ("application/json", b"[1]"),
@@ -127,6 +138,11 @@ LOGIN_BODIES = [
     ("text/plain", b'{"password":1}'),
     ("application/x+json", b"1 2"),
     ("", b'{"password":"x"}'),
+    ("application/json", b"null"),
+    ("application/json", b'{"password": 1e999}'),
+    ("application/json", b"-1e400"),
+    ("application/json", b'{"password": "\\ud800"}'),
+    ("text/plain", INVALID_UTF8),
 ]
 
 
@@ -348,7 +364,13 @@ def same(a: Any, b: Any, where: str, out: list[str]) -> None:
         if list(a) != list(b):
             out.append(f"{where}: keys {list(a)} != {list(b)}")
         for k in a:
-            if k in b:
+            if (
+                k in VERSION_KEYS
+                and k in b
+                and (type(a[k]), a[k]) != (type(b[k]), b[k])
+            ):
+                out.append(f"{where}.{k}: {a[k]!r} != {b[k]!r}")
+            elif k in b:
                 same(a[k], b[k], f"{where}.{k}", out)
     elif isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
@@ -428,8 +450,14 @@ def reset(go_bin: str) -> None:
         )
 
 
-def serve(side: str, go_bin: str, tenant: uuid.UUID, logs: Path) -> subprocess.Popen:
+def serve(
+    side: str, go_bin: str, tenant: uuid.UUID, logs: Path, procs: list[subprocess.Popen]
+) -> None:
+    """Start one server, registered in `procs` for cleanup before it is waited on."""
     schema, port = SIDES[side]
+    with socket.socket() as probe:
+        if probe.connect_ex(("127.0.0.1", port)) == 0:
+            sys.exit(f"port {port} is already taken")
     env = os.environ | {
         "KEEPSAKE_DSN": APP_DSN,
         "KEEPSAKE_TENANT_ID": str(tenant),
@@ -445,10 +473,11 @@ def serve(side: str, go_bin: str, tenant: uuid.UUID, logs: Path) -> subprocess.P
         stdout=log,
         stderr=subprocess.STDOUT,
     )
+    procs.append(proc)
     for _ in range(100):
         try:
             if httpx.get(f"http://127.0.0.1:{port}/readyz").status_code == 200:
-                return proc
+                return
         except httpx.TransportError:
             pass
         if proc.poll() is not None:
@@ -474,6 +503,7 @@ def api_cases(
     ]
     for q in ["", t, other, *(f"tenant={quote(u)}" for u in BAD_UUIDS)]:
         cases += [("GET", f"/api/stats?{q}"), ("GET", f"/api/concepts?{q}")]
+    cases.append(("GET", "/api/stats/timeseries"))
     for days in ["0", "1", "30", "365", "366", "x", "1.5"]:
         cases.append(("GET", f"/api/stats/timeseries?{t}&days={days}"))
     for limit in ["0", "1", "50", "200", "201", "x"]:
@@ -550,6 +580,7 @@ def compare_api(
     def check(
         label: str, res: dict[str, httpx.Response], parse_body: bool = True
     ) -> None:
+        stats = urlparse(label.split(" ")[1]).path == "/api/stats"
         py, go = res["py"], res["go"]
         out: list[str] = []
         same(py.status_code, go.status_code, "status", out)
@@ -562,7 +593,7 @@ def compare_api(
                 )
             except ValueError:
                 a, b = py.text, go.text
-            for body in (a, b):
+            for body in (a, b) if stats else ():
                 if isinstance(body, dict) and isinstance(body.get("by_type"), dict):
                     # Python's GROUP BY has no ORDER BY, so its own key order varies call to call.
                     body["by_type"] = dict(sorted(body["by_type"].items()))
@@ -577,11 +608,11 @@ def compare_api(
         check(f"POST /api/session {label}", both("POST", "/api/session", json=body))
     for ct, raw in LOGIN_BODIES:
         res = both("POST", "/api/session", content=raw, headers={"content-type": ct})
-        if raw == LONE_SURROGATE:
-            # Python bug: echoing a lone surrogate crashes Starlette's JSON encoder (500); Go answers 422.
+        # Divergence 10: echoing a lone surrogate or invalid UTF-8 crashes Python (500); Go answers 422.
+        if raw in (LONE_SURROGATE, INVALID_UTF8):
             if (res["py"].status_code, res["go"].status_code) != (500, 422):
                 diffs.append(
-                    f"api lone surrogate login: {res['py'].status_code} vs {res['go'].status_code}"
+                    f"api login {raw!r}: {res['py'].status_code} vs {res['go'].status_code}"
                 )
             continue
         check(f"POST /api/session {ct} {raw!r}", res)
@@ -609,53 +640,195 @@ def compare_api(
     return sent, diffs
 
 
-def post_mcp(port: int, accept: str) -> httpx.Response:
-    body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
-    return httpx.post(
-        f"http://127.0.0.1:{port}/mcp", json=body, headers={"accept": accept}
-    )
+def mcp_request(
+    era: str, method: str, params: dict[str, Any] | None = None, **headers: str
+) -> tuple[dict[str, str], dict[str, Any]]:
+    """Headers and JSON-RPC body for `method` as a client of `era` sends it."""
+    params = dict(params or {})
+    h = {
+        "content-type": "application/json",
+        "accept": "application/json, text/event-stream",
+    }
+    if era == "modern":
+        params["_meta"] = MODERN_META
+        h |= {"mcp-protocol-version": MODERN_VERSION, "mcp-method": method}
+        if method == "tools/call":
+            h["mcp-name"] = params["name"]
+    else:
+        h["mcp-protocol-version"] = LEGACY_VERSION
+    body: dict[str, Any] = {"jsonrpc": "2.0", "id": 1, "method": method}
+    if params:
+        body["params"] = params
+    return h | {k.replace("_", "-"): v for k, v in headers.items()}, body
 
 
-def compare_tools_list() -> list[str]:
-    """The wire listing, since the client's models would hide key order."""
+def compare_wire(
+    py: httpx.Response,
+    go: httpx.Response,
+    tool: str = "",
+    schema_fields: tuple[str, ...] | None = None,
+) -> list[str]:
+    """Status, content type and the parsed body, key order included."""
     out: list[str] = []
-    a, b = (
-        post_mcp(p, "application/json, text/event-stream").json()
-        for _, p in SIDES.values()
+    same(py.status_code, go.status_code, "status", out)
+    same(
+        py.headers.get("content-type"),
+        go.headers.get("content-type"),
+        "content-type",
+        out,
     )
-    # Ruling (Task 10): each advertised tool's own top-level key order is go-sdk's.
-    for r in (a, b):
-        r["result"]["tools"] = [dict(sorted(t.items())) for t in r["result"]["tools"]]
-    same(a, b, "tools/list", out)
+    try:
+        a, b = py.json(), go.json()
+    except ValueError:
+        same(py.text, go.text, "body", out)
+        return out
+    if schema_fields is not None:
+        for body in (a, b):
+            content = body.get("result", {}).get("content") or [{}]
+            text = content[0].get("text", "")
+            # Divergence 2: schema-error wording is the validator's; both MUST name the tool and field.
+            if not text.startswith(f"{tool}: ") or not all(
+                f in text for f in schema_fields
+            ):
+                out.append(f"schema error does not name {schema_fields}: {text!r}")
+            content[0]["text"] = "<schema error>"
+    for body in (a, b):
+        result = body.get("result") if isinstance(body, dict) else None
+        if isinstance(result, dict) and not result.get("isError"):
+            for item in result.get("content", []):
+                # The text is json.dumps output: parsed, so divergence 4 applies to its floats.
+                item["text"] = json.loads(item["text"])
+    same(a, b, "body", out)
     return out
 
 
-def compare_mcp_http() -> list[str]:
-    """Transport-level answers the MCP client never provokes."""
+def protocol_cases() -> list[tuple[str, dict[str, str], Any]]:
+    """(label, headers, body) for the protocol surface the tool calls never reach."""
+    cases: list[tuple[str, dict[str, str], Any]] = []
+    for era in ("legacy", "modern"):
+        cases += [
+            (f"{era} tools/list", *mcp_request(era, "tools/list")),
+            (f"{era} ping", *mcp_request(era, "ping")),
+            (f"{era} unknown method", *mcp_request(era, "foo/bar")),
+            (f"{era} bad accept", *mcp_request(era, "tools/list", accept="text/html")),
+            (
+                f"{era} json accept only",
+                *mcp_request(era, "tools/list", accept="application/json"),
+            ),
+            (f"{era} parse error", mcp_request(era, "tools/list")[0], b"{"),
+            (
+                f"{era} batch",
+                mcp_request(era, "tools/list")[0],
+                [mcp_request(era, "tools/list")[1]],
+            ),
+        ]
+    notification = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    init = {
+        "protocolVersion": LEGACY_VERSION,
+        "capabilities": {},
+        "clientInfo": {"name": "d", "version": "1"},
+    }
+    h, _ = mcp_request("legacy", "initialize")
+    cases += [
+        (
+            "legacy initialize",
+            {k: v for k, v in h.items() if k != "mcp-protocol-version"},
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": init},
+        ),
+        ("legacy notification", h, notification),
+        (
+            "modern notification",
+            mcp_request("modern", "notifications/initialized")[0],
+            notification | {"params": {"_meta": MODERN_META}},
+        ),
+        ("modern server/discover", *mcp_request("modern", "server/discover")),
+        (
+            "modern mcp-method mismatch",
+            *mcp_request("modern", "tools/list", mcp_method="tools/call"),
+        ),
+        (
+            "modern mcp-name mismatch",
+            *mcp_request(
+                "modern",
+                "tools/call",
+                {"name": "okf_list", "arguments": {}},
+                mcp_name="okf_read",
+            ),
+        ),
+        (
+            "modern missing _meta",
+            mcp_request("modern", "tools/list")[0],
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        ),
+        (
+            "unknown protocol version",
+            *mcp_request("legacy", "tools/list", mcp_protocol_version="1999-01-01"),
+        ),
+    ]
+    return cases
+
+
+def compare_protocol() -> list[str]:
     out: list[str] = []
-    res = {s: post_mcp(p, "text/html") for s, (_, p) in SIDES.items()}
-    # Ruling (Task 10): an unacceptable Accept header is 400 in Go, 406 in Python.
-    if (res["py"].status_code, res["go"].status_code) != (406, 400):
-        out.append(
-            f"mcp bad accept: {res['py'].status_code} vs {res['go'].status_code}"
+    for label, headers, body in protocol_cases():
+        kw = {"content": body} if isinstance(body, bytes) else {"json": body}
+        py, go = (
+            httpx.post(f"http://127.0.0.1:{port}/mcp", headers=headers, **kw)
+            for _, port in SIDES.values()
         )
+        out += [f"mcp {label}: {d}" for d in compare_wire(py, go)]
+    for method in ("GET", "DELETE"):
+        # Python answers GET with an event stream that never ends, so only its head is read.
+        heads = []
+        for _, port in SIDES.values():
+            with httpx.stream(method, f"http://127.0.0.1:{port}/mcp", timeout=5) as r:
+                heads.append((r.status_code, r.headers.get("content-type")))
+        same(heads[0], heads[1], f"mcp {method}", out)
     return out
 
 
-async def drive(rng: random.Random, outcomes: Counter[str]) -> tuple[list[str], Gen]:
+class Wire:
+    """An httpx client that keeps the last tools/call response the MCP client read."""
+
+    def __init__(self) -> None:
+        self.last: httpx.Response | None = None
+        self.client = httpx.AsyncClient(
+            event_hooks={"response": [self.keep]}, timeout=60
+        )
+
+    async def keep(self, response: httpx.Response) -> None:
+        if b'"tools/call"' in response.request.content:
+            await response.aread()
+            self.last = response
+
+
+async def drive(
+    rng: random.Random, mode: str, outcomes: Counter[str]
+) -> tuple[list[str], Gen]:
     """Send the seeded operations to both servers and compare each answer."""
-    diffs = compare_tools_list()
+    diffs: list[str] = []
     gen = Gen(rng)
+    wires = [Wire() for _ in SIDES]
     urls = [f"http://127.0.0.1:{port}/mcp" for _, port in SIDES.values()]
+    transports = [
+        streamable_http_client(u, http_client=w.client)
+        for u, w in zip(urls, wires, strict=True)
+    ]
     async with (
-        Client(urls[0], mode="legacy", cache=None) as py,
-        Client(urls[1], mode="legacy", cache=None) as go,
+        Client(transports[0], mode=mode, cache=None) as py,
+        Client(transports[1], mode=mode, cache=None) as go,
     ):
         for i in range(OPS):
             tool, args, schema_fields = gen.op()
+            label = f"{mode} op {i} {tool} {json.dumps(args)[:400]}"
             pr, gr = await asyncio.gather(call(py, tool, args), call(go, tool, args))
-            for d in compare_call(tool, schema_fields, pr, gr):
-                diffs.append(f"op {i} {tool} {json.dumps(args)[:400]}: {d}")
+            diffs += [
+                f"{label}: {d}" for d in compare_call(tool, schema_fields, pr, gr)
+            ]
+            # The client's models hide wire key order and envelope fields.
+            if wires[0].last and wires[1].last:
+                wire = compare_wire(wires[0].last, wires[1].last, tool, schema_fields)
+                diffs += [f"{label} wire: {d}" for d in wire]
             outcomes[f"{tool}:{'error' if pr.get('isError', True) else 'ok'}"] += 1
             if pr.get("isError") is False:
                 gen.learn(pr["structured"])
@@ -686,29 +859,46 @@ def export_diffs(go_bin: str, tenant: uuid.UUID, work: Path) -> list[str]:
 
 
 def run(seed: int, go_bin: str, work: Path) -> int:
-    rng = random.Random(seed)
-    tenant = uuid.UUID(int=rng.getrandbits(128))
-    reset(go_bin)
-    start = datetime.now(UTC)
-    procs = [serve(side, go_bin, tenant, work) for side in SIDES]
-    outcomes: Counter[str] = Counter()
-    try:
-        diffs, gen = asyncio.run(drive(rng, outcomes))
-        diffs += compare_mcp_http()
-        routes, api_diffs = compare_api(rng, tenant, sorted(gen.versions), start)
-        diffs += api_diffs
-    finally:
-        for p in procs:
-            p.terminate()
-            p.wait()
-    diffs += export_diffs(go_bin, tenant, work)
-    for d in diffs:
-        print(d)
-    print(
-        f"seed {seed}: {OPS} ops, {routes} api requests, 4 exports "
-        f"({len(gen.versions)} concepts), {len(diffs)} differences"
-    )
-    print("  outcomes:", " ".join(f"{k}={v}" for k, v in sorted(outcomes.items())))
+    """One pass per protocol era, each from an empty database and the same seed."""
+    diffs: list[str] = []
+    for mode in ("legacy", MODERN_VERSION):
+        rng = random.Random(seed)
+        tenant = uuid.UUID(int=rng.getrandbits(128))
+        reset(go_bin)
+        start = datetime.now(UTC)
+        procs: list[subprocess.Popen] = []
+        outcomes: Counter[str] = Counter()
+        try:
+            for side in SIDES:
+                serve(side, go_bin, tenant, work, procs)
+            era, gen = asyncio.run(drive(rng, mode, outcomes))
+            era += compare_protocol()
+            routes, api_diffs = compare_api(rng, tenant, sorted(gen.versions), start)
+            era += api_diffs
+        finally:
+            for p in procs:
+                p.terminate()
+                p.wait()
+        era += export_diffs(go_bin, tenant, work / mode)
+        for d in era[:300]:
+            print(d)
+        if len(era) > 300:
+            print(f"... {len(era) - 300} more")
+        print(
+            f"seed {seed} {mode}: {OPS} ops, {routes} api requests, 4 exports "
+            f"({len(gen.versions)} concepts), {len(era)} differences"
+        )
+        kinds = Counter(
+            "wire"
+            if " wire: " in d
+            else d.split(" ")[0]
+            if not d.startswith(mode)
+            else "client"
+            for d in era
+        )
+        print("  by kind:", " ".join(f"{k}={v}" for k, v in sorted(kinds.items())))
+        print("  outcomes:", " ".join(f"{k}={v}" for k, v in sorted(outcomes.items())))
+        diffs += era
     return 1 if diffs else 0
 
 
