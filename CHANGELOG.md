@@ -36,8 +36,8 @@ test enforces it and the release workflow refuses otherwise.
     frontmatter is not a mapping, as an error with exit 1 instead of a traceback.
   - YAML syntax errors keep the `<file>: ` prefix, but the parser's wording after
     it differs.
-  - A CLI usage error still exits 2, but its message differs. Long flags MUST be
-    spelled in full, and `--` is not accepted.
+  - A CLI usage error still exits 2, but its message MAY differ. Long flags MUST
+    be spelled in full.
   - `export` writes rows the Python release could not, such as integers over
     4300 digits and deeply nested frontmatter.
   - A tool-argument error still names the field and the expected type. The rest

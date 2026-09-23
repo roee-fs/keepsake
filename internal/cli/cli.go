@@ -4,8 +4,6 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -64,7 +63,6 @@ var listen = func(addr string, h http.Handler) error {
 type options struct {
 	dsn, tenant, host, directory string
 	port                         *int
-	badPort                      *string
 }
 
 type command struct {
@@ -96,22 +94,6 @@ func usageError(stderr io.Writer, name, msg string) int {
 	return 2
 }
 
-// parse reads flags on either side of the positional argument, as argparse does;
-// flag alone stops at the first positional.
-func parse(fs *flag.FlagSet, args []string) ([]string, error) {
-	var positional []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			return nil, err
-		}
-		if fs.NArg() == 0 {
-			return positional, nil
-		}
-		positional = append(positional, fs.Arg(0))
-		args = fs.Args()[1:]
-	}
-}
-
 // Main runs one command and returns its exit code.
 func Main(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -128,59 +110,75 @@ func Main(args []string, stdout, stderr io.Writer) int {
 			choices, okf.PyReprString(name)))
 	}
 
-	o := &options{}
-	fs := flag.NewFlagSet("keepsake "+name, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	o := &options{dsn: os.Getenv("KEEPSAKE_DSN"), tenant: os.Getenv("KEEPSAKE_TENANT_ID")}
+	flags := map[string]*string{}
 	if cmd.dsn {
-		fs.StringVar(&o.dsn, "dsn", os.Getenv("KEEPSAKE_DSN"), "")
+		flags["--dsn"] = &o.dsn
 	}
 	if cmd.tenant {
-		fs.StringVar(&o.tenant, "tenant", os.Getenv("KEEPSAKE_TENANT_ID"), "")
+		flags["--tenant"] = &o.tenant
 	}
+	var port string
 	if name == "serve" {
 		host, ok := os.LookupEnv("KEEPSAKE_HOST")
 		if !ok {
 			host = "0.0.0.0"
 		}
-		fs.StringVar(&o.host, "host", host, "")
-		fs.Func("port", "", func(s string) error {
-			// Python's int() takes surrounding whitespace and a sign, and no base prefix.
-			n, err := strconv.Atoi(strings.TrimSpace(s))
-			if err != nil {
-				o.badPort = &s
-				return err
-			}
-			o.port = &n
-			return nil
-		})
+		o.host = host
+		flags["--host"] = &o.host
+		flags["--port"] = &port
 	}
 
-	positional, err := parse(fs, args[1:])
-	switch {
-	case errors.Is(err, flag.ErrHelp):
-		fmt.Fprint(stdout, help[name])
-		return 0
-	case o.badPort != nil:
-		return usageError(stderr, name, "argument --port: invalid int value: "+okf.PyReprString(*o.badPort))
-	case err != nil:
-		msg := err.Error()
-		if f, ok := strings.CutPrefix(msg, "flag needs an argument: -"); ok {
-			msg = "argument --" + f + ": expected one argument"
-		} else if f, ok := strings.CutPrefix(msg, "flag provided but not defined: -"); ok {
-			return usageError(stderr, "", "unrecognized arguments: "+given(args[1:], f))
+	// argparse's order: flags anywhere, -h at once, everything after -- positional,
+	// and every argument nothing consumed reported together at the end.
+	var extra []string
+	hasDirectory := false
+	positional := func(a string) {
+		if cmd.directory && !hasDirectory {
+			o.directory, hasDirectory = a, true
+		} else {
+			extra = append(extra, a)
 		}
-		return usageError(stderr, name, msg)
 	}
-	want := 0
-	if cmd.directory {
-		want = 1
-		if len(positional) == 0 {
-			return usageError(stderr, name, "the following arguments are required: directory")
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch flag, value, hasValue := strings.Cut(a, "="); {
+		case a == "--":
+			for _, p := range args[i+1:] {
+				positional(p)
+			}
+			i = len(args)
+		case a == "-h" || a == "--help":
+			fmt.Fprint(stdout, help[name])
+			return 0
+		case !isFlag(a):
+			positional(a)
+		case flags[flag] == nil:
+			extra = append(extra, a)
+		default:
+			if !hasValue {
+				if i+1 == len(args) || isFlag(args[i+1]) {
+					return usageError(stderr, name, "argument "+flag+": expected one argument")
+				}
+				i++
+				value = args[i]
+			}
+			*flags[flag] = value
+			if flag == "--port" {
+				// Python's int() takes surrounding whitespace and a sign, and no base prefix.
+				n, err := strconv.Atoi(strings.TrimSpace(value))
+				if err != nil {
+					return usageError(stderr, name, "argument --port: invalid int value: "+okf.PyReprString(value))
+				}
+				o.port = &n
+			}
 		}
-		o.directory = positional[0]
 	}
-	if len(positional) > want {
-		return usageError(stderr, "", "unrecognized arguments: "+strings.Join(positional[want:], " "))
+	if cmd.directory && !hasDirectory {
+		return usageError(stderr, name, "the following arguments are required: directory")
+	}
+	if len(extra) > 0 {
+		return usageError(stderr, "", "unrecognized arguments: "+strings.Join(extra, " "))
 	}
 
 	code, err := cmd.run(context.Background(), o, stdout, stderr)
@@ -191,15 +189,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// given is the argument as the operator typed it, dashes and all.
-func given(args []string, name string) string {
-	for _, a := range args {
-		typed, _, _ := strings.Cut(a, "=")
-		if strings.HasPrefix(a, "-") && strings.TrimLeft(typed, "-") == name {
-			return a
-		}
-	}
-	return "-" + name
+var negativeNumber = regexp.MustCompile(`^-\d+$|^-\d*\.\d+$`)
+
+// isFlag is argparse's test for an option string: a dash, and not a negative number.
+func isFlag(a string) bool {
+	return strings.HasPrefix(a, "-") && a != "-" && !negativeNumber.MatchString(a)
 }
 
 func required(value, flag, env string) (string, error) {

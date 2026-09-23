@@ -50,6 +50,9 @@ func TestUsageErrorsExitTwo(t *testing.T) {
 		{[]string{"serve", "--port", "abc"}, "keepsake serve: error: argument --port: invalid int value: 'abc'\n"},
 		{[]string{"import", "x", "--nope"}, "keepsake: error: unrecognized arguments: --nope\n"},
 		{[]string{"import", "x", "--dsn"}, "keepsake import: error: argument --dsn: expected one argument\n"},
+		{[]string{"import", "x", "--dsn", "--tenant", "t"}, "keepsake import: error: argument --dsn: expected one argument\n"},
+		{[]string{"validate", "a", "--nope", "b"}, "keepsake: error: unrecognized arguments: --nope b\n"},
+		{[]string{"validate", "--", "a", "-b"}, "keepsake: error: unrecognized arguments: -b\n"},
 	} {
 		code, _, stderr := run(t, c.args...)
 		if code != 2 || !strings.HasPrefix(stderr, "usage: keepsake") || !strings.HasSuffix(stderr, c.want) {
