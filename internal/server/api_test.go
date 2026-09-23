@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"regexp"
 	"slices"
@@ -509,5 +510,50 @@ func TestTimestampsAreSerializedAsPydanticDoes(t *testing.T) {
 		if got, _ := json.Marshal(pyTime(in)); string(got) != `"`+want+`"` {
 			t.Errorf("pyTime(%v) = %s, want %s", in, got, want)
 		}
+	}
+}
+
+// Python's Secure decision reads the scheme uvicorn's ProxyHeadersMiddleware sets.
+func TestSecureFollowsUvicornsProxyHeaderRule(t *testing.T) {
+	for _, tc := range []struct {
+		name, allow, peer, proto string
+		tls, secure              bool
+	}{
+		{"loopback proxy says https", "", "127.0.0.1:5000", "https", false, true},
+		{"ipv6 loopback proxy says https", "", "[::1]:5000", "https", false, true},
+		{"untrusted peer says https", "", "10.1.2.3:5000", "https", false, false},
+		{"everyone trusted", "*", "10.1.2.3:5000", "https", false, true},
+		{"trusted network", "192.168.0.0/16, 10.0.0.0/8", "10.1.2.3:5000", "https", false, true},
+		{"non-strict network is a literal", "10.0.0.1/8", "10.1.2.3:5000", "https", false, false},
+		{"last header wins and is stripped", "", "127.0.0.1:5000", "http| https ", false, true},
+		{"a list is not a scheme", "", "127.0.0.1:5000", "https, http", false, false},
+		{"trusted proxy downgrades tls", "", "127.0.0.1:5000", "http", true, false},
+		{"plain request", "", "127.0.0.1:5000", "", false, false},
+		{"tls without a proxy", "", "10.1.2.3:5000", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.allow == "" {
+				t.Setenv("FORWARDED_ALLOW_IPS", "")
+				os.Unsetenv("FORWARDED_ALLOW_IPS")
+			} else {
+				t.Setenv("FORWARDED_ALLOW_IPS", tc.allow)
+			}
+			r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(`{"password": "`+adminPassword+`"}`))
+			r.Header.Set("Content-Type", "application/json")
+			r.RemoteAddr = tc.peer
+			for _, p := range strings.Split(tc.proto, "|") {
+				if p != "" {
+					r.Header.Add("X-Forwarded-Proto", p)
+				}
+			}
+			if tc.tls {
+				r.TLS = &tls.ConnectionState{}
+			}
+			rec := newConsole(t).do(r)
+			wantStatus(t, rec, http.StatusNoContent)
+			if got := sessionCookie(t, rec).Secure; got != tc.secure {
+				t.Fatalf("Secure = %v, want %v: %s", got, tc.secure, rec.Header().Get("Set-Cookie"))
+			}
+		})
 	}
 }

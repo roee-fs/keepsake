@@ -11,8 +11,12 @@ import (
 	"io"
 	"log"
 	"mime"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -47,8 +51,9 @@ var (
 )
 
 type api struct {
-	cs   *store.ConceptStore
-	auth *Auth
+	cs      *store.ConceptStore
+	auth    *Auth
+	proxies proxies
 }
 
 type route struct {
@@ -75,7 +80,7 @@ var routeTable = []route{
 
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
 func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
-	h := &api{cs: cs, auth: a}
+	h := &api{cs: cs, auth: a, proxies: loadProxies()}
 	mux := http.NewServeMux()
 	for _, rt := range routeTable {
 		serve := rt.serve
@@ -332,9 +337,69 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		// Always-on Secure would break the port-forward flow this console exists for.
-		Secure: r.TLS != nil,
+		Secure: a.proxies.https(r),
 	})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// proxies is uvicorn's forwarded_allow_ips: the peers whose X-Forwarded-Proto
+// sets the scheme Python's Secure decision reads.
+type proxies struct {
+	all      bool
+	addrs    map[netip.Addr]bool
+	networks []netip.Prefix
+	literals map[string]bool
+}
+
+// loadProxies parses FORWARDED_ALLOW_IPS as uvicorn 0.53's _TrustedHosts does.
+func loadProxies() proxies {
+	v, ok := os.LookupEnv("FORWARDED_ALLOW_IPS")
+	if !ok {
+		v = "127.0.0.1,::1"
+	}
+	p := proxies{all: v == "*", addrs: map[netip.Addr]bool{}, literals: map[string]bool{}}
+	for _, h := range strings.Split(v, ",") {
+		h = strings.TrimSpace(h)
+		if strings.Contains(h, "/") {
+			// Python's ip_network is strict: a network with host bits set is a literal.
+			if n, err := netip.ParsePrefix(h); err == nil && n == n.Masked() {
+				p.networks = append(p.networks, n)
+				continue
+			}
+		} else if a, err := netip.ParseAddr(h); err == nil {
+			p.addrs[a] = true
+			continue
+		}
+		p.literals[h] = true
+	}
+	return p
+}
+
+func (p proxies) trusts(host string) bool {
+	if p.all {
+		return true
+	}
+	if host == "" {
+		return false
+	}
+	a, err := netip.ParseAddr(host)
+	if err != nil {
+		return p.literals[host]
+	}
+	return p.addrs[a] || slices.ContainsFunc(p.networks, func(n netip.Prefix) bool { return n.Contains(a) })
+}
+
+// https reports whether the request's scheme is https after ProxyHeadersMiddleware.
+func (p proxies) https(r *http.Request) bool {
+	https := r.TLS != nil
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if vs := r.Header.Values("X-Forwarded-Proto"); len(vs) > 0 && p.trusts(host) {
+		switch proto := strings.TrimSpace(vs[len(vs)-1]); proto {
+		case "http", "https", "ws", "wss":
+			https = proto == "https"
+		}
+	}
+	return https
 }
 
 func (a *api) logout(w http.ResponseWriter, r *http.Request) {
