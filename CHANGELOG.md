@@ -76,9 +76,11 @@ test enforces it and the release workflow refuses otherwise.
 - A rollback to 0.1.0 MUST first take the schema back to revision 0002, as the
   owner role. 0.1.0's startup check rejects the `admin_read` policy, and
   `helm rollback` does not revert a migration. This release's image has no
-  Python, so run Alembic's downgrade by hand in one transaction:
-  `DROP POLICY admin_read ON okf.concept; DROP POLICY admin_read ON
-  okf.concept_revision; UPDATE okf.alembic_version SET version_num = '0002';`.
+  Python, so run Alembic's downgrade by hand, with `okf` replaced by your
+  `KEEPSAKE_SCHEMA` if you set one:
+  `BEGIN; DROP POLICY admin_read ON okf.concept; DROP POLICY admin_read ON
+  okf.concept_revision; UPDATE okf.alembic_version SET version_num = '0002';
+  COMMIT;`.
 
 ## 0.1.0 — 2026-09-15
 
