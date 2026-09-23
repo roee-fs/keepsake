@@ -462,12 +462,13 @@ func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
 // fn failed at commit instead of succeeding.
 func TestScopeCommitsAfterTheAcquireTimeoutElapses(t *testing.T) {
 	s := openApp(t)
-	restore := store.SetAcquireTimeout(20 * time.Millisecond)
+	warm(t, s)
+	restore := store.SetAcquireTimeout(100 * time.Millisecond)
 	defer restore()
 
 	tenant := uuid.New()
 	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 		return insert(ctx, tx, tenant, "slow/one")
 	})
 	if err != nil {
@@ -534,7 +535,8 @@ func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 // exactly what would misclassify this without the acquire-only guard.
 func TestIsUnavailableDoesNotClassifyAnUnrelatedDeadline(t *testing.T) {
 	s := openApp(t)
-	shortCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	warm(t, s)
+	shortCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 	defer cancel()
 
 	err := s.Scope(shortCtx, uuid.New(), func(tx pgx.Tx) error {
@@ -601,5 +603,13 @@ func TestAScopedPointReadKeepsTheTenantIndex(t *testing.T) {
 	}
 	if joined := strings.Join(plan, "\n"); !strings.Contains(joined, "Index Cond: ((tenant_id = ") {
 		t.Fatal(joined)
+	}
+}
+
+// warm opens the pool's connection first, so a short timeout bounds the step under test, not the dial.
+func warm(t *testing.T, s *store.Store) {
+	t.Helper()
+	if err := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil }); err != nil {
+		t.Fatal(err)
 	}
 }
