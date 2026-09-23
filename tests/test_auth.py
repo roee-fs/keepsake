@@ -66,6 +66,15 @@ def test_admin_password_is_fatal_when_missing_and_ui_enabled(
         admin_password()
 
 
+@pytest.mark.parametrize("ending", ["\n", "\r\n"])
+def test_a_trailing_newline_in_the_configured_password_is_ignored(
+    monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    """`echo pw | base64` stores a newline that no password input can submit."""
+    monkeypatch.setenv("KEEPSAKE_ADMIN_PASSWORD", PASSWORD + ending)
+    assert Auth(admin_password()).check_password(PASSWORD)
+
+
 def test_admin_password_is_fine_when_missing_and_ui_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

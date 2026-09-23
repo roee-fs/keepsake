@@ -31,7 +31,8 @@ def ui_enabled() -> bool:
 
 def admin_password() -> str:
     """Read KEEPSAKE_ADMIN_PASSWORD, refusing to start if the console is on without one."""
-    password = os.environ.get("KEEPSAKE_ADMIN_PASSWORD", "")
+    # A password input cannot submit a newline, and `echo pw | base64` appends one.
+    password = os.environ.get("KEEPSAKE_ADMIN_PASSWORD", "").rstrip("\r\n")
     if ui_enabled() and not password:
         raise MisconfiguredAdmin(
             "KEEPSAKE_ADMIN_PASSWORD is unset but the admin console is enabled"
@@ -44,11 +45,11 @@ class Auth:
 
     def __init__(self, password: str) -> None:
         self._password = password
-        # Derived rather than a second secret: changing the password changes the key,
-        # so every outstanding cookie stops verifying.
-        self._key = hmac.new(
-            _utf8(password), b"keepsake-session", hashlib.sha256
-        ).digest()
+        # Derived, so changing the password revokes every cookie. scrypt, because a
+        # leaked cookie lets anyone test password guesses offline at the key's cost.
+        self._key = hashlib.scrypt(
+            _utf8(password), salt=b"keepsake-session", n=2**14, r=8, p=1, dklen=32
+        )
 
     def check_password(self, supplied: str) -> bool:
         # compare_digest, not ==: == leaks the matching prefix length through timing.
