@@ -226,6 +226,12 @@ func NewMCPHandler(t *Tools) http.Handler {
 	})
 	h := pythonWire(sdk)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
+		if r.ContentLength > mcp.DefaultMaxRequestBodyBytes {
+			tooLarge(w)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, mcp.DefaultMaxRequestBodyBytes)
 		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && modernEra(r) {
 			methodNotAllowed(w, r)
 			return
@@ -264,6 +270,13 @@ func acceptsJSON(accept []string) bool {
 // handshakeVersions route a request to Python's legacy transport; any other
 // mcp-protocol-version header value goes to its modern one.
 var handshakeVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+
+// tooLarge is Starlette's bare 413 for a body over the limit.
+func tooLarge(w http.ResponseWriter) {
+	w.Header()["Content-Type"] = nil
+	w.WriteHeader(http.StatusRequestEntityTooLarge)
+	io.WriteString(w, "Request body too large")
+}
 
 // methodNotAllowed answers a method other than POST as whichever Python transport
 // the request reaches. A legacy GET is left to go-sdk: Python streams it forever.

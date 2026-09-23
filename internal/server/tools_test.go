@@ -850,3 +850,42 @@ func TestAContentTypeRefusalIsPythons(t *testing.T) {
 		t.Fatalf("%d %v %q", resp.StatusCode, resp.Header, body)
 	}
 }
+
+// countingReader serves n bytes of a JSON string body and counts what was read.
+type countingReader struct{ n, read int64 }
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	if c.read >= c.n {
+		return 0, io.EOF
+	}
+	k := min(int64(len(p)), c.n-c.read)
+	for i := range p[:k] {
+		p[i] = ' '
+	}
+	c.read += k
+	return int(k), nil
+}
+
+// Python's RequestBodyLimitMiddleware answers a body over 4 MiB with a bare 413, and
+// the handler MUST stop reading at the limit rather than buffer the whole body.
+func TestAnOversizedBodyIsRefusedAtTheLimit(t *testing.T) {
+	h := NewMCPHandler(newTools(t))
+	for _, declared := range []bool{false, true} {
+		body := &countingReader{n: mcp.DefaultMaxRequestBodyBytes + 1<<20}
+		req := httptest.NewRequest(http.MethodPost, "/", body)
+		req.ContentLength = -1
+		if declared {
+			req.ContentLength = body.n
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if set := rec.Header().Values("Content-Type"); rec.Code != http.StatusRequestEntityTooLarge || len(set) > 0 || rec.Body.String() != "Request body too large" {
+			t.Errorf("declared=%v: %d %v %q", declared, rec.Code, rec.Header(), rec.Body)
+		}
+		if body.read > mcp.DefaultMaxRequestBodyBytes+1 {
+			t.Errorf("declared=%v: read %d bytes, past the %d limit", declared, body.read, mcp.DefaultMaxRequestBodyBytes)
+		}
+	}
+}
