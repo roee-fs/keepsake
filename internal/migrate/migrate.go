@@ -9,6 +9,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -105,6 +106,9 @@ func Up(ctx context.Context, dsn, schema string) error {
 	err = tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
+	}
+	if current != "" && !slices.ContainsFunc(migrations, func(m migration) bool { return m.revision == current }) {
+		return fmt.Errorf("Can't locate revision identified by '%s'", current)
 	}
 
 	f := fields{

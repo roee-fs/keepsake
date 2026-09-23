@@ -494,3 +494,20 @@ func TestUpIsIdempotentAtHead(t *testing.T) {
 		t.Fatalf("version_num = %s, want %s", version, Head())
 	}
 }
+
+// A database a newer release migrated is refused, as Alembic refuses it.
+func TestUpRefusesARevisionItDoesNotKnow(t *testing.T) {
+	ctx := context.Background()
+	schema := scratchSchema(t, "okf_newer")
+	if err := Up(ctx, db.OwnerDSN, schema); err != nil {
+		t.Fatal(err)
+	}
+	conn := connect(t, db.OwnerDSN)
+	if _, err := conn.Exec(ctx, fmt.Sprintf("UPDATE %s.alembic_version SET version_num = '0099'", schema)); err != nil {
+		t.Fatal(err)
+	}
+	err := Up(ctx, db.OwnerDSN, schema)
+	if want := "Can't locate revision identified by '0099'"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
