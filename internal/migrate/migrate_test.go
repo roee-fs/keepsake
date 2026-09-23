@@ -47,6 +47,24 @@ func connect(t *testing.T, dsn string) *pgx.Conn {
 	return conn
 }
 
+// scratchSchema drops schema when the test ends, so -count=2 and the public-namespace
+// check see only okf.
+func scratchSchema(t *testing.T, schema string) string {
+	t.Helper()
+	t.Cleanup(func() {
+		conn, err := pgx.Connect(context.Background(), db.OwnerDSN)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close(context.Background())
+		if _, err := conn.Exec(context.Background(), "DROP SCHEMA IF EXISTS "+schema+" CASCADE"); err != nil {
+			t.Error(err)
+		}
+	})
+	return schema
+}
+
 // appConn connects as the app role, enforced unprivileged: no test can take the
 // DSN without the check, the way 2de90d2:tests/conftest.py's pg_dsn fixture is built.
 func appConn(t *testing.T) *pgx.Conn {
@@ -355,7 +373,7 @@ func TestUpRejectsAnInvalidSchemaName(t *testing.T) {
 // migration half: the ConceptStore/Store half has no Go port yet (a later task).
 func TestANonDefaultSchemaMigrates(t *testing.T) {
 	ctx := context.Background()
-	if err := Up(ctx, db.OwnerDSN, "okf_elsewhere"); err != nil {
+	if err := Up(ctx, db.OwnerDSN, scratchSchema(t, "okf_elsewhere")); err != nil {
 		t.Fatal(err)
 	}
 	conn := connect(t, db.OwnerDSN)
@@ -391,7 +409,7 @@ func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
 
 func upgradeFrom(t *testing.T, left string) {
 	ctx := context.Background()
-	schema := "okf_from_" + left
+	schema := scratchSchema(t, "okf_from_"+left)
 	conn := connect(t, db.OwnerDSN)
 
 	tx, err := conn.Begin(ctx)
@@ -449,7 +467,7 @@ func upgradeFrom(t *testing.T, left string) {
 // change nothing.
 func TestUpIsIdempotentAtHead(t *testing.T) {
 	ctx := context.Background()
-	schema := "okf_idempotent"
+	schema := scratchSchema(t, "okf_idempotent")
 	if err := Up(ctx, db.OwnerDSN, schema); err != nil {
 		t.Fatal(err)
 	}
