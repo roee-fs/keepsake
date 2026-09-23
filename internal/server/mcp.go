@@ -194,7 +194,10 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler)
 
 // NewMCPHandler serves the seven okf tools over stateless streamable HTTP with JSON responses.
 func NewMCPHandler(t *Tools) http.Handler {
-	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, nil)
+	// Python advertises tools without list-change notifications, and no logging.
+	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, &mcp.ServerOptions{
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+	})
 	tools := toolDefinitions()
 	for _, tool := range tools {
 		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name]))

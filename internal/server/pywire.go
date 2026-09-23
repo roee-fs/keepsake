@@ -20,6 +20,16 @@ func modernEra(r *http.Request) bool {
 
 // shapes rewrite a successful result into what Python's mcp_types models serialise.
 var shapes = map[string]func(result *okf.Map, modern bool){
+	"initialize": func(m *okf.Map, _ bool) {
+		m.Set("capabilities", obj("experimental", okf.NewMap(), "tools", obj("listChanged", false)))
+	},
+	"server/discover": func(m *okf.Map, _ bool) {
+		m.Set("cacheScope", "private")
+		m.Set("capabilities", obj("tools", obj("listChanged", false)))
+		m.Set("resultType", "complete")
+		m.Set("supportedVersions", []string{"2026-07-28"})
+		m.Set("ttlMs", 0)
+	},
 	"tools/list": func(m *okf.Map, modern bool) {
 		if !modern {
 			return
@@ -28,14 +38,27 @@ var shapes = map[string]func(result *okf.Map, modern bool){
 		m.Set("resultType", "complete")
 		m.Set("ttlMs", 0)
 		tools, _ := m.Get("tools")
-		for _, t := range tools.([]any) {
-			tool := t.(*okf.Map)
+		for i, t := range tools.([]any) {
+			tool := pyModel(t.(*okf.Map))
+			tools.([]any)[i] = tool
 			// Modern tools carry each schema as declared; only the legacy model reorders it.
 			for _, k := range []string{"inputSchema", "outputSchema"} {
 				if s, ok := tool.Get(k); ok {
 					tool.Set(k, first(s.(*okf.Map), "type", "properties", "required"))
 				}
 			}
+		}
+	},
+	"tools/call": func(m *okf.Map, modern bool) {
+		if _, ok := m.Get("isError"); !ok {
+			m.Set("isError", false)
+		}
+		if modern {
+			m.Set("resultType", "complete")
+		}
+		content, _ := m.Get("content")
+		for i, c := range content.([]any) {
+			content.([]any)[i] = pyModel(c.(*okf.Map))
 		}
 	},
 }

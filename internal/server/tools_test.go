@@ -710,3 +710,11 @@ func TestModernToolsListIsPythons(t *testing.T) {
 		}
 	}
 }
+
+func TestSuccessWireIsPythons(t *testing.T) {
+	for name, r := range wireResults(t) {
+		if !reflect.DeepEqual(tokens(r[1]), tokens(r[0])) {
+			t.Errorf("%s:\n got %s\nwant %s", name, r[1], r[0])
+		}
+	}
+}
