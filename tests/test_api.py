@@ -111,6 +111,14 @@ def test_a_bad_password_is_rejected_and_sets_no_cookie(client: TestClient) -> No
     assert COOKIE_NAME not in response.cookies
 
 
+def test_an_oversized_login_body_is_refused_before_it_is_read(
+    client: TestClient,
+) -> None:
+    """The one unauthenticated route MUST NOT buffer whatever a caller sends."""
+    response = client.post("/api/session", json={"password": "x" * 100_000})
+    assert response.status_code == 413
+
+
 def test_a_good_password_sets_an_httponly_strict_cookie(client: TestClient) -> None:
     response = client.post("/api/session", json={"password": PASSWORD})
     assert response.status_code == 204
@@ -147,6 +155,16 @@ def test_docs_ui_is_served_behind_the_session_guard(logged_in: TestClient) -> No
     response = logged_in.get("/api/docs")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+def test_mcp_refuses_a_browser_origin(client: TestClient) -> None:
+    """A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows."""
+    response = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        headers={"Accept": "application/json", "Origin": "http://evil.example:8000"},
+    )
+    assert response.status_code == 403
 
 
 def test_tenants_lists_every_tenant_with_a_concept(

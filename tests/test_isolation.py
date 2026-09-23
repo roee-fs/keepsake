@@ -211,3 +211,35 @@ def test_the_admin_guc_does_not_widen_a_write(store: Store) -> None:
             "SELECT path, title FROM okf.concept WHERE path = ANY(%s)", (paths,)
         ).fetchall()
     assert dict(titles) == {paths[0]: "claimed", paths[1]: ""}
+
+
+def test_a_session_default_admin_guc_does_not_widen_a_scoped_read(
+    store: Store, pg_dsn: str
+) -> None:
+    """A role, database or DSN default of okf.admin=on would open admin_read to /mcp."""
+    one, two = uuid.uuid4(), uuid.uuid4()
+    paths = [f"ambient/{one}", f"ambient/{two}"]
+    for tenant, path in zip((one, two), paths, strict=True):
+        with store.scope(tenant) as c:
+            _insert(c, tenant, path)
+
+    ambient = Store(f"{pg_dsn}?options=-c%20okf.admin%3Don")
+    try:
+        with ambient.scope(one) as c:
+            assert _owners(c, paths) == {one}
+    finally:
+        ambient.close()
+
+
+def test_a_scoped_point_read_keeps_the_tenant_index(store: Store) -> None:
+    """admin_read is ORed into every SELECT; a bare GUC test there hid tenant_id."""
+    with store.scope(uuid.uuid4()) as c:
+        # A table this small would otherwise be scanned whatever the policy says.
+        c.execute("SET LOCAL enable_seqscan = off")
+        plan = "\n".join(
+            row[0]
+            for row in c.execute(
+                "EXPLAIN SELECT path FROM okf.concept WHERE path = 'x'"
+            ).fetchall()
+        )
+    assert "Index Cond: ((tenant_id = " in plan, plan
