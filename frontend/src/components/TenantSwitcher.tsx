@@ -27,7 +27,8 @@ export function TenantSwitcher() {
       value={tenant ?? ALL_TENANTS}
       onChange={(event) => {
         const value = event.target.value || undefined
-        void navigate({ to: '.', search: (prev) => ({ ...prev, tenant: value }) })
+        // Another tenant's page offset can land past this tenant's last page.
+        void navigate({ to: '.', search: (prev) => ({ ...prev, tenant: value, offset: undefined }) })
       }}
     >
       <option value={ALL_TENANTS}>All tenants</option>

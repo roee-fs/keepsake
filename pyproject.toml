@@ -11,8 +11,8 @@ package = false
 dev = [
     "pytest>=9.1.1",
     "ruamel-yaml>=0.19.1",
-    "ruff>=0.16.7",
-    "ty>=0.0.81",
+    "ruff>=0.16.8",
+    "ty>=0.0.82",
 ]
 
 [tool.pytest.ini_options]
