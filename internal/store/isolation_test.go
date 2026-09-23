@@ -27,9 +27,8 @@ import (
 )
 
 var (
-	db   *pgtest.DB
-	A, B = uuid.New(), uuid.New()
-	ctx  = context.Background()
+	db  *pgtest.DB
+	ctx = context.Background()
 )
 
 // probeAttempts is enough acquisitions to cycle any plausible pool; exceeding it
@@ -125,6 +124,10 @@ func probeUntilScopedConnectionReturns(t *testing.T, s *store.Store, scoped map[
 }
 
 func TestReadIsolation(t *testing.T) {
+	// Fresh every run, not a package-level fixed pair: TestMain's database is
+	// never reset between `go test -count=N` runs, so a shared A would collide
+	// with the literal path a repeat run inserts under it.
+	A, B := uuid.New(), uuid.New()
 	s := openApp(t)
 	err := s.Scope(ctx, A, func(tx pgx.Tx) error {
 		if err := insert(ctx, tx, A, "a/one"); err != nil {
@@ -164,6 +167,7 @@ func TestReadIsolation(t *testing.T) {
 // entirely is not that defect: Postgres then applies the USING expression to new
 // rows, which is the same constraint.
 func TestCannotInsertForAnotherTenant(t *testing.T) {
+	A, B := uuid.New(), uuid.New()
 	s := openApp(t)
 	scoped := map[uint32]bool{}
 	err := s.Scope(ctx, A, func(tx pgx.Tx) error {
@@ -182,6 +186,7 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 // tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
 // be right for one query shape and wrong for another.
 func TestIsolationHoldsForEveryReadShape(t *testing.T) {
+	A, B := uuid.New(), uuid.New()
 	s := openApp(t)
 	cs := store.NewConceptStore(s)
 	if _, _, err := cs.Create(ctx, A, okf.Concept{
@@ -444,11 +449,12 @@ func TestIsUnavailable(t *testing.T) {
 	restoreLogin()
 
 	s2 := openApp(t)
-	dupErr := s2.Scope(ctx, A, func(tx pgx.Tx) error {
-		if err := insert(ctx, tx, A, "dup/path"); err != nil {
+	dup := uuid.New()
+	dupErr := s2.Scope(ctx, dup, func(tx pgx.Tx) error {
+		if err := insert(ctx, tx, dup, "dup/path"); err != nil {
 			return err
 		}
-		return insert(ctx, tx, A, "dup/path")
+		return insert(ctx, tx, dup, "dup/path")
 	})
 	if code := pgErrCode(t, dupErr); code != "23505" {
 		t.Fatalf("code = %s, want unique_violation (23505)", code)
