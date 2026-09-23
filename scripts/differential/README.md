@@ -25,16 +25,21 @@ MUST be free.
 for s in $(seq 1 20); do uv run python scripts/differential/run.py $s || break; done
 ```
 
-Each seed runs twice, once per MCP protocol era: `legacy` (initialize, then
-2025-11-25) and `2026-07-28`. Each pass drops and re-migrates `okf_py` (Python
-`migrate`) and `okf_go` (Go `migrate`), starts both servers on one tenant, and then:
+Each seed runs four passes, each from an empty database: the Python MCP client in
+`legacy` mode and in `auto` mode (which negotiates 2026-07-28), and the go-sdk client
+(`goclient/`) at its default version and at 2025-11-25. Each pass drops and
+re-migrates `okf_py` (Python `migrate`) and `okf_go` (Go `migrate`), starts both
+servers on one tenant, and then:
 
-- sends 2,000 seeded tool calls to both through the MCP client pinned to that
-  era, and compares `isError`, the structured content (key order exact, floats
-  with `rel_tol=1e-6`, versions exact) and error text;
-- compares each call's raw JSON-RPC response, envelope and key order included;
-- compares the protocol surface: tools/list, initialize, server/discover, header
-  checks, bad Accept, parse errors, batches, notifications, GET and DELETE;
+- sends 2,000 seeded tool calls to both through that client, and compares
+  `isError`, the structured content (key order exact, floats with `rel_tol=1e-6`,
+  versions exact) and error text;
+- for the Python client, compares each call's raw JSON-RPC response, envelope and
+  key order included;
+- in the first pass, compares the protocol surface: tools/list, initialize,
+  server/discover, notifications, Accept and Content-Type refusals, other HTTP
+  methods, and malformed or unsupported requests (divergence 11: status and
+  JSON-RPC code only);
 - calls every `/api` route with good and bad parameters and compares status codes
   and parsed bodies;
 - exports both schemas with both CLIs and runs `diff -r` over the four bundles.
