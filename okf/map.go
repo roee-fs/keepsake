@@ -46,25 +46,55 @@ func (m *Map) Len() int { return len(m.keys) }
 
 func (m *Map) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer
+	if err := m.writeJSON(&b); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func (m *Map) writeJSON(b *bytes.Buffer) error {
 	b.WriteByte('{')
 	for i, k := range m.keys {
 		if i > 0 {
 			b.WriteByte(',')
 		}
-		kb, err := json.Marshal(k)
-		if err != nil {
-			return nil, err
+		if err := writeJSON(b, k); err != nil {
+			return err
 		}
-		vb, err := json.Marshal(m.vals[k])
-		if err != nil {
-			return nil, err
-		}
-		b.Write(kb)
 		b.WriteByte(':')
-		b.Write(vb)
+		if err := writeJSON(b, m.vals[k]); err != nil {
+			return err
+		}
 	}
 	b.WriteByte('}')
-	return b.Bytes(), nil
+	return nil
+}
+
+// writeJSON writes v into b, recursing into child maps and lists rather than re-marshalling them.
+func writeJSON(b *bytes.Buffer, v any) error {
+	switch v := v.(type) {
+	case *Map:
+		if v != nil {
+			return v.writeJSON(b)
+		}
+	case []any:
+		if v != nil {
+			b.WriteByte('[')
+			for i, x := range v {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				if err := writeJSON(b, x); err != nil {
+					return err
+				}
+			}
+			b.WriteByte(']')
+			return nil
+		}
+	}
+	j, err := json.Marshal(v)
+	b.Write(j)
+	return err
 }
 
 // UnmarshalJSON walks tokens so that key order survives; a map[string]any would lose it.

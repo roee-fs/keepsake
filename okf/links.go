@@ -7,19 +7,14 @@ import (
 )
 
 // pySpace is Python's str.isspace() set, which re's \s matches for str patterns.
-const pySpace = `[\t\n\v\f\r \x1c-\x1f\x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]`
+const pySpace = "\t\n\v\f\r \x1c\x1d\x1e\x1f\u0085\u00a0\u1680" +
+	"\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a" +
+	"\u2028\u2029\u202f\u205f\u3000"
 
-// isPySpace reports whether r is in the same set as pySpace, for use with strings.TrimFunc.
-func isPySpace(r rune) bool {
-	switch r {
-	case '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000:
-		return true
-	}
-	return (r >= 0x1c && r <= 0x1f) || (r >= 0x2000 && r <= 0x200a)
-}
+func isPySpace(r rune) bool { return strings.ContainsRune(pySpace, r) }
 
 var (
-	link     = regexp.MustCompile(`^\[[^\]]*\]\(` + pySpace + `*([^)\t\n\v\f\r \x1c-\x1f\x{85}\x{a0}\x{1680}\x{2000}-\x{200a}\x{2028}\x{2029}\x{202f}\x{205f}\x{3000}]*)(?:` + pySpace + `+[^)]*)?` + pySpace + `*\)`)
+	link     = regexp.MustCompile(`^\[[^\]]*\]\([` + pySpace + `]*([^)` + pySpace + `]*)(?:[` + pySpace + `]+[^)]*)?[` + pySpace + `]*\)`)
 	external = regexp.MustCompile(`(?i)^(?:[a-z][a-z0-9+.-]*://|(?:mailto|tel):|//)`)
 )
 

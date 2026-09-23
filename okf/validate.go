@@ -10,12 +10,7 @@ import (
 // holding one would be overwritten on export and skipped on the way back in.
 var ReservedPaths = map[string]bool{"index": true, "log": true}
 
-// Every limit here is a Postgres one, refused in advance so the agent gets a
-// sentence it can act on rather than a driver error the transport reports as a
-// protocol failure. All of them are counted in bytes, because every limit they
-// stand in for is: a btree entry caps at 2704 bytes, the primary key is
-// (tenant_id, path), and the generated search column caps a tsvector's lexemes
-// at roughly half of MaxBody.
+// Postgres limits in bytes, refused in advance so the agent gets a sentence instead of a driver error.
 const (
 	MaxPath  = 1024
 	MaxBody  = 256 * 1024

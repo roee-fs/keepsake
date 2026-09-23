@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -96,26 +97,18 @@ func scalarText(v any) (string, bool, error) {
 
 // isLeaf is ruamel's best_style: a collection whose children are all scalars is flow style.
 func isLeaf(v any) bool {
-	scalar := func(x any) bool {
+	collection := func(x any) bool {
 		switch x.(type) {
 		case []any, *Map:
-			return false
+			return true
 		}
-		return true
+		return false
 	}
 	switch v := v.(type) {
 	case []any:
-		for _, x := range v {
-			if !scalar(x) {
-				return false
-			}
-		}
+		return !slices.ContainsFunc(v, collection)
 	case *Map:
-		for _, k := range v.keys {
-			if !scalar(v.vals[k]) {
-				return false
-			}
-		}
+		return !slices.ContainsFunc(v.keys, func(k string) bool { return collection(v.vals[k]) })
 	}
 	return true
 }
@@ -380,11 +373,8 @@ func analyze(s string) analysis {
 		if isBreak(ch) {
 			lineBreaks = true
 		}
-		if !(ch == '\n' || ch >= 0x20 && ch <= 0x7E) {
-			unicode := ch == 0x85 || ch >= 0xA0 && ch <= 0xD7FF || ch >= 0xE000 && ch <= 0xFFFD || ch >= 0x10000 && ch <= 0x10FFFF
-			if !unicode || ch == 0xFEFF {
-				special = true
-			}
+		if ch != '\n' && ch != 0x85 && !isPrintable(ch) || ch == 0xFEFF {
+			special = true
 		}
 		switch {
 		case ch == ' ':
@@ -519,8 +509,12 @@ func needsEscape(ch rune) bool {
 	case '"', '\\', 0x85, 0x2028, 0x2029, 0xFEFF:
 		return true
 	}
-	printable := ch >= 0x20 && ch <= 0x7E || ch >= 0xA0 && ch <= 0xD7FF || ch >= 0xE000 && ch <= 0xFFFD || ch >= 0x10000 && ch <= 0x10FFFF
-	return !printable
+	return !isPrintable(ch)
+}
+
+// isPrintable is ruamel's printable set without its line breaks.
+func isPrintable(ch rune) bool {
+	return ch >= 0x20 && ch <= 0x7E || ch >= 0xA0 && ch <= 0xD7FF || ch >= 0xE000 && ch <= 0xFFFD || ch >= 0x10000 && ch <= 0x10FFFF
 }
 
 func (e *emitter) writeDoubleQuoted(t []rune, split bool) {
@@ -582,12 +576,13 @@ func (e *emitter) writeDoubleQuoted(t []rune, split bool) {
 // canFoldAt is ruamel's test for breaking a double-quoted line without a trailing backslash.
 // Python's IndexError and ValueError there both mean a backslash is needed.
 func canFoldAt(t []rune, start, end int) bool {
-	space := indexRune(t, ' ', end, len(t))
+	space := slices.Index(t[end:], ' ')
 	if space < 0 {
 		return false
 	}
-	if nl := indexRune(t, '\n', end, space); nl >= 0 {
-		space = nl
+	space += end
+	if nl := slices.Index(t[end:space], '\n'); nl >= 0 {
+		space = end + nl
 	}
 	if space+1 >= len(t) {
 		return false
@@ -600,13 +595,4 @@ func canFoldAt(t []rune, start, end int) bool {
 		t[space+1] != ' ' && t[space+1] != '\n' &&
 		!(t[end-1] == ' ' && t[end] == ' ') &&
 		start != end
-}
-
-func indexRune(t []rune, r rune, from, to int) int {
-	for i := from; i < to; i++ {
-		if t[i] == r {
-			return i
-		}
-	}
-	return -1
 }
