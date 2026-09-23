@@ -548,8 +548,10 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	}
 }
 
-// No handshake, no session header, no SSE: what a Service in front of it sends.
-func TestTheEndpointAnswersAPlainJSONPost(t *testing.T) {
+// postToolsList sends tools/list the way a Service in front of the pod does: no
+// handshake, no session header, no SSE. It returns the raw JSON-RPC result.
+func postToolsList(t *testing.T) map[string]json.RawMessage {
+	t.Helper()
 	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
 	defer srv.Close()
 	req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(`{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}`))
@@ -560,19 +562,50 @@ func TestTheEndpointAnswersAPlainJSONPost(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var body struct {
-		Result struct{ Tools []struct{ Name string } }
-	}
+	var body struct{ Result map[string]json.RawMessage }
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("status %d: %v", resp.StatusCode, err)
 	}
+	return body.Result
+}
+
+func TestTheEndpointAnswersAPlainJSONPost(t *testing.T) {
+	var tools []struct{ Name string }
+	if err := json.Unmarshal(postToolsList(t)["tools"], &tools); err != nil {
+		t.Fatal(err)
+	}
 	var names []string
-	for _, tool := range body.Result.Tools {
+	for _, tool := range tools {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
 	if !reflect.DeepEqual(names, toolNames) {
-		t.Fatalf("status %d, advertised %v", resp.StatusCode, names)
+		t.Fatalf("advertised %v", names)
+	}
+}
+
+// What go-sdk puts on the wire, not what toolDefinitions returns: the SDK sorted
+// the tools by name and added cacheScope "public", which Python never sends.
+func TestTheWireToolListingIsPythons(t *testing.T) {
+	result := postToolsList(t)
+	if keys := slices.Sorted(maps.Keys(result)); !reflect.DeepEqual(keys, []string{"tools"}) {
+		t.Fatalf("result keys = %v, want exactly [tools]", keys)
+	}
+	var tools []struct{ Name string }
+	if err := json.Unmarshal(result["tools"], &tools); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tool := range tools {
+		names = append(names, tool.Name)
+	}
+	want := []string{"okf_list", "okf_search", "okf_grep", "okf_read", "okf_create", "okf_update", "okf_relate"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("advertised %v, want %v", names, want)
+	}
+	golden, _ := os.ReadFile("testdata/tools.json")
+	if !jsonEqualOrdered(result["tools"], golden) {
+		t.Fatalf("wire tools drifted from testdata/tools.json:\n%s", result["tools"])
 	}
 }
 

@@ -76,6 +76,13 @@ var handlers = map[string]handler{
 	},
 }
 
+// toolList is tools/list as Python answers it: declaration order, and no cacheScope
+// or ttlMs, which go-sdk's ListToolsResult always sends.
+type toolList struct {
+	mcp.ResultBase
+	Tools []*mcp.Tool `json:"tools"`
+}
+
 // failed is a tool error, not a protocol error: the agent sees it and can correct itself.
 func failed(msg string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: msg}}}
@@ -187,11 +194,15 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler)
 // NewMCPHandler serves the seven okf tools over stateless streamable HTTP with JSON responses.
 func NewMCPHandler(t *Tools) http.Handler {
 	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, nil)
-	for _, tool := range toolDefinitions() {
+	tools := toolDefinitions()
+	for _, tool := range tools {
 		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name]))
 	}
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if method == "tools/list" {
+				return &toolList{Tools: tools}, nil
+			}
 			if call, ok := req.(*mcp.CallToolRequest); ok && handlers[call.Params.Name] == nil {
 				// An error result, not a protocol error: an agent can correct itself from a
 				// tool result and cannot from a transport failure.
