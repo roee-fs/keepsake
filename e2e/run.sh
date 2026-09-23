@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=keepsake-e2e
 # Never the caller's kubeconfig: every command here must reach this cluster and no
 # other. Everything below inherits it, pytest's own kubectl calls included.
-export KUBECONFIG="${TMPDIR:-/tmp}/keepsake-e2e-kubeconfig"
+export KUBECONFIG="${TMPDIR:-/tmp}/$CLUSTER-kubeconfig"
 
 # Set KEEPSAKE_E2E_KEEP=1 to leave the cluster up for debugging; $KUBECONFIG reaches it.
 teardown() {
@@ -22,8 +22,7 @@ teardown() {
     done
   fi
   if [[ -z "${KEEPSAKE_E2E_KEEP:-}" ]]; then
-    kind delete cluster --name "$CLUSTER"
-    rm -f "$KUBECONFIG"
+    CLUSTER=$CLUSTER bash e2e/down.sh
   fi
 }
 # INT and TERM as well as EXIT: bash runs an EXIT trap after a signal handler, but
