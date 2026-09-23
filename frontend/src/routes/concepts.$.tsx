@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { createFileRoute, Link, useSearch } from '@tanstack/react-router'
 import Markdown from 'react-markdown'
 import { conceptDetailConceptsPathGet } from '../client'
+import { BodyLink } from '../components/BodyLink'
 import { Frontmatter } from '../components/Frontmatter'
 import { RevisionList } from '../components/RevisionList'
 import { HttpError } from '../lib/session'
@@ -100,7 +101,17 @@ function Detail() {
       {/* Raw HTML stays off: this body is agent-written, so the markdown AST is
           the trust boundary, not a styling choice. */}
       <div className="markdown max-w-[68ch]">
-        <Markdown>{concept.body}</Markdown>
+        <Markdown
+          components={{
+            a: ({ href, title, children }) => (
+              <BodyLink href={href} title={title} source={path} tenant={tenant}>
+                {children}
+              </BodyLink>
+            ),
+          }}
+        >
+          {concept.body}
+        </Markdown>
       </div>
 
       <div>
