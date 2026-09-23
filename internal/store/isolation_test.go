@@ -23,6 +23,7 @@ import (
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/okf"
 )
 
 var (
@@ -177,9 +178,52 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 	probeUntilScopedConnectionReturns(t, s, scoped)
 }
 
-// TestIsolationHoldsForEveryReadShape is deferred: it needs ConceptStore's search,
-// grep and backlinks queries (tests/test_isolation.py::test_isolation_holds_for_every_read_shape),
-// which do not exist in Go yet. Owned by Tasks 8-9.
+// TestIsolationHoldsForEveryReadShape ports
+// tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
+// be right for one query shape and wrong for another.
+func TestIsolationHoldsForEveryReadShape(t *testing.T) {
+	s := openApp(t)
+	cs := store.NewConceptStore(s)
+	if _, _, err := cs.Create(ctx, A, okf.Concept{
+		Path: "x/y", Type: "Concept", Title: "secret", Body: "tenant a only",
+		Links: []string{"x/z"},
+	}, "seed"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The positive control: every B assertion below also holds if nothing was written.
+	if c, err := cs.Read(ctx, A, "x/y"); err != nil || c == nil {
+		t.Fatalf("Read(A, x/y) = %v, %v, want a concept", c, err)
+	}
+	if list, err := cs.List(ctx, A, "x/"); err != nil || !reflect.DeepEqual(list, []store.PathType{{Path: "x/y", Type: "Concept"}}) {
+		t.Fatalf("List(A, x/) = %v, %v", list, err)
+	}
+	if hits, err := cs.Search(ctx, A, "secret", 10, nil); err != nil || len(hits) != 1 || hits[0].Path != "x/y" {
+		t.Fatalf("Search(A, secret) = %v, %v, want just x/y", hits, err)
+	}
+	if hits, err := cs.Grep(ctx, A, "tenant a only", 10); err != nil || len(hits) != 1 || hits[0].Path != "x/y" {
+		t.Fatalf("Grep(A, ...) = %v, %v, want just x/y", hits, err)
+	}
+	if bl, err := cs.Backlinks(ctx, A, "x/z"); err != nil || !reflect.DeepEqual(bl, []string{"x/y"}) {
+		t.Fatalf("Backlinks(A, x/z) = %v, %v, want [x/y]", bl, err)
+	}
+
+	if c, err := cs.Read(ctx, B, "x/y"); err != nil || c != nil {
+		t.Fatalf("Read(B, x/y) = %v, %v, want nil", c, err)
+	}
+	if list, err := cs.List(ctx, B, "x/"); err != nil || len(list) != 0 {
+		t.Fatalf("List(B, x/) = %v, %v, want empty", list, err)
+	}
+	if hits, err := cs.Search(ctx, B, "secret", 10, nil); err != nil || len(hits) != 0 {
+		t.Fatalf("Search(B, secret) = %v, %v, want empty", hits, err)
+	}
+	if hits, err := cs.Grep(ctx, B, "tenant a only", 10); err != nil || len(hits) != 0 {
+		t.Fatalf("Grep(B, ...) = %v, %v, want empty", hits, err)
+	}
+	if bl, err := cs.Backlinks(ctx, B, "x/z"); err != nil || len(bl) != 0 {
+		t.Fatalf("Backlinks(B, x/z) = %v, %v, want empty", bl, err)
+	}
+}
 
 func TestUnsetScopeRaisesRatherThanReturningEverything(t *testing.T) {
 	s := openApp(t)

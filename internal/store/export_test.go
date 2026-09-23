@@ -10,3 +10,10 @@ func SetAcquireTimeout(d time.Duration) func() {
 	acquireTimeout = d
 	return func() { acquireTimeout = orig }
 }
+
+// SetGrepTimeoutMS overrides grepTimeoutMS for a test and returns a restorer.
+func SetGrepTimeoutMS(ms int) func() {
+	orig := grepTimeoutMS
+	grepTimeoutMS = ms
+	return func() { grepTimeoutMS = orig }
+}
