@@ -1,5 +1,5 @@
 // Package migrate replays the Alembic migrations under
-// src/keepsake/store/migrations/versions/ in place, without Python or Alembic
+// 2de90d2:src/keepsake/store/migrations/versions/ in place, without Python or Alembic
 // installed. It reads and writes the same <schema>.alembic_version table Alembic
 // does, so a database Alembic migrated upgrades from wherever it left off.
 package migrate
@@ -22,7 +22,7 @@ import (
 var sqlFS embed.FS
 
 // appRole is the role migration 0001 grants by name when it exists. Restated
-// rather than imported, matching src/keepsake/store/migrations/versions/0001_initial.py.
+// rather than imported, matching 2de90d2:src/keepsake/store/migrations/versions/0001_initial.py.
 const appRole = "okf_app"
 
 type fields struct {

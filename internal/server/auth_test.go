@@ -1,4 +1,4 @@
-// Ported from tests/test_auth.py, plus the cookie-compatibility check across the cutover.
+// Ported from 2de90d2:tests/test_auth.py, plus the cookie-compatibility check across the cutover.
 package server
 
 import (

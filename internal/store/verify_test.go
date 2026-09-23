@@ -1,4 +1,4 @@
-// Ported from tests/test_verify.py: every rejection here misconfigures the shared
+// Ported from 2de90d2:tests/test_verify.py: every rejection here misconfigures the shared
 // database and restores it in t.Cleanup, so later tests see a clean database. None of
 // these tests run in parallel with each other or with isolation_test.go's.
 package store_test

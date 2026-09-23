@@ -1,4 +1,4 @@
-// Ported from tests/test_reads.py: the read paths an agent and the admin console
+// Ported from 2de90d2:tests/test_reads.py: the read paths an agent and the admin console
 // use to find and browse knowledge. search returns cards, never bodies.
 //
 // package store_test, not store: shares isolation_test.go's TestMain, db and ctx.
@@ -829,7 +829,7 @@ func TestRevisionsReturnsOldestFirstAndEmptyForANegativeLimit(t *testing.T) {
 }
 
 // Graph is exercised at the store level here: the node/edge/truncation shaping in
-// tests/test_api.py's graph tests lives in the API layer, out of scope for this task.
+// 2de90d2:tests/test_api.py's graph tests lives in the API layer, out of scope for this task.
 func TestGraphReturnsPathTypeTitleAndLinksOrderedByPath(t *testing.T) {
 	create(t, okf.Concept{Path: "b", Type: "Concept", Title: "B", Links: []string{"a", "ghost"}})
 	create(t, okf.Concept{Path: "a", Type: "Concept", Title: "A", Links: []string{"b"}})

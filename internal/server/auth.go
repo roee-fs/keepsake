@@ -1,5 +1,5 @@
 // The admin session: one password, one signed cookie, no server-side state.
-// Ported from src/keepsake/server/auth.py.
+// Ported from 2de90d2:src/keepsake/server/auth.py.
 package server
 
 import (

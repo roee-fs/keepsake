@@ -21,7 +21,7 @@ var acquireTimeout = 30 * time.Second
 const nilTenant = "00000000-0000-0000-0000-000000000000"
 
 // Store owns one pgx pool and the tenant scoping built on top of it: the GUC is
-// set here and nowhere else. Ported from src/keepsake/store/pool.py.
+// set here and nowhere else. Ported from 2de90d2:src/keepsake/store/pool.py.
 type Store struct {
 	pool       *pgxpool.Pool
 	searchPath string

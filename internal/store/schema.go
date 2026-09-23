@@ -1,5 +1,5 @@
 // Package store owns the SQL and connection handling: every statement keepsake
-// sends to Postgres. Ported from src/keepsake/store/__init__.py.
+// sends to Postgres. Ported from 2de90d2:src/keepsake/store/__init__.py.
 package store
 
 import (

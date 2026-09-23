@@ -1,6 +1,6 @@
 // A bundle of markdown files is how knowledge enters and leaves; Postgres is the only
 // store. The index and log a bundle carries are generated at export time and are never
-// stored as concepts. Ported from src/keepsake/cli/__init__.py.
+// stored as concepts. Ported from 2de90d2:src/keepsake/cli/__init__.py.
 package cli
 
 import (

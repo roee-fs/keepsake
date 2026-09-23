@@ -1,4 +1,4 @@
-// Concept reads. Ported from src/keepsake/store/concepts.py (the read half; writes
+// Concept reads. Ported from 2de90d2:src/keepsake/store/concepts.py (the read half; writes
 // are concepts.go). Every SQL statement is copied verbatim, %s changed to $n.
 package store
 

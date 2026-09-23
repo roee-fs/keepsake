@@ -1,5 +1,5 @@
 // The HTTP entry point. Verify runs here, before anything can bind a port.
-// Ported from src/keepsake/server/app.py.
+// Ported from 2de90d2:src/keepsake/server/app.py.
 package server
 
 import (

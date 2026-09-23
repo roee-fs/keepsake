@@ -1,5 +1,5 @@
 // The read-only JSON API the admin console calls, mounted at /api. Ported from
-// src/keepsake/server/api.py; frontend/openapi.json is its contract.
+// 2de90d2:src/keepsake/server/api.py; frontend/openapi.json is its contract.
 package server
 
 import (

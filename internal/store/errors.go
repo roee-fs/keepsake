@@ -13,7 +13,7 @@ import (
 // IsUnavailable reports whether err reflects the database being down or
 // unreachable, rather than a statement the database understood and refused. A
 // caller uses this to tell "try again shortly" apart from a real error, the way
-// src/keepsake/server/tools.py classifies psycopg.OperationalError.
+// 2de90d2:src/keepsake/server/tools.py classifies psycopg.OperationalError.
 func IsUnavailable(err error) bool {
 	if err == nil {
 		return false

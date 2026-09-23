@@ -1,4 +1,4 @@
-// Ported from the app tests in tests/test_tools.py and tests/test_api.py.
+// Ported from the app tests in 2de90d2:tests/test_tools.py and 2de90d2:tests/test_api.py.
 package server
 
 import (

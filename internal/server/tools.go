@@ -1,4 +1,4 @@
-// The seven tool bodies, ported from Tools in src/keepsake/server/tools.py.
+// The seven tool bodies, ported from Tools in 2de90d2:src/keepsake/server/tools.py.
 // No tool takes a tenant: the server binds one at startup, so an agent cannot name
 // the wrong one. Nothing a tool returns to the agent carries a body it was not
 // already entitled to read.

@@ -111,7 +111,7 @@ func TestFilesAreReadInPythonsPathOrder(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_schema_name.py, driving the real command as Python does.
+// Ported from 2de90d2:tests/test_schema_name.py, driving the real command as Python does.
 func TestANonDefaultSchemaMigratesAndServes(t *testing.T) {
 	const schema = "okf_elsewhere"
 	t.Setenv("KEEPSAKE_SCHEMA", schema)

@@ -2,8 +2,8 @@ package store
 
 import "testing"
 
-// Ported from tests/test_migration.py::test_a_schema_name_that_is_not_an_identifier_is_rejected
-// and tests/test_schema_name.py::test_an_unusable_schema_name_is_refused_before_it_reaches_ddl.
+// Ported from 2de90d2:tests/test_migration.py::test_a_schema_name_that_is_not_an_identifier_is_rejected
+// and 2de90d2:tests/test_schema_name.py::test_an_unusable_schema_name_is_refused_before_it_reaches_ddl.
 func TestValidatedSchemaRejectsNonIdentifiers(t *testing.T) {
 	for _, name := range []string{
 		"okf; DROP TABLE concept", "public.okf", "OKF", "", "1okf",

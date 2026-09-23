@@ -1,4 +1,4 @@
-// Ported from tests/test_tools.py. The app-level tests there (readyz, build_app)
+// Ported from 2de90d2:tests/test_tools.py. The app-level tests there (readyz, build_app)
 // belong to the serve wiring, not to the tools.
 package server
 

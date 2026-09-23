@@ -19,7 +19,7 @@ import (
 
 var db *pgtest.DB
 
-// Ported from tests/conftest.py's session-scoped fixtures: one container shared by
+// Ported from 2de90d2:tests/conftest.py's session-scoped fixtures: one container shared by
 // every test in the package, migrated once, as the owner runs it in production.
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -48,7 +48,7 @@ func connect(t *testing.T, dsn string) *pgx.Conn {
 }
 
 // appConn connects as the app role, enforced unprivileged: no test can take the
-// DSN without the check, the way tests/conftest.py's pg_dsn fixture is built.
+// DSN without the check, the way 2de90d2:tests/conftest.py's pg_dsn fixture is built.
 func appConn(t *testing.T) *pgx.Conn {
 	t.Helper()
 	pgtest.AssertUnprivileged(t, db.AppDSN)
@@ -77,7 +77,7 @@ func seed(t *testing.T, tx pgx.Tx, tenant uuid.UUID) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_tables_have_rls_enabled_and_forced.
+// Ported from 2de90d2:tests/test_migration.py::test_tables_have_rls_enabled_and_forced.
 func TestTablesHaveRLSEnabledAndForced(t *testing.T) {
 	conn := appConn(t)
 	rows, err := conn.Query(context.Background(), `
@@ -109,7 +109,7 @@ func TestTablesHaveRLSEnabledAndForced(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_policies_read_the_okf_guc.
+// Ported from 2de90d2:tests/test_migration.py::test_policies_read_the_okf_guc.
 func TestPoliciesReadTheOkfGUC(t *testing.T) {
 	conn := appConn(t)
 	rows, err := conn.Query(context.Background(),
@@ -176,7 +176,7 @@ func TestPoliciesReadTheOkfGUC(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_the_app_role_owns_no_tables.
+// Ported from 2de90d2:tests/test_migration.py::test_the_app_role_owns_no_tables.
 func TestTheAppRoleOwnsNoTables(t *testing.T) {
 	conn := appConn(t)
 	rows, err := conn.Query(context.Background(), `
@@ -210,7 +210,7 @@ func TestTheAppRoleOwnsNoTables(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_alembic_version_table_is_not_in_public.
+// Ported from 2de90d2:tests/test_migration.py::test_alembic_version_table_is_not_in_public.
 func TestAlembicVersionTableIsNotInPublic(t *testing.T) {
 	conn := appConn(t)
 	rows, err := conn.Query(context.Background(), `
@@ -235,7 +235,7 @@ func TestAlembicVersionTableIsNotInPublic(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_purge_tenant_returns_the_count_and_empties_both_tables.
+// Ported from 2de90d2:tests/test_migration.py::test_purge_tenant_returns_the_count_and_empties_both_tables.
 func TestPurgeTenantReturnsTheCountAndEmptiesBothTables(t *testing.T) {
 	ctx := context.Background()
 	conn := appConn(t)
@@ -267,7 +267,7 @@ func TestPurgeTenantReturnsTheCountAndEmptiesBothTables(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_purge_tenant_refuses_a_tenant_the_session_is_not_scoped_to.
+// Ported from 2de90d2:tests/test_migration.py::test_purge_tenant_refuses_a_tenant_the_session_is_not_scoped_to.
 func TestPurgeTenantRefusesATenantTheSessionIsNotScopedTo(t *testing.T) {
 	ctx := context.Background()
 	conn := appConn(t)
@@ -288,7 +288,7 @@ func TestPurgeTenantRefusesATenantTheSessionIsNotScopedTo(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_migration.py::test_a_tenant_cannot_read_or_write_another_tenants_rows.
+// Ported from 2de90d2:tests/test_migration.py::test_a_tenant_cannot_read_or_write_another_tenants_rows.
 func TestATenantCannotReadOrWriteAnotherTenantsRows(t *testing.T) {
 	ctx := context.Background()
 	a, b := uuid.New(), uuid.New()
@@ -351,7 +351,7 @@ func TestUpRejectsAnInvalidSchemaName(t *testing.T) {
 	}
 }
 
-// Ported from tests/test_schema_name.py::test_a_non_default_schema_migrates_and_serves, the
+// Ported from 2de90d2:tests/test_schema_name.py::test_a_non_default_schema_migrates_and_serves, the
 // migration half: the ConceptStore/Store half has no Go port yet (a later task).
 func TestANonDefaultSchemaMigrates(t *testing.T) {
 	ctx := context.Background()

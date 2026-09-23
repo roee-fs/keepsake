@@ -1,4 +1,4 @@
-// Ported from tests/test_api.py. The build_app tests there (UI disabled, static
+// Ported from 2de90d2:tests/test_api.py. The build_app tests there (UI disabled, static
 // bundle) belong to the serve wiring.
 package server
 

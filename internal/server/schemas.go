@@ -1,4 +1,4 @@
-// The seven advertised tools, ported from _TOOLS in src/keepsake/server/tools.py.
+// The seven advertised tools, ported from _TOOLS in 2de90d2:src/keepsake/server/tools.py.
 // Schemas are okf.Maps so their key order on the wire is the Python order.
 package server
 

@@ -1,5 +1,5 @@
 // Package cli is the operator commands: import, export, validate, migrate, serve.
-// Ported from src/keepsake/cli/__init__.py.
+// Ported from 2de90d2:src/keepsake/cli/__init__.py.
 package cli
 
 import (

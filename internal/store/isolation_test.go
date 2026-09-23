@@ -1,5 +1,5 @@
-// Ported from tests/test_isolation.py: tenant isolation as seen through Store, the
-// only place the GUC is set. tests/test_migration.py proves the policies; these prove
+// Ported from 2de90d2:tests/test_isolation.py: tenant isolation as seen through Store, the
+// only place the GUC is set. 2de90d2:tests/test_migration.py proves the policies; these prove
 // the connection handling above them scopes every statement and leaves no scope
 // behind on a pooled connection.
 //
@@ -183,7 +183,7 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 }
 
 // TestIsolationHoldsForEveryReadShape ports
-// tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
+// 2de90d2:tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
 // be right for one query shape and wrong for another.
 func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	A, B := uuid.New(), uuid.New()

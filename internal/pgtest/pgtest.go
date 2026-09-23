@@ -1,5 +1,5 @@
 // Package pgtest starts a disposable Postgres container for tests, with the same
-// three roles tests/conftest.py creates: an admin (the container superuser), an
+// three roles 2de90d2:tests/conftest.py creates: an admin (the container superuser), an
 // owner (migrations run as this role) and an app role (RLS applies to this one).
 package pgtest
 

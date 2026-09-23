@@ -1,4 +1,4 @@
-// Ported from tests/test_roundtrip.py: a bundle imported into Postgres and exported
+// Ported from 2de90d2:tests/test_roundtrip.py: a bundle imported into Postgres and exported
 // again is the same bytes.
 package cli
 

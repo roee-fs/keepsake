@@ -15,7 +15,7 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
-      # Nothing here reads a Service link variable. See keepsake.cli._env_port.
+      # Nothing here reads a Service link variable. See cli.EnvPort in internal/cli/cli.go.
       enableServiceLinks: false
       # Spread across nodes where there is more than one: two replicas on one node
       # share its fate, which is most of what the second replica was bought for.

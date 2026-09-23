@@ -5,7 +5,7 @@
 // schema plus pg_catalog and nothing else, so a literal prefix would only break a
 // non-default schema.
 //
-// Ported from src/keepsake/store/concepts.py (the write half; reads are Task 9).
+// Ported from 2de90d2:src/keepsake/store/concepts.py (the write half; reads are Task 9).
 package store
 
 import (
