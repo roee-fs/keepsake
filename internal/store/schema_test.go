@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // Ported from 2de90d2:tests/test_migration.py::test_a_schema_name_that_is_not_an_identifier_is_rejected
 // and 2de90d2:tests/test_schema_name.py::test_an_unusable_schema_name_is_refused_before_it_reaches_ddl.
@@ -26,23 +29,28 @@ func TestValidatedSchemaAcceptsBareIdentifiers(t *testing.T) {
 
 func TestSchemaDefaultsToOkf(t *testing.T) {
 	t.Setenv("KEEPSAKE_SCHEMA", "")
+	os.Unsetenv("KEEPSAKE_SCHEMA")
 	if got := Schema(); got != "okf" {
 		t.Errorf("Schema() = %q, want okf", got)
 	}
 }
 
 func TestSchemaPanicsOnAnUnusableName(t *testing.T) {
-	t.Setenv("KEEPSAKE_SCHEMA", "not-usable")
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("Schema() did not panic")
-		}
-		if r != `not a usable schema name: 'not-usable'` {
-			t.Errorf("panic = %v", r)
-		}
-	}()
-	Schema()
+	for _, name := range []string{"not-usable", ""} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("KEEPSAKE_SCHEMA", name)
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatal("Schema() did not panic")
+				}
+				if want := "not a usable schema name: '" + name + "'"; r != want {
+					t.Errorf("panic = %v, want %s", r, want)
+				}
+			}()
+			Schema()
+		})
+	}
 }
 
 func TestPoolSizeDefaultsToTen(t *testing.T) {

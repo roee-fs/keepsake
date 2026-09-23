@@ -35,8 +35,8 @@ const AdminPolicy = "admin_read"
 // Schema reads KEEPSAKE_SCHEMA, defaulting to "okf". It panics with the Python
 // ValueError message if the value is not a usable schema name.
 func Schema() string {
-	name := os.Getenv("KEEPSAKE_SCHEMA")
-	if name == "" {
+	name, ok := os.LookupEnv("KEEPSAKE_SCHEMA")
+	if !ok {
 		name = "okf"
 	}
 	schema, err := ValidatedSchema(name)
