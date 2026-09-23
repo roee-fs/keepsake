@@ -1,4 +1,4 @@
-// Ported from 2de90d2:tests/test_api.py. The build_app tests there (UI disabled, static
+// Ported from 8f2af2e:tests/test_api.py. The build_app tests there (UI disabled, static
 // bundle) belong to the serve wiring.
 package server
 
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
@@ -169,6 +170,87 @@ func TestAMalformedLoginIsAValidationError(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(`{"password": "`+adminPassword+`"}`))
 	r.Header.Set("Content-Type", "text/plain")
 	wantStatus(t, c.do(r), http.StatusUnprocessableEntity)
+}
+
+// The one unauthenticated route MUST NOT buffer whatever a caller sends. Every /api
+// route is capped, before its session check, with or without a Content-Length.
+func TestAnOversizedLoginBodyIsRefusedBeforeItIsRead(t *testing.T) {
+	c := newConsole(t)
+	big := `{"password": "` + strings.Repeat("x", 100_000) + `"}`
+	for _, tc := range []struct {
+		method, target string
+		chunked        bool
+	}{
+		{http.MethodPost, "/session", false},
+		{http.MethodPost, "/session", true},
+		{http.MethodGet, "/stats", false},
+		{http.MethodPost, "/no-such-route", true},
+	} {
+		r := httptest.NewRequest(tc.method, tc.target, strings.NewReader(big))
+		r.Header.Set("Content-Type", "application/json")
+		if tc.chunked {
+			r.ContentLength = -1
+		}
+		rec := c.do(r)
+		if rec.Code != http.StatusRequestEntityTooLarge || rec.Body.String() != "Request body too large" ||
+			rec.Header()["Content-Type"] != nil {
+			t.Errorf("%+v = %d %v %q", tc, rec.Code, rec.Header(), rec.Body)
+		}
+	}
+	at := `{"password": "` + strings.Repeat("x", maxAPIBody-len(`{"password": ""}`)) + `"}`
+	wantStatus(t, c.request(http.MethodPost, "/session", at), http.StatusUnauthorized)
+}
+
+// The console holds one pool connection at most, so a slow console read cannot take
+// the connections an agent is waiting on. Login takes no slot.
+func TestTheConsoleHoldsOneSlotOnThePool(t *testing.T) {
+	c := newConsole(t).login()
+	lock, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close(ctx)
+	tx, err := lock.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, "LOCK TABLE okf.concept IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatal(err)
+	}
+
+	slow := make(chan int)
+	go func() { slow <- c.get("/stats").Code }()
+	for range 100 {
+		var waiting bool
+		if err := lock.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "+
+			"WHERE usename = 'okf_app' AND wait_event_type = 'Lock')").Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	queued := make(chan int)
+	go func() { queued <- c.get("/openapi.json").Code }()
+	select {
+	case code := <-queued:
+		t.Fatalf("a second console request ran beside the first: %d", code)
+	case <-time.After(300 * time.Millisecond):
+	}
+	wantStatus(t, c.request(http.MethodPost, "/session", `{"password": "`+adminPassword+`"}`), http.StatusNoContent)
+
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code := <-slow; code != http.StatusOK {
+		t.Fatalf("stats = %d", code)
+	}
+	if code := <-queued; code != http.StatusOK {
+		t.Fatalf("openapi = %d", code)
+	}
 }
 
 func TestAGoodPasswordSetsAnHttpOnlyStrictCookie(t *testing.T) {

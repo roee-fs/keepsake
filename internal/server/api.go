@@ -1,5 +1,5 @@
 // The read-only JSON API the admin console calls, mounted at /api. Ported from
-// 2de90d2:src/keepsake/server/api.py; frontend/openapi.json is its contract.
+// 8f2af2e:src/keepsake/server/api.py; frontend/openapi.json is its contract.
 package server
 
 import (
@@ -39,6 +39,10 @@ var docsHTML []byte
 
 // Long enough to outlast a port-forward session, short enough to bound a leaked cookie.
 const sessionTTL = 12 * time.Hour
+
+// maxAPIBody caps every /api body. The only body is a login; uncapped, one
+// unauthenticated POST is buffered whole.
+const maxAPIBody = 64 * 1024
 
 // historyLimit bounds a concept's revision history, since the detail route takes no limit.
 const historyLimit = 50
@@ -81,18 +85,59 @@ var routeTable = []route{
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
 func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 	h := &api{cs: cs, auth: a, proxies: loadProxies()}
+	// One: the tools' pool is shared, and a slow console read must not hold the
+	// connections an agent is waiting on.
+	slot := make(chan struct{}, 1)
 	mux := http.NewServeMux()
 	for _, rt := range routeTable {
 		serve := rt.serve
 		mux.HandleFunc(rt.pattern, func(w http.ResponseWriter, r *http.Request) {
-			if rt.pattern != "POST /session" && !a.session(r) {
+			if rt.pattern == "POST /session" {
+				serve(h, w, r)
+				return
+			}
+			// Checked first, so a request refused with a 401 never queues for the slot.
+			if !a.session(r) {
 				writeJSON(w, http.StatusUnauthorized, detail{"Unauthorized"})
+				return
+			}
+			select {
+			case slot <- struct{}{}:
+				defer func() { <-slot }()
+			case <-r.Context().Done():
 				return
 			}
 			serve(h, w, r)
 		})
 	}
-	return mux
+	return limitBody(mux)
+}
+
+// limitBody reads the whole body before routing, as RequestBodyLimitMiddleware does,
+// and answers its 413 past maxAPIBody.
+func limitBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ContentLength > maxAPIBody {
+			tooLarge(w)
+			return
+		}
+		if r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAPIBody))
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			tooLarge(w)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		next.ServeHTTP(w, r)
+	})
 }
 
 type detail struct {

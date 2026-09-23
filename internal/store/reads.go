@@ -1,4 +1,4 @@
-// Concept reads. Ported from 2de90d2:src/keepsake/store/concepts.py (the read half; writes
+// Concept reads. Ported from 8f2af2e:src/keepsake/store/concepts.py (the read half; writes
 // are concepts.go). Every SQL statement is copied verbatim, %s changed to $n.
 package store
 
@@ -345,25 +345,23 @@ func (cs *ConceptStore) Count(ctx context.Context, tenant *uuid.UUID, prefix str
 func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, error) {
 	var t Totals
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx,
-			"SELECT count(*), coalesce(sum(cardinality(links)), 0) FROM concept",
-		).Scan(&t.Concepts, &t.Links); err != nil {
-			return err
-		}
-
-		rows, err := tx.Query(ctx, "SELECT type, count(*) FROM concept GROUP BY type")
+		rows, err := tx.Query(ctx,
+			"SELECT type, count(*), coalesce(sum(cardinality(links)), 0) "+
+				"FROM concept GROUP BY type")
 		if err != nil {
 			return err
 		}
 		t.ByType = map[string]int{}
 		for rows.Next() {
 			var typ string
-			var n int
-			if err := rows.Scan(&typ, &n); err != nil {
+			var n, links int
+			if err := rows.Scan(&typ, &n, &links); err != nil {
 				rows.Close()
 				return err
 			}
 			t.ByType[typ] = n
+			t.Concepts += n
+			t.Links += links
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
@@ -374,16 +372,12 @@ func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, 
 			return err
 		}
 
-		// An orphan is a concept no concept of its own tenant links to. The
-		// anti-join correlates on tenant_id as well as path: under AdminScope one
-		// tenant's link would otherwise hide another tenant's orphan, since a path
-		// is unique only within a tenant. Sequential like backlinksSQL, and for the
-		// same reason: the GIN index only serves @>, and arraycontains is not
-		// leakproof under FORCE ROW LEVEL SECURITY.
+		// Correlated on tenant_id: paths repeat across tenants under AdminScope.
+		// Unnested so the anti-join hashes on the path; = ANY(links) is quadratic.
 		return tx.QueryRow(ctx,
 			"SELECT count(*) FROM concept c WHERE NOT EXISTS ("+
-				"  SELECT 1 FROM concept b"+
-				"  WHERE b.tenant_id = c.tenant_id AND c.path = ANY(b.links))",
+				"  SELECT 1 FROM concept b, unnest(b.links) AS l(target)"+
+				"  WHERE b.tenant_id = c.tenant_id AND l.target = c.path)",
 		).Scan(&t.Orphans)
 	})
 	return t, err
