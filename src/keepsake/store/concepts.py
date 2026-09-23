@@ -323,35 +323,27 @@ class ConceptStore:
     def totals(self, tenant_id: UUID | None) -> Totals:
         """Corpus-wide counts for the admin console's summary tiles."""
         with self._connect(tenant_id) as conn:
-            concepts, links = _row(
-                conn.execute(
-                    "SELECT count(*), coalesce(sum(cardinality(links)), 0) FROM concept"
-                ).fetchone()
-            )
             by_type = conn.execute(
-                "SELECT type, count(*) FROM concept GROUP BY type"
+                "SELECT type, count(*), coalesce(sum(cardinality(links)), 0) "
+                "FROM concept GROUP BY type"
             ).fetchall()
             revisions = _row(
                 conn.execute("SELECT count(*) FROM concept_revision").fetchone()
             )[0]
-            # An orphan is a concept no concept of its own tenant links to. The
-            # anti-join correlates on tenant_id as well as path: under admin_scope()
-            # one tenant's link would otherwise hide another tenant's orphan, since a
-            # path is unique only within a tenant. Sequential like `_BACKLINKS`, and
-            # for the same reason: the GIN index only serves `@>`, and arraycontains is
-            # not leakproof under FORCE ROW LEVEL SECURITY.
+            # Correlated on tenant_id: paths repeat across tenants under admin_scope().
+            # Unnested so the anti-join hashes on the path; `= ANY(links)` is quadratic.
             orphans = _row(
                 conn.execute(
                     "SELECT count(*) FROM concept c WHERE NOT EXISTS ("
-                    "  SELECT 1 FROM concept b"
-                    "  WHERE b.tenant_id = c.tenant_id AND c.path = ANY(b.links))"
+                    "  SELECT 1 FROM concept b, unnest(b.links) AS l(target)"
+                    "  WHERE b.tenant_id = c.tenant_id AND l.target = c.path)"
                 ).fetchone()
             )[0]
         return Totals(
-            concepts=int(concepts),
-            by_type={str(t): int(n) for t, n in by_type},
+            concepts=sum(int(n) for _, n, _ in by_type),
+            by_type={str(t): int(n) for t, n, _ in by_type},
             revisions=int(revisions),
-            links=int(links),
+            links=sum(int(k) for _, _, k in by_type),
             orphans=int(orphans),
         )
 

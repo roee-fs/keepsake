@@ -23,7 +23,10 @@ NOINHERIT_PASSWORD = "noinherit"
 
 # The migration's policies, restated so the tests that rewrite them restore them.
 TENANT_QUAL = "tenant_id = current_setting('okf.current_tenant')::uuid"
-ADMIN_QUAL = "current_setting('okf.admin', true) = 'on'"
+ADMIN_QUAL = (
+    "tenant_id >= CASE WHEN current_setting('okf.admin', true) = 'on' "
+    "THEN '00000000-0000-0000-0000-000000000000'::uuid END"
+)
 RESTORE_POLICY = (
     f"CREATE POLICY tenant_isolation ON okf.concept "
     f"USING ({TENANT_QUAL}) WITH CHECK ({TENANT_QUAL})"
@@ -256,20 +259,49 @@ def test_rejects_a_permissive_with_check(
         )
 
 
+@pytest.mark.parametrize(
+    "qual",
+    [
+        "true",
+        # Each reads okf.admin and still admits every tenant's rows to every read.
+        "current_setting('okf.admin', true) IS NOT NULL",
+        "current_setting('okf.admin', true) = 'on' OR true",
+        "current_setting('okf.administrator', true) IS NULL",
+    ],
+)
 def test_rejects_a_widened_admin_policy(
-    migrated: bool, pg_dsn: str, owner_dsn: str
+    migrated: bool, pg_dsn: str, owner_dsn: str, qual: str
 ) -> None:
     """The exemption is for one policy shape, not for "any second policy"."""
-    _execute(owner_dsn, "ALTER POLICY admin_read ON okf.concept USING (true)")
+    _execute(owner_dsn, f"ALTER POLICY admin_read ON okf.concept USING ({qual})")
     try:
         # The message must name the clause that failed, not the first one checked.
-        with pytest.raises(
-            MisconfiguredDatabase, match="reads neither .* nor okf.admin"
-        ):
+        with pytest.raises(MisconfiguredDatabase, match="does not read exactly"):
             _verify(pg_dsn)
     finally:
         _execute(
             owner_dsn, f"ALTER POLICY admin_read ON okf.concept USING ({ADMIN_QUAL})"
+        )
+
+
+def test_rejects_a_restrictive_admin_policy(
+    migrated: bool, pg_dsn: str, owner_dsn: str
+) -> None:
+    """ANDed with tenant_isolation, it would hide every row from every tenant."""
+    _execute(
+        owner_dsn,
+        "DROP POLICY admin_read ON okf.concept",
+        f"CREATE POLICY admin_read ON okf.concept AS RESTRICTIVE "
+        f"FOR SELECT USING ({ADMIN_QUAL})",
+    )
+    try:
+        with pytest.raises(MisconfiguredDatabase, match="RESTRICTIVE"):
+            _verify(pg_dsn)
+    finally:
+        _execute(
+            owner_dsn,
+            "DROP POLICY admin_read ON okf.concept",
+            f"CREATE POLICY admin_read ON okf.concept FOR SELECT USING ({ADMIN_QUAL})",
         )
 
 

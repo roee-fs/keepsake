@@ -81,8 +81,10 @@ class Store:
             # statement rather than two: this runs on every read the server serves.
             conn.execute(
                 "SELECT set_config('search_path', %s, true),"
+                # Off explicitly: a role or DSN default of 'on' would widen every read.
+                "       set_config(%s, 'off', true),"
                 "       set_config(%s, %s, true)",
-                (self._search_path, TENANT_GUC, str(tenant_id)),
+                (self._search_path, ADMIN_GUC, TENANT_GUC, str(tenant_id)),
             )
             yield conn
 
