@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
@@ -210,7 +211,7 @@ func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(full, "## "+revisions[0].CreatedAt.UTC().Format("2006-01-02")) {
+	if !strings.Contains(full, "## "+revisions[0].Day) {
 		t.Fatal(full)
 	}
 	if rs, _ := cs.Revisions(ctx, tenant, -1); len(rs) != 0 {
@@ -532,5 +533,72 @@ func TestImportRefusesNaNAndWritesNothing(t *testing.T) {
 	}
 	if read(t, cs, tenant, "a") != nil {
 		t.Fatal("a.md was written: import MUST be all-or-nothing")
+	}
+}
+
+func TestImportAndValidateFollowASymlinkedRoot(t *testing.T) {
+	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
+	real := bundle(t, tmp, doc, "layers.md")
+	link := filepath.Join(tmp, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if n := mustImport(t, cs, tenant, link); n != 1 {
+		t.Fatalf("imported %d", n)
+	}
+	writeFile(t, real, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
+	if errs, err := ValidateBundle(link); err != nil || len(errs) != 1 {
+		t.Fatal(errs, err)
+	}
+	// Files are named by the path the operator typed, not the one it resolves to.
+	_, err := ImportBundle(ctx, cs, tenant, link)
+	if want := filepath.Join(link, "architecture", "typeless.md") + ": type is required"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %s", err, want)
+	}
+}
+
+func TestExportWritesThroughASymlinkedRoot(t *testing.T) {
+	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
+	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
+	real, link := filepath.Join(tmp, "real"), filepath.Join(tmp, "link")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	mustExport(t, cs, tenant, link)
+	if got := readFile(t, filepath.Join(real, "architecture", "layers.md")); got != doc {
+		t.Fatalf("%q", got)
+	}
+}
+
+// Python dates the log in the session TimeZone, so a Kiritimati (UTC+14) session
+// puts an evening UTC revision on the next day.
+func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
+	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
+	create(t, cs, tenant, "a")
+	admin, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(ctx)
+	if _, err := admin.Exec(ctx, "UPDATE okf.concept_revision SET created_at = '2026-01-01 20:00:00+00' WHERE tenant_id = $1", tenant); err != nil {
+		t.Fatal(err)
+	}
+	for dsn, want := range map[string]string{
+		db.AppDSN: "## 2026-01-01",
+		db.AppDSN + "&options=-c%20TimeZone%3DPacific/Kiritimati": "## 2026-01-02",
+	} {
+		s, err := store.Open(ctx, dsn, "okf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		out := filepath.Join(tmp, strings.TrimPrefix(want, "## "))
+		mustExport(t, store.NewConceptStore(s), tenant, out)
+		if log := readFile(t, filepath.Join(out, "log.md")); !strings.Contains(log, want+"\n") {
+			t.Errorf("want %s:\n%s", want, log)
+		}
 	}
 }

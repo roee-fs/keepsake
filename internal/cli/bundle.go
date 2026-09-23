@@ -32,17 +32,23 @@ const topLevel = "(top level)"
 // rather than aborting it half-applied. strict=false returns invalid concepts instead,
 // for validate to report them all at once.
 func documents(root string, strict bool) ([]okf.Concept, error) {
+	// WalkDir does not follow a symlinked root, and rglob does. Files are still named
+	// by the root the operator typed.
+	resolved, err := filepath.EvalSymlinks(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		// pathlib's rglob finds nothing in a directory that does not exist.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	var rels []string
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(resolved, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			// pathlib's rglob finds nothing in a directory that does not exist.
-			if p == root && errors.Is(err, fs.ErrNotExist) {
-				return filepath.SkipDir
-			}
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") {
-			rel, err := filepath.Rel(root, p)
+			rel, err := filepath.Rel(resolved, p)
 			rels = append(rels, filepath.ToSlash(rel))
 			return err
 		}
@@ -238,8 +244,7 @@ func renderLog(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, li
 	lines := []string{"# Log", ""}
 	day := ""
 	for _, r := range revisions {
-		// ponytail: dated in UTC; Python dates in the session TimeZone, the same for a UTC server.
-		stamp := r.CreatedAt.UTC().Format("2006-01-02")
+		stamp := r.Day
 		if stamp != day {
 			day = stamp
 			lines = append(lines, "## "+stamp, "")

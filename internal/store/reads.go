@@ -38,6 +38,8 @@ type Revision struct {
 	UpdatedBy string
 	CreatedAt time.Time
 	TenantID  uuid.UUID
+	// Day is CreatedAt's date in the session TimeZone, as psycopg dates it.
+	Day string
 }
 
 // Hit is one search result. It carries no body: the agent searches, chooses, then reads.
@@ -225,7 +227,7 @@ func scanRevisions(rows pgx.Rows) ([]Revision, error) {
 	var out []Revision
 	for rows.Next() {
 		var r Revision
-		if err := rows.Scan(&r.Path, &r.Version, &r.Op, &r.UpdatedBy, &r.CreatedAt, &r.TenantID); err != nil {
+		if err := rows.Scan(&r.Path, &r.Version, &r.Op, &r.UpdatedBy, &r.CreatedAt, &r.TenantID, &r.Day); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -243,7 +245,8 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 	var out []Revision
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
-			"SELECT path, version, op, updated_by, created_at, tenant_id FROM ("+
+			"SELECT path, version, op, updated_by, created_at, tenant_id,"+
+				" to_char(created_at, 'YYYY-MM-DD') FROM ("+
 				"  SELECT path, version, op, coalesce(updated_by, '') AS updated_by,"+
 				"         created_at, tenant_id"+
 				"  FROM concept_revision"+
@@ -396,7 +399,8 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 		// Under AdminScope two tenants can hold the same path at the same version
 		// and timestamp, so tenant_id is what makes the order total.
 		rows, err := tx.Query(ctx,
-			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id "+
+			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
+				"to_char(created_at, 'YYYY-MM-DD') "+
 				"FROM concept_revision "+
 				"ORDER BY created_at DESC, path DESC, version DESC, tenant_id DESC "+
 				"LIMIT $1", limit)
@@ -420,7 +424,8 @@ func (cs *ConceptStore) RevisionsFor(ctx context.Context, tenant *uuid.UUID, pat
 	var out []Revision
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
-			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id "+
+			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
+				"to_char(created_at, 'YYYY-MM-DD') "+
 				"FROM concept_revision WHERE path = $1 "+
 				"ORDER BY version DESC LIMIT $2", path, limit)
 		if err != nil {
