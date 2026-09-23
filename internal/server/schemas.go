@@ -61,7 +61,7 @@ func withConceptFields(kv ...any) *okf.Map {
 
 // toolDefinitions is written for an agent reading it cold, with no other documentation.
 func toolDefinitions() []*mcp.Tool {
-	return []*mcp.Tool{
+	tools := []*mcp.Tool{
 		{
 			Name: "okf_list",
 			Description: "List the concepts stored here, with a count of each type. Pass `prefix` " +
@@ -136,4 +136,26 @@ func toolDefinitions() []*mcp.Tool {
 			InputSchema: schema(obj("from_path", str(), "to_path", str()), "from_path", "to_path"),
 		},
 	}
+	for _, t := range tools {
+		t.InputSchema = wireOrder(t.InputSchema.(*okf.Map))
+		if t.OutputSchema != nil {
+			t.OutputSchema = wireOrder(t.OutputSchema.(*okf.Map))
+		}
+	}
+	return tools
+}
+
+// wireOrder puts properties, required and type first, as Python's mcp_types model
+// serialises a tool's top-level schema. Nested schemas keep their declared order.
+func wireOrder(m *okf.Map) *okf.Map {
+	out := okf.NewMap()
+	for _, k := range append([]string{"properties", "required", "type"}, m.Keys()...) {
+		if _, done := out.Get(k); done {
+			continue
+		}
+		if v, ok := m.Get(k); ok {
+			out.Set(k, v)
+		}
+	}
+	return out
 }
