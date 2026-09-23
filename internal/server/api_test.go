@@ -618,6 +618,7 @@ func TestLoginBodyErrorsAreFastAPIs(t *testing.T) {
 		{"application/json", "[NaN]", "Internal Server Error"},
 		{"application/json", `{"password": 1e999}`, "Internal Server Error"},
 		{"application/json", `-1e400`, "Internal Server Error"},
+		{"application/json", `null`, `{"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}`},
 	} {
 		r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(tc.body))
 		if tc.ct != "" {

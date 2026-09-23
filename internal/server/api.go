@@ -381,6 +381,10 @@ func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 		if msg != "" {
 			return invalid("json_invalid", []any{"body", pos}, "JSON decode error", okf.NewMap(), map[string]any{"error": msg})
 		}
+		// FastAPI treats a JSON null like no body at all.
+		if v == nil {
+			return invalid("missing", []any{"body"}, "Field required", nil, nil)
+		}
 		body = v
 	}
 	m, ok := body.(*okf.Map)
