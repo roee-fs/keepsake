@@ -226,6 +226,10 @@ func NewMCPHandler(t *Tools) http.Handler {
 	})
 	h := pythonResults(sdk)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && modernEra(r) {
+			methodNotAllowed(w, r)
+			return
+		}
 		if r.Method == http.MethodPost && !acceptsJSON(r.Header.Values("Accept")) {
 			notAcceptable(w, r)
 			return
@@ -252,6 +256,24 @@ func acceptsJSON(accept []string) bool {
 // handshakeVersions route a request to Python's legacy transport; any other
 // mcp-protocol-version header value goes to its modern one.
 var handshakeVersions = []string{"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+
+// methodNotAllowed answers a method other than POST as whichever Python transport
+// the request reaches. A legacy GET is left to go-sdk: Python streams it forever.
+func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	if modernEra(r) {
+		w.Header().Set("Allow", "POST")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	msg := "Method Not Allowed: Session termination not supported"
+	if r.Method != http.MethodDelete {
+		msg = "Method Not Allowed"
+		w.Header().Set("Allow", "GET, POST, DELETE")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	fmt.Fprintf(w, `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":%q}}`, msg)
+}
 
 // notAcceptable answers 406 as whichever Python transport the request reaches.
 func notAcceptable(w http.ResponseWriter, r *http.Request) {

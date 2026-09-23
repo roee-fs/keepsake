@@ -718,3 +718,29 @@ func TestSuccessWireIsPythons(t *testing.T) {
 		}
 	}
 }
+
+// The wants are the Python server's answers to methods other than POST.
+func TestOtherMethodsArePythons405(t *testing.T) {
+	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
+	defer srv.Close()
+	for _, tc := range []struct{ method, version, allow, body string }{
+		{http.MethodDelete, "", "", `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Method Not Allowed: Session termination not supported"}}`},
+		{http.MethodPut, "", "GET, POST, DELETE", `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Method Not Allowed"}}`},
+		{http.MethodDelete, "2026-07-28", "POST", ""},
+		{http.MethodGet, "2026-07-28", "POST", ""},
+	} {
+		req, _ := http.NewRequest(tc.method, srv.URL, nil)
+		if tc.version != "" {
+			req.Header.Set("Mcp-Protocol-Version", tc.version)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != tc.allow || string(body) != tc.body {
+			t.Errorf("%s %q: %d allow %q %s", tc.method, tc.version, resp.StatusCode, resp.Header.Get("Allow"), body)
+		}
+	}
+}
