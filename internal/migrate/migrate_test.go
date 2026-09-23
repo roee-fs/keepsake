@@ -490,8 +490,8 @@ func TestUpIsIdempotentAtHead(t *testing.T) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != Head() {
-		t.Fatalf("version_num = %s, want %s", version, Head())
+	if head := migrations[len(migrations)-1].revision; version != head {
+		t.Fatalf("version_num = %s, want %s", version, head)
 	}
 }
 

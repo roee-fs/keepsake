@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 	"text/template"
 
@@ -41,6 +40,7 @@ type migration struct {
 
 var migrations = loadMigrations()
 
+// loadMigrations reads sql/ in name order, which ReadDir guarantees.
 func loadMigrations() []migration {
 	entries, err := sqlFS.ReadDir("sql")
 	if err != nil {
@@ -49,23 +49,10 @@ func loadMigrations() []migration {
 	out := make([]migration, 0, len(entries))
 	for _, e := range entries {
 		revision := strings.TrimSuffix(e.Name(), ".sql.tmpl")
-		b, err := sqlFS.ReadFile("sql/" + e.Name())
-		if err != nil {
-			panic(err)
-		}
-		tmpl, err := template.New(revision).Parse(string(b))
-		if err != nil {
-			panic(err)
-		}
+		tmpl := template.Must(template.ParseFS(sqlFS, "sql/"+e.Name()))
 		out = append(out, migration{revision: revision, tmpl: tmpl})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].revision < out[j].revision })
 	return out
-}
-
-// Head returns the id of the last embedded migration.
-func Head() string {
-	return migrations[len(migrations)-1].revision
 }
 
 // Up applies every migration after schema's current alembic_version, in a single
@@ -81,13 +68,10 @@ func Up(ctx context.Context, dsn, schema string) error {
 		return err
 	}
 	defer conn.Close(ctx)
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error { return up(ctx, tx, schema) })
+}
 
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
+func up(ctx context.Context, tx pgx.Tx, schema string) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('keepsake-migrate'))`); err != nil {
 		return err
 	}
@@ -103,7 +87,7 @@ func Up(ctx context.Context, dsn, schema string) error {
 	}
 
 	var current string
-	err = tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
+	err := tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -138,6 +122,5 @@ func Up(ctx context.Context, dsn, schema string) error {
 		}
 		current = m.revision
 	}
-
-	return tx.Commit(ctx)
+	return nil
 }
