@@ -184,7 +184,7 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 }
 
 // TestIsolationHoldsForEveryReadShape ports
-// 2de90d2:tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
+// 8f2af2e:tests/test_isolation.py::test_isolation_holds_for_every_read_shape: a policy can
 // be right for one query shape and wrong for another.
 func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	A, B := uuid.New(), uuid.New()

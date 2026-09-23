@@ -75,9 +75,10 @@ test enforces it and the release workflow refuses otherwise.
   unguarded install regenerates the admin password on every sync.
 - A rollback to 0.1.0 MUST first take the schema back to revision 0002, as the
   owner role. 0.1.0's startup check rejects the `admin_read` policy, and
-  `helm rollback` does not revert a migration. Run it from this release's image:
-  `python -c "from alembic import command; from keepsake.cli import _alembic;
-  command.downgrade(_alembic('<owner DSN>'), '0002')"`.
+  `helm rollback` does not revert a migration. This release's image has no
+  Python, so run Alembic's downgrade by hand in one transaction:
+  `DROP POLICY admin_read ON okf.concept; DROP POLICY admin_read ON
+  okf.concept_revision; UPDATE okf.alembic_version SET version_num = '0002';`.
 
 ## 0.1.0 — 2026-09-15
 

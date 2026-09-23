@@ -1,5 +1,5 @@
 // The MCP wiring, ported from register in 2de90d2:src/keepsake/server/tools.py and the
-// streamable HTTP app in 2de90d2:src/keepsake/server/app.py.
+// streamable HTTP app in 8f2af2e:src/keepsake/server/app.py.
 package server
 
 import (
