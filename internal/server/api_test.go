@@ -616,6 +616,8 @@ func TestLoginBodyErrorsAreFastAPIs(t *testing.T) {
 		{"application/json", "{\"password\":\"\xff\"}", `{"detail":"There was an error parsing the body"}`},
 		// Starlette's JSONResponse refuses NaN, and the 500 is its plain-text one.
 		{"application/json", "[NaN]", "Internal Server Error"},
+		{"application/json", `{"password": 1e999}`, "Internal Server Error"},
+		{"application/json", `-1e400`, "Internal Server Error"},
 	} {
 		r := httptest.NewRequest(http.MethodPost, "/session", strings.NewReader(tc.body))
 		if tc.ct != "" {
@@ -628,6 +630,14 @@ func TestLoginBodyErrorsAreFastAPIs(t *testing.T) {
 }
 
 // The wants are CPython 3.14's json.loads, as JSONDecodeError (msg, pos).
+func TestPyJSONOverflowIsInfinity(t *testing.T) {
+	for in, want := range map[string]any{"1e999": okf.PyInf, "-1e400": okf.PyNegInf, "1e-999": json.Number("1e-999"), "1e308": json.Number("1e308")} {
+		if v, msg, _ := pyJSON([]rune(in)); msg != "" || v != want {
+			t.Errorf("pyJSON(%q) = %#v %q, want %#v", in, v, msg, want)
+		}
+	}
+}
+
 func TestPyJSONErrorsAreCPythons(t *testing.T) {
 	for _, tc := range []struct {
 		in, msg string

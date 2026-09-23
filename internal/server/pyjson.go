@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"math"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/roee-fs/keepsake/okf"
@@ -72,7 +74,12 @@ func (d *pyDecoder) value(i int) (any, int, *pyJSONError) {
 		return okf.PyNegInf, i + 9, nil
 	default:
 		if end := d.number(i); end > i {
-			return json.Number(string(d.s[i:end])), end, nil
+			text := string(d.s[i:end])
+			// Python's float() of an overflowing literal is inf, as NaN is a float.
+			if f, err := strconv.ParseFloat(text, 64); strings.ContainsAny(text, ".eE") && math.IsInf(f, 0) && err != nil {
+				return map[bool]okf.NonFinite{true: okf.PyInf, false: okf.PyNegInf}[f > 0], end, nil
+			}
+			return json.Number(text), end, nil
 		}
 	}
 	return nil, 0, &pyJSONError{"Expecting value", i}
