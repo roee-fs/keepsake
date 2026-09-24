@@ -23,7 +23,7 @@ const shell = "<html>console shell</html>"
 func served(t *testing.T) string {
 	t.Helper()
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, TenantID: uuid.New(), Schema: "okf"})
+	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestReadyzReportsReadyWhileThePoolCanReachTheDatabase(t *testing.T) {
 
 func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	_, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, TenantID: uuid.New(), Schema: "okf"})
+	_, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
 	var m *store.MisconfiguredDatabase
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredDatabase", err)
@@ -115,7 +115,7 @@ func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 
 func TestBuildAppRefusesAnEnabledConsoleWithoutAPassword(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", "")
-	_, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, TenantID: uuid.New(), Schema: "okf"})
+	_, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
 	var m *MisconfiguredAdmin
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredAdmin", err)
@@ -124,6 +124,20 @@ func TestBuildAppRefusesAnEnabledConsoleWithoutAPassword(t *testing.T) {
 
 func TestBuildAppServesMCPOnAnIsolatingDatabase(t *testing.T) {
 	wantMCP(t, served(t))
+}
+
+func TestJWTModeGuardsMCPButNotReadyz(t *testing.T) {
+	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
+	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: issuer.Middleware, Schema: "okf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(func() { srv.Close(); closeApp() })
+	if resp, body := send(t, http.MethodPost, srv.URL+"/mcp", toolsList); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("POST /mcp without a token = %d %s", resp.StatusCode, body)
+	}
+	wantReady(t, srv.URL)
 }
 
 func TestUIDisabledMountsNoAPIButStillServesMCPAndReadyz(t *testing.T) {

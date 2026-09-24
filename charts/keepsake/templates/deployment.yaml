@@ -28,6 +28,15 @@ spec:
               app: {{ .Release.Name }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if eq .Values.auth.mode "jwt" }}
+      volumes:
+        - name: jwt
+          secret:
+            secretName: {{ .Values.auth.jwt.existingSecret | quote }}
+            items:
+              - key: secrets
+                path: secrets
+      {{- end }}
       containers:
         - name: keepsake
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -45,8 +54,19 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-dsn
                   key: app-dsn
+            - name: KEEPSAKE_AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            {{- if eq .Values.auth.mode "jwt" }}
+            - name: KEEPSAKE_JWT_ISSUER
+              value: {{ .Values.auth.jwt.issuer | quote }}
+            - name: KEEPSAKE_JWT_AUDIENCE
+              value: {{ .Values.auth.jwt.audience | quote }}
+            - name: KEEPSAKE_JWT_SECRET_FILE
+              value: /etc/keepsake/jwt/secrets
+            {{- else }}
             - name: KEEPSAKE_TENANT_ID
               value: {{ .Values.auth.fixedTenantId | quote }}
+            {{- end }}
             - name: KEEPSAKE_SCHEMA
               value: {{ .Values.postgres.schema | quote }}
             - name: KEEPSAKE_POOL_SIZE
@@ -64,6 +84,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.admin.existingSecret | default (printf "%s-admin" .Release.Name) }}
                   key: password
+          {{- if eq .Values.auth.mode "jwt" }}
+          volumeMounts:
+            - name: jwt
+              mountPath: /etc/keepsake/jwt
+              readOnly: true
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ $port }}

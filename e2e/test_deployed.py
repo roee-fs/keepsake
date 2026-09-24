@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import base64
 import json
+import secrets
 import subprocess
 import time
 import urllib.request
-from collections.abc import Callable, Sequence
+import uuid
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -115,15 +117,19 @@ def _psql(statement: str) -> str:
     ).strip()
 
 
-def _rpc(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def _rpc(
+    method: str,
+    params: dict[str, Any] | None = None,
+    base: str = BASE,
+    token: str | None = None,
+) -> dict[str, Any]:
     payload = json.dumps(
         {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
     ).encode()
-    request = urllib.request.Request(
-        f"{BASE}/mcp",
-        data=payload,
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(f"{base}/mcp", data=payload, headers=headers)
     with urllib.request.urlopen(request, timeout=30) as response:
         answer: dict[str, Any] = json.loads(response.read())
     assert "error" not in answer, f"{method}: {answer['error']}"
@@ -384,3 +390,138 @@ def test_a_privileged_app_role_crash_loops_the_pod() -> None:
     ).strip()
     logs = _until(lambda: _logs(pod), f"{pod} logs")
     assert "must not connect as a superuser" in logs
+
+
+# A third release in jwt mode. Its own schema, so its tenants cannot meet the others'.
+JWT_RELEASE = "keepsake-jwt"
+JWT_SCHEMA = "okf_jwt"
+JWT_PORT = 30801
+
+
+@pytest.fixture(scope="module")
+def jwt_release() -> Iterator[str]:
+    """Installs the jwt release and port-forwards to it. Yields the base URL."""
+    _kubectl("delete", "secret", "keepsake-jwt", "--ignore-not-found")
+    _kubectl(
+        "create",
+        "secret",
+        "generic",
+        "keepsake-jwt",
+        f"--from-literal=secrets={secrets.token_hex(32)}",
+    )
+    _run(
+        [
+            "helm",
+            "upgrade",
+            "--install",
+            JWT_RELEASE,
+            CHART,
+            "--kube-context",
+            CONTEXT,
+            # The good release's args without its NodePort, which a ClusterIP refuses.
+            *(
+                arg
+                for flag, value in zip(_INSTALL_ARGS[::2], _INSTALL_ARGS[1::2])
+                if not value.startswith("service.")
+                for arg in (flag, value)
+            ),
+            "--set",
+            f"postgres.schema={JWT_SCHEMA}",
+            "--set",
+            "replicaCount=1",
+            "--set",
+            "service.type=ClusterIP",
+            "--set",
+            "auth.mode=jwt",
+            "--set",
+            "auth.jwt.issuer=e2e",
+            "--set",
+            "auth.jwt.existingSecret=keepsake-jwt",
+            "--wait",
+            "--timeout",
+            "180s",
+        ]
+    )
+    forward = subprocess.Popen(
+        [
+            "kubectl",
+            "--context",
+            CONTEXT,
+            "port-forward",
+            f"svc/{JWT_RELEASE}",
+            f"{JWT_PORT}:8000",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    base = f"http://localhost:{JWT_PORT}"
+    try:
+        _until(lambda: _status(base, None), "the port-forward", catch=(OSError,))
+        yield base
+    finally:
+        forward.terminate()
+
+
+def _status(base: str, token: str | None) -> int:
+    """The HTTP status of a tools/list, so a refusal is a value and not an exception."""
+    try:
+        _rpc("tools/list", base=base, token=token)
+    except HTTPError as exc:
+        return exc.code
+    return 200
+
+
+def _mint(tenant: str, sub: str) -> str:
+    """A token from `keepsake token` inside the pod, which holds the secret."""
+    return _kubectl(
+        "exec",
+        f"deploy/{JWT_RELEASE}",
+        "--",
+        "keepsake",
+        "token",
+        "--tenant",
+        tenant,
+        "--sub",
+        sub,
+        "--ttl",
+        "10m",
+    ).strip()
+
+
+def _as(base: str, token: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    params = {"name": name, "arguments": arguments}
+    result: dict[str, Any] = _rpc("tools/call", params, base=base, token=token)[
+        "result"
+    ]
+    return result
+
+
+def test_jwt_mode_refuses_a_request_without_a_valid_token(jwt_release: str) -> None:
+    assert _status(jwt_release, None) == 401
+    assert _status(jwt_release, "not.a.token") == 401
+
+
+def test_jwt_mode_serves_each_tenant_only_its_own_concepts(jwt_release: str) -> None:
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    token_a, token_b = _mint(a, "e2e-a"), _mint(b, "e2e-b")
+    created = _as(
+        jwt_release,
+        token_a,
+        "okf_create",
+        {"path": "e2e/private", "type": "Concept", "body": "only tenant a"},
+    )
+    assert not created.get("isError"), created
+
+    read_a = _as(jwt_release, token_a, "okf_read", {"path": "e2e/private"})
+    assert read_a["structuredContent"]["body"] == "only tenant a"
+    read_b = _as(jwt_release, token_b, "okf_read", {"path": "e2e/private"})
+    # okf_read answers null for a path the caller's tenant does not hold.
+    assert read_b["content"][0]["text"] == "null", f"tenant b read it: {read_b}"
+    listed_b = _as(jwt_release, token_b, "okf_list", {})
+    assert "e2e/private" not in listed_b["structuredContent"]["paths"]
+
+    stored = _psql(
+        f"SELECT tenant_id::text || ' ' || updated_by FROM {JWT_SCHEMA}.concept "
+        "WHERE path = 'e2e/private'"
+    )
+    assert stored == f"{a} e2e-a"

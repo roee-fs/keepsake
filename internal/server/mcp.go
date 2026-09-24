@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"golang.org/x/text/language"
@@ -185,12 +186,22 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		for _, k := range m.Keys() {
 			args[k], _ = m.Get(k)
 		}
+		tools := t
+		if c, ok := ctx.Value(callerKey{}).(caller); ok {
+			scoped := *t
+			scoped.t, scoped.actor = c.tenant, c.actor
+			tools = &scoped
+		}
+		// Fail closed: the nil tenant is never a caller's, and writing as it would pool every stray write.
+		if tools.t == uuid.Nil {
+			return nil, errors.New("no tenant bound to this request")
+		}
 		release, ok := acquire(ctx, slot)
 		if !ok {
 			return nil, ctx.Err()
 		}
 		defer release()
-		result, err := call(ctx, t, args)
+		result, err := call(ctx, tools, args)
 		var te *ToolError
 		switch {
 		case errors.As(err, &te):

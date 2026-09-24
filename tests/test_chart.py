@@ -153,11 +153,59 @@ def test_the_server_reads_the_variables_the_cli_reads() -> None:
     )
     docs = _render(values)
     server = _env(_only(docs, "Deployment"))
+    assert server["KEEPSAKE_AUTH_MODE"]["value"] == "none"
     assert server["KEEPSAKE_TENANT_ID"]["value"] == tenant
     assert server["KEEPSAKE_SCHEMA"]["value"] == "okf_other"
     assert _env(_only(docs, "Job"))["KEEPSAKE_SCHEMA"]["value"] == "okf_other"
     assert _container(_only(docs, "Deployment"))["command"] == ["keepsake", "serve"]
     assert _container(_only(docs, "Job"))["command"] == ["keepsake", "migrate"]
+
+
+JWT = dict(
+    MANAGED,
+    **{
+        "auth.mode": "jwt",
+        "auth.jwt.issuer": "platform",
+        "auth.jwt.existingSecret": "keepsake-jwt",
+    },
+)
+
+
+def test_jwt_mode_mounts_the_secret_and_binds_no_tenant() -> None:
+    """A fixed tenant beside jwt would read as a fallback, and the server refuses it."""
+    deployment = _only(_render(JWT), "Deployment")
+    server = _env(deployment)
+    assert "KEEPSAKE_TENANT_ID" not in server
+    assert server["KEEPSAKE_AUTH_MODE"]["value"] == "jwt"
+    assert server["KEEPSAKE_JWT_ISSUER"]["value"] == "platform"
+    assert server["KEEPSAKE_JWT_AUDIENCE"]["value"] == "keepsake"
+    secret_file = Path(server["KEEPSAKE_JWT_SECRET_FILE"]["value"])
+    (mount,) = _container(deployment)["volumeMounts"]
+    assert Path(mount["mountPath"]) == secret_file.parent
+    assert mount["readOnly"] is True
+    (volume,) = deployment["spec"]["template"]["spec"]["volumes"]
+    assert volume["name"] == mount["name"]
+    assert volume["secret"]["secretName"] == "keepsake-jwt"
+    assert volume["secret"]["items"] == [{"key": "secrets", "path": secret_file.name}]
+
+
+def test_none_mode_mounts_no_jwt_secret() -> None:
+    deployment = _only(_render(MANAGED), "Deployment")
+    assert "volumes" not in deployment["spec"]["template"]["spec"]
+    assert "KEEPSAKE_JWT_SECRET_FILE" not in _env(deployment)
+
+
+@pytest.mark.parametrize("omitted", ["auth.jwt.issuer", "auth.jwt.existingSecret"])
+def test_jwt_mode_without_an_issuer_or_secret_is_rejected_by_the_schema(
+    omitted: str,
+) -> None:
+    args = ["helm", "template", "keepsake", str(CHART)]
+    for key, value in JWT.items():
+        if key != omitted:
+            args += ["--set", f"{key}={value}"]
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert omitted.split(".")[-1] in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -296,6 +344,7 @@ def test_the_replicas_are_spread_across_nodes_where_there_are_any() -> None:
     ("key", "value"),
     [
         ("auth.fixedTenantId", "not-a-uuid"),
+        ("auth.mode", "proxy"),
         ("postgres.schema", "okf; DROP TABLE concept"),
         ("postgres.poolSize", "0"),
         ("replicaCount", "0"),

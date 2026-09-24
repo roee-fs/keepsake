@@ -45,11 +45,14 @@ Out of scope, because they are documented behaviour rather than defects:
 - The round-trip fidelity ceilings, each pinned by a test.
 - `okf_grep` accepting a regular expression. It is a deliberate capability,
   bounded by a 5s statement timeout.
-- The absence of authentication. `auth.mode` accepts only `none` today, and the
-  server is meant to sit behind something that authenticates. This is stated in
-  the README and the chart, and is a roadmap item rather than a bug — but if you
-  have found a way to reach a keepsake that its operator believed was private,
-  we want to know.
+- The absence of authentication in `auth.mode: none`. That mode serves one
+  tenant to anything that reaches the Service, and is meant to sit behind
+  something that authenticates. `auth.mode: jwt` is the authenticated mode. In
+  it, a request whose tenant differs from its verified token's `tctx.tenant`
+  claim, or any request served without a valid HS256 token, is in scope.
+- Anyone holding the jwt secret minting a token for any tenant. The secret is the
+  whole credential: it MUST NOT be readable by any process an LLM can drive.
+  Hand such clients a `keepsake token` for their own tenant instead.
 - The admin console has no login throttling. One account, one password, no
   lockout after failed attempts — that password is the whole perimeter, keep
   the Service `ClusterIP` and reach it by `kubectl port-forward`. Fronting it

@@ -42,8 +42,8 @@ func TestUsageErrorsExitTwo(t *testing.T) {
 		args []string
 		want string
 	}{
-		{nil, "keepsake: error: the following arguments are required: {import,export,validate,migrate,serve}\n"},
-		{[]string{"bogus"}, "keepsake: error: argument {import,export,validate,migrate,serve}: invalid choice: 'bogus' (choose from 'import', 'export', 'validate', 'migrate', 'serve')\n"},
+		{nil, "keepsake: error: the following arguments are required: {import,export,validate,migrate,serve,token}\n"},
+		{[]string{"bogus"}, "keepsake: error: argument {import,export,validate,migrate,serve,token}: invalid choice: 'bogus' (choose from 'import', 'export', 'validate', 'migrate', 'serve', 'token')\n"},
 		{[]string{"import"}, "keepsake import: error: the following arguments are required: directory\n"},
 		{[]string{"validate", "a", "b"}, "keepsake: error: unrecognized arguments: b\n"},
 		{[]string{"migrate", "x"}, "keepsake: error: unrecognized arguments: x\n"},

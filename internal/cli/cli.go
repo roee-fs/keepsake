@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,7 +27,7 @@ import (
 
 const defaultPort = 8000
 
-const choices = "{import,export,validate,migrate,serve}"
+const choices = "{import,export,validate,migrate,serve,token}"
 
 // EnvPort is $KEEPSAKE_PORT, or 8000 for anything else, such as the service link kubelet injects.
 func EnvPort() int {
@@ -59,8 +60,8 @@ var listen = func(addr string, h http.Handler) error {
 }
 
 type options struct {
-	dsn, tenant, host, directory string
-	port                         *int
+	dsn, tenant, host, directory, sub, ttl string
+	port                                   *int
 }
 
 type command struct {
@@ -74,6 +75,7 @@ var commands = map[string]command{
 	"validate": {directory: true, run: runValidate},
 	"migrate":  {dsn: true, run: runMigrate},
 	"serve":    {dsn: true, tenant: true, run: runServe},
+	"token":    {tenant: true, run: runToken},
 }
 
 // usage is the help text's first paragraph, which is argparse's usage line.
@@ -104,7 +106,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	cmd, ok := commands[name]
 	if !ok {
-		return usageError(stderr, "", fmt.Sprintf("argument %s: invalid choice: %s (choose from 'import', 'export', 'validate', 'migrate', 'serve')",
+		return usageError(stderr, "", fmt.Sprintf("argument %s: invalid choice: %s (choose from 'import', 'export', 'validate', 'migrate', 'serve', 'token')",
 			choices, okf.PyReprString(name)))
 	}
 
@@ -125,6 +127,11 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		o.host = host
 		flags["--host"] = &o.host
 		flags["--port"] = &port
+	}
+	if name == "token" {
+		o.ttl = "1h"
+		flags["--sub"] = &o.sub
+		flags["--ttl"] = &o.ttl
 	}
 
 	// argparse's order: flags anywhere, -h at once, and leftovers reported together at the end.
@@ -286,7 +293,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	id, err := tenantID(o.tenant)
+	auth, err := authFromEnv(o.tenant)
 	if err != nil {
 		return 0, err
 	}
@@ -298,7 +305,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if o.port != nil {
 		port = *o.port
 	}
-	h, closeApp, err := server.BuildApp(ctx, server.Config{DSN: dsn, TenantID: id, Schema: name})
+	h, closeApp, err := server.BuildApp(ctx, server.Config{DSN: dsn, Auth: auth, Schema: name})
 	if err != nil {
 		return 0, err
 	}
@@ -308,20 +315,69 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	return 0, listen(addr, h)
 }
 
+// authFromEnv picks how /mcp finds its tenant from KEEPSAKE_AUTH_MODE, none when unset.
+func authFromEnv(tenant string) (func(http.Handler) http.Handler, error) {
+	switch mode := os.Getenv("KEEPSAKE_AUTH_MODE"); mode {
+	case "", "none":
+		id, err := tenantID(tenant)
+		if err != nil {
+			return nil, err
+		}
+		return server.FixedTenant(id), nil
+	case "jwt":
+		// A fixed tenant beside jwt would read as a fallback, and there is none.
+		if tenant != "" {
+			return nil, errors.New("--tenant and KEEPSAKE_TENANT_ID are refused in jwt mode; the token names the tenant")
+		}
+		j, err := server.JWTFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		return j.Middleware, nil
+	default:
+		return nil, fmt.Errorf("KEEPSAKE_AUTH_MODE must be none or jwt, not %s", okf.PyReprString(mode))
+	}
+}
+
+// runToken prints a token for one tenant, signed with the first secret jwt mode verifies.
+func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
+	id, err := tenantID(o.tenant)
+	if err != nil {
+		return 0, err
+	}
+	if id == uuid.Nil {
+		return 0, errors.New("the nil uuid is not a tenant")
+	}
+	if o.sub == "" {
+		return 0, errors.New("--sub is required")
+	}
+	ttl, err := time.ParseDuration(o.ttl)
+	if err != nil || ttl <= 0 {
+		return 0, fmt.Errorf("--ttl must be a positive duration such as 1h, not %s", okf.PyReprString(o.ttl))
+	}
+	j, err := server.JWTFromEnv()
+	if err != nil {
+		return 0, err
+	}
+	fmt.Fprintln(stdout, j.Mint(id, o.sub, ttl))
+	return 0, nil
+}
+
 // Help text copied from argparse at 2de90d2, so -h reads the same.
 var help = map[string]string{
-	"": `usage: keepsake [-h] {import,export,validate,migrate,serve} ...
+	"": `usage: keepsake [-h] {import,export,validate,migrate,serve,token} ...
 
 Operate an OKF knowledge store. Import and export move a bundle of markdown
 files in and out of Postgres; serve exposes the MCP tools.
 
 positional arguments:
-  {import,export,validate,migrate,serve}
+  {import,export,validate,migrate,serve,token}
     import              Load a bundle of markdown files into the store.
     export              Write the stored concepts out as a bundle.
     validate            Check a bundle on disk. Reads no database.
     migrate             Bring the database schema to head.
     serve               Serve the MCP tools over HTTP.
+    token               Print a jwt-mode token for one tenant.
 
 options:
   -h, --help            show this help message and exit
@@ -373,15 +429,29 @@ options:
 	"serve": `usage: keepsake serve [-h] [--dsn DSN] [--tenant TENANT] [--host HOST]
                       [--port PORT]
 
-Serve the MCP tools over HTTP.
+Serve the MCP tools over HTTP. $KEEPSAKE_AUTH_MODE is none (one tenant, set by
+--tenant) or jwt (the tenant comes from each request's bearer token).
 
 options:
   -h, --help       show this help message and exit
   --dsn DSN        PostgreSQL connection string. Defaults to $KEEPSAKE_DSN.
-  --tenant TENANT  The tenant to read and write. Defaults to
-                   $KEEPSAKE_TENANT_ID.
+  --tenant TENANT  The tenant to read and write, in none mode only. Defaults
+                   to $KEEPSAKE_TENANT_ID.
   --host HOST      The address to bind. Defaults to $KEEPSAKE_HOST, then every
                    interface.
   --port PORT      The port to bind. Defaults to $KEEPSAKE_PORT, then 8000.
+`,
+	"token": `usage: keepsake token [-h] [--tenant TENANT] [--sub SUB] [--ttl TTL]
+
+Print a jwt-mode token for one tenant, signed with the first secret in
+$KEEPSAKE_JWT_SECRET_FILE. Hand it to a client that must not hold the secret.
+
+options:
+  -h, --help       show this help message and exit
+  --tenant TENANT  The tenant the token reads and writes. Defaults to
+                   $KEEPSAKE_TENANT_ID.
+  --sub SUB        Who the token acts as, recorded as updated_by.
+  --ttl TTL        How long the token lives, such as 30m or 720h. Defaults
+                   to 1h.
 `,
 }
