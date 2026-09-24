@@ -29,3 +29,17 @@ jobs:
           install_only: true
       - run: uv sync --locked
       - run: bash e2e/run.sh
+
+  # The README's one command. It fails when the agent's diff drifts from demo/expected-changes.txt.
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
+        with:
+          install_only: true
+      - run: docker build -t keepsake:ci .
+      - run: bash demo/run.sh
+        env:
+          IMAGE: keepsake:ci
