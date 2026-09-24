@@ -5,7 +5,10 @@ dist/
 .env
 .simplify-report.md
 harness/
-docs/
+docs/*
+!docs/tools.md
+!docs/operations.md
+!docs/alternatives.md
 node_modules/
 demo/demo.gif
 demo/demo.cast

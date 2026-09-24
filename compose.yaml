@@ -1,0 +1,47 @@
+# A single-tenant keepsake on this machine: `docker compose up`, then point an agent
+# at http://localhost:8000/mcp. For evaluation only; production is the Helm chart.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: keepsake
+    volumes:
+      - ./demo/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    # Over TCP: the entrypoint runs init scripts on a socket-only server, so a
+    # socket probe passes before the roles exist.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "keepsake"]
+      interval: 2s
+      retries: 30
+
+  migrate:
+    image: ghcr.io/roee-fs/keepsake:0.3.0
+    build: .
+    command: ["keepsake", "migrate"]
+    environment:
+      KEEPSAKE_DSN: postgres://okf_owner:owner@postgres:5432/keepsake
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  keepsake:
+    image: ghcr.io/roee-fs/keepsake:0.3.0
+    build: .
+    environment:
+      # The app role. The server refuses to start as the owner or a superuser.
+      KEEPSAKE_DSN: postgres://okf_app:app@postgres:5432/keepsake
+      KEEPSAKE_AUTH_MODE: none
+      KEEPSAKE_TENANT_ID: 00000000-0000-0000-0000-000000000001
+      KEEPSAKE_UI: "true"
+      KEEPSAKE_ADMIN_PASSWORD: keepsake
+    ports:
+      # Loopback only: none mode serves the tenant to anything that reaches the port.
+      - 127.0.0.1:8000:8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

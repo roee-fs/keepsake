@@ -8,6 +8,14 @@ Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and a
 SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
 test enforces it and the release workflow refuses otherwise.
 
+## Unreleased
+
+### Added
+
+- `compose.yaml`: `docker compose up` runs a single-tenant keepsake on
+  `localhost:8000`, with no Kubernetes.
+- `docs/`: the MCP tool reference, operations, and alternatives.
+
 ## 0.3.0 — 2026-09-24
 
 ### Added
