@@ -13,10 +13,7 @@ const pySpace = "\t\n\v\f\r \x1c\x1d\x1e\x1f\u0085\u00a0\u1680" +
 
 func isPySpace(r rune) bool { return strings.ContainsRune(pySpace, r) }
 
-var (
-	link     = regexp.MustCompile(`^\[[^\]]*\]\([` + pySpace + `]*([^)` + pySpace + `]*)(?:[` + pySpace + `]+[^)]*)?[` + pySpace + `]*\)`)
-	external = regexp.MustCompile(`(?i)^(?:[a-z][a-z0-9+.-]*://|(?:mailto|tel):|//)`)
-)
+var external = regexp.MustCompile(`(?i)^(?:[a-z][a-z0-9+.-]*://|(?:mailto|tel):|//)`)
 
 // Resolve returns the concept path a link target names, relative to directory.
 func Resolve(target, directory string) (string, bool) {
@@ -53,22 +50,42 @@ func dirname(p string) string {
 }
 
 // ExtractLinks returns the concept paths body links to, deduplicated in first-seen order.
+// It matches Python's (?<!!)\[[^\]]*\]\(\s*([^)\s]*)(?:\s+[^)]*)?\s*\) in linear time.
 func ExtractLinks(body, p string) []string {
 	dir := dirname(p)
 	seen := map[string]bool{}
 	var out []string
-	for i := 0; i < len(body); {
-		if body[i] == '[' && (i == 0 || body[i-1] != '!') {
-			if m := link.FindStringSubmatchIndex(body[i:]); m != nil {
-				if r, ok := Resolve(body[i+m[2]:i+m[3]], dir); ok && !seen[r] {
-					seen[r] = true
-					out = append(out, r)
-				}
-				i += max(m[1], 1)
-				continue
-			}
+	// closeAt is the first ']' after i, shared by every '[' before it.
+	closeAt := -1
+	for i := 0; i < len(body); i++ {
+		if body[i] != '[' || i > 0 && body[i-1] == '!' {
+			continue
 		}
-		i++
+		if closeAt < i {
+			j := strings.IndexByte(body[i:], ']')
+			if j < 0 {
+				break
+			}
+			closeAt = i + j
+		}
+		if closeAt+1 >= len(body) || body[closeAt+1] != '(' {
+			continue
+		}
+		// The destination ends at the first ')'; with none, no later '[' can match either.
+		open := closeAt + 2
+		end := strings.IndexByte(body[open:], ')')
+		if end < 0 {
+			break
+		}
+		dest := strings.TrimLeftFunc(body[open:open+end], isPySpace)
+		if k := strings.IndexFunc(dest, isPySpace); k >= 0 {
+			dest = dest[:k]
+		}
+		if r, ok := Resolve(dest, dir); ok && !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+		i = open + end
 	}
 	return out
 }

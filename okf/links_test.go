@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractLinksMatchesPython(t *testing.T) {
@@ -38,6 +40,17 @@ func TestExtractLinksUnicodeSpace(t *testing.T) {
 	got := ExtractLinks("[a]( b.md)", "p/q")
 	if !slices.Equal(got, []string{"p/b"}) {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestExtractLinksIsLinearInTheBody(t *testing.T) {
+	// A regex retried at every '[' took seconds on 32 KiB of these, and hours at the request limit.
+	for _, body := range []string{strings.Repeat("[", 1<<22), strings.Repeat("[x](", 1<<20)} {
+		start := time.Now()
+		ExtractLinks(body, "a/b")
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("ExtractLinks on %d bytes took %v", len(body), d)
+		}
 	}
 }
 

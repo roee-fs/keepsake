@@ -61,6 +61,9 @@ test enforces it and the release workflow refuses otherwise.
   - `okf_relate` refuses a `to_path` whose appended link would not read back as
     that path, such as `./b/y` or `b y`. Python appended the link anyway and
     reported success.
+  - A write or `import` whose frontmatter holds a NUL byte is refused with
+    `frontmatter must not contain a NUL byte`. Python passed it to Postgres,
+    which refused the write with a driver error.
   - The startup check refuses a permissive tenant policy that does not read
     exactly `(tenant_id = (current_setting('okf.current_tenant'::text))::uuid)`.
     Python accepted any expression that mentioned `okf.current_tenant`, such as

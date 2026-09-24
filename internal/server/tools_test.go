@@ -171,7 +171,7 @@ func TestFrontmatterThatIsNotAnObjectIsCorrectable(t *testing.T) {
 	wantToolError(t, err, "frontmatter must be an object")
 }
 
-// null is the likeliest way an agent says "leave it alone"; it must not wipe.
+// null is the likeliest way an agent says "leave it alone"; it MUST NOT wipe.
 func TestANullFrontmatterIsRefusedRatherThanErasing(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/b", map[string]any{"body": "v1", "frontmatter": obj("owner", "sec")})
@@ -472,7 +472,7 @@ func TestACallMissingARequiredArgumentIsAnErrorResult(t *testing.T) {
 	}
 }
 
-// A defect below the boundary must stay a defect: a tidy error result would send the
+// A defect below the boundary MUST stay a defect: a tidy error result would send the
 // agent to retry a request that was never wrong, and hide the bug.
 func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	session := connect(t, newTools(t))
@@ -789,6 +789,9 @@ func TestOtherMethodsArePythons405(t *testing.T) {
 		{http.MethodPut, "", "GET, POST, DELETE", `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Method Not Allowed"}}`},
 		{http.MethodDelete, "2026-07-28", "POST", ""},
 		{http.MethodGet, "2026-07-28", "POST", ""},
+		// Python's transport answers HEAD as any other unsupported method; a HEAD response has no body.
+		{http.MethodHead, "", "GET, POST, DELETE", ""},
+		{http.MethodHead, "2026-07-28", "POST", ""},
 	} {
 		req, _ := http.NewRequest(tc.method, srv.URL, nil)
 		if tc.version != "" {

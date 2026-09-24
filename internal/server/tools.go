@@ -102,7 +102,7 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	if err != nil {
 		return okf.Concept{}, err
 	}
-	// Absent means empty; anything present must be an object, or null would erase.
+	// Absent means empty; anything present MUST be an object, or null would erase.
 	frontmatter := okf.NewMap()
 	if v, ok := kw["frontmatter"]; ok {
 		if frontmatter, ok = v.(*okf.Map); !ok || frontmatter == nil {
