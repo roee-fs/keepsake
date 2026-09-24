@@ -23,6 +23,29 @@ MCP. Then it deletes the cluster.
 
 Add `--keep` to leave the cluster up and point your own agent at it.
 
+## Run it
+
+On your machine, with Docker only:
+
+```bash
+docker compose up -d
+claude mcp add --transport http keepsake http://localhost:8000/mcp
+```
+
+The console is at `http://localhost:8000`, password `keepsake`. Load a bundle with
+`docker compose run --rm -v "$PWD/demo/bundle:/bundle:ro" keepsake keepsake import /bundle`.
+This setup is for trying keepsake out. It serves one tenant to anything that
+reaches the port.
+
+On Kubernetes:
+
+```bash
+helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.3.0
+```
+
+[`docs/operations.md`](docs/operations.md) covers Postgres modes, roles,
+upgrades and backups.
+
 ## Why
 
 Agents lose everything when the context window closes. Keepsake gives them a
@@ -61,13 +84,6 @@ same Service. A Helm hook runs the migration Job before every install and
 upgrade.
 
 ## How it differs
-
-**Every other OKF implementation is local-first, single-user, and git-backed.**
-Git works beautifully for one developer and fails for a fleet: every write
-rewrites `index.md` and `log.md`, so two agents touching entirely unrelated
-concepts still collide on the same files, and `index.lock` contention plus
-fetch/rebase loops do the rest. Keepsake keeps derived state in the row that
-owns it, or computes it at read.
 
 **Tenancy is enforced, not filtered.** This is the real gap in the market. Mem0
 takes a caller-supplied `user_id`, Zep and Graphiti take a `group_id`, and both
@@ -158,6 +174,9 @@ Pre-release. Nothing here is stable yet.
 
 ## Docs
 
+- [`docs/tools.md`](docs/tools.md) — the MCP tools, their arguments and results
+- [`docs/operations.md`](docs/operations.md) — install, roles, upgrades, backups
+- [`docs/alternatives.md`](docs/alternatives.md) — when to use something else
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, newest first
 - [`bench/benchmarks.pdf`](bench/benchmarks.pdf) — search quality against speed, measured
 

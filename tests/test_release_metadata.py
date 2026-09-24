@@ -24,6 +24,12 @@ def test_the_version_is_the_same_in_every_place_that_states_it() -> None:
     assert chart["version"] == chart["appVersion"], (
         f"Chart.yaml version {chart['version']!r} != appVersion {chart['appVersion']!r}"
     )
+    compose = YAML(typ="safe").load((ROOT / "compose.yaml").read_text())
+    for name, service in compose["services"].items():
+        if "keepsake" in service["image"]:
+            assert service["image"].endswith(f":{chart['appVersion']}"), (
+                f"compose.yaml {name} pulls {service['image']!r}, not {chart['appVersion']!r}"
+            )
 
 
 def test_the_licence_file_grants_the_licence() -> None:
