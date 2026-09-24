@@ -15,7 +15,7 @@ The tests bring up PostgreSQL in a container through
 [testcontainers](https://testcontainers.com/), so Docker MUST be running.
 There is nothing to configure and no database to create by hand.
 
-The Python tooling is only for `e2e/` and the chart tests. It needs
+The Python tooling is only for `e2e/`, `bench/` and the chart tests. It needs
 [uv](https://docs.astral.sh/uv/), which fetches Python 3.14 for you:
 `uv sync && uv run pytest tests`.
 

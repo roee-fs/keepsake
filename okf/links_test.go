@@ -37,7 +37,7 @@ func TestExtractLinksMatchesPython(t *testing.T) {
 
 func TestExtractLinksUnicodeSpace(t *testing.T) {
 	// Python's \s is Unicode-aware; RE2's is ASCII. A no-break space is whitespace to Python.
-	got := ExtractLinks("[a]( b.md)", "p/q")
+	got := ExtractLinks("[a](\u00a0b.md)", "p/q")
 	if !slices.Equal(got, []string{"p/b"}) {
 		t.Fatalf("got %q", got)
 	}

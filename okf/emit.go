@@ -325,7 +325,7 @@ func runeAt(t []rune, i int) rune {
 	return t[i]
 }
 
-func isBreak(r rune) bool { return r == '\n' || r == '\x85' || r == ' ' || r == ' ' }
+func isBreak(r rune) bool { return r == '\n' || r == '\x85' || r == '\u2028' || r == '\u2029' }
 
 func isBlankOrEnd(r rune) bool { return r == 0 || r == ' ' || r == '\t' || r == '\r' || isBreak(r) }
 
