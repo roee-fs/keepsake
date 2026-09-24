@@ -74,5 +74,28 @@ func Validate(c Concept) []string {
 			errors = append(errors, fmt.Sprintf("%s is too long: %d bytes, at most %d", f.name, size, f.limit))
 		}
 	}
+	if hasNUL(c.Frontmatter) {
+		errors = append(errors, "frontmatter must not contain a NUL byte")
+	}
 	return errors
+}
+
+// hasNUL reports whether any key or string in v holds a NUL, which jsonb refuses.
+func hasNUL(v any) bool {
+	switch v := v.(type) {
+	case string:
+		return strings.Contains(v, "\x00")
+	case []any:
+		return slices.ContainsFunc(v, hasNUL)
+	case *Map:
+		if v == nil {
+			return false
+		}
+		for _, k := range v.keys {
+			if strings.Contains(k, "\x00") || hasNUL(v.vals[k]) {
+				return true
+			}
+		}
+	}
+	return false
 }

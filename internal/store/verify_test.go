@@ -292,7 +292,7 @@ func TestVerifyRejectsAWidenedAdminPolicy(t *testing.T) {
 				pgtest.Exec(t, db.OwnerDSN, fmt.Sprintf("ALTER POLICY admin_read ON okf.concept USING (%s)", adminQual))
 			})
 
-			// The message must name the clause that failed, not the first one checked.
+			// The message MUST name the clause that failed, not the first one checked.
 			err := verifyDSN(t, db.AppDSN, "okf")
 			assertMisconfigured(t, err,
 				"okf.concept policy admin_read is the admin_read exemption but does not read exactly "+
