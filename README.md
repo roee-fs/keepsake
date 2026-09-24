@@ -108,7 +108,8 @@ helm install keepsake charts/keepsake --set auth.mode=jwt \
   --set auth.jwt.issuer=platform --set auth.jwt.existingSecret=keepsake-jwt
 ```
 
-Your orchestrator holds the same secret and signs a short-lived token per call:
+Your orchestrator holds the same secret and signs a short-lived token per call.
+The HMAC key is the line's text as-is, not its hex-decoded bytes:
 `{"iss": "platform", "aud": "keepsake", "sub": "run:42", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
 The secret MUST NOT be readable by anything an LLM drives. A client that can run
 code, or that only takes a static header, gets a token for its own tenant instead:

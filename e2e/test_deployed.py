@@ -460,7 +460,11 @@ def jwt_release() -> Iterator[str]:
         yield base
     finally:
         forward.terminate()
-        forward.wait(timeout=10)
+        try:
+            forward.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            forward.kill()
+            forward.wait()
         _run(["helm", "uninstall", JWT_RELEASE, "--kube-context", CONTEXT])
         _kubectl("delete", "secret", "keepsake-jwt", "--ignore-not-found")
 
