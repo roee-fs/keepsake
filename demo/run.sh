@@ -172,8 +172,6 @@ if [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
     echo "the agent changed files demo/expected-changes.txt does not list" >&2
     exit 1
   fi
-  # Set by demo.tape, so the recording holds on the diff.
-  sleep "${PAUSE:-0}"
 fi
 
 if $KEEP; then
