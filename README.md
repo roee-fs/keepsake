@@ -160,6 +160,7 @@ Pre-release. Nothing here is stable yet.
 ## Docs
 
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, newest first
+- [`bench/benchmarks.pdf`](bench/benchmarks.pdf) — search quality against speed, measured
 
 ## Contributing
 
