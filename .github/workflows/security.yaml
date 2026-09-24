@@ -17,7 +17,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  codeql:
+  analyze:
+    name: codeql (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -52,6 +53,17 @@ jobs:
             paths-ignore:
               - okf/internal/yaml
       - uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
+
+  # The ruleset requires a check named codeql; the matrix legs report under their own names.
+  codeql:
+    if: always()
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "$RESULT" = success
+        env:
+          RESULT: ${{ needs.analyze.result }}
 
   osv:
     runs-on: ubuntu-latest
