@@ -160,6 +160,7 @@ func TestUpdateKeepsTheFieldsItWasNotGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := read(t, tools, "a/b")
+	c.Frontmatter.Delete("generated")
 	fm, _ := json.Marshal(c.Frontmatter)
 	if c.Title != "Original" || c.Description != "D" || c.Body != "v2" || string(fm) != `{"owner":"sec"}` {
 		t.Fatalf("got %+v %s", c, fm)
@@ -177,7 +178,9 @@ func TestANullFrontmatterIsRefusedRatherThanErasing(t *testing.T) {
 	seed(t, tools, "a/b", map[string]any{"body": "v1", "frontmatter": obj("owner", "sec")})
 	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2", "frontmatter": nil})
 	wantToolError(t, err, "frontmatter must be an object")
-	fm, _ := json.Marshal(read(t, tools, "a/b").Frontmatter)
+	stored := read(t, tools, "a/b").Frontmatter
+	stored.Delete("generated")
+	fm, _ := json.Marshal(stored)
 	if string(fm) != `{"owner":"sec"}` {
 		t.Fatalf("frontmatter = %s", fm)
 	}
@@ -219,7 +222,7 @@ func TestUpdateOfAnotherTenantsPathIsIndistinguishableFromAbsent(t *testing.T) {
 func TestUpdateOfARowThatVanishedMidWriteIsNotFound(t *testing.T) {
 	tools := newTools(t)
 	phantom := okf.Concept{Path: "ghost/path", Type: "Concept", Frontmatter: okf.NewMap()}
-	_, err := tools.write(ctx, phantom, "ghost/path", nil, map[string]any{"body": "x"})
+	_, err := tools.write(ctx, phantom, "ghost/path", nil, map[string]any{"body": "x"}, false)
 	if msg := toolError(t, err); msg != "no concept at ghost/path" {
 		t.Fatalf("got %q", msg)
 	}
@@ -608,10 +611,11 @@ func TestAnUnknownToolIsAnErrorResult(t *testing.T) {
 
 // New: the text content is json.dumps of the structured content, byte for byte.
 func TestTextContentIsPythonJSONDumps(t *testing.T) {
-	session := connect(t, newTools(t))
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
-		"path": "a/b", "type": "Concept", "body": "café \"<&>\"\n", "frontmatter": map[string]any{"n": 1},
-	}}); err != nil {
+	tools := newTools(t)
+	session := connect(t, tools)
+	// Through the store, so no generated stamp makes the expected text time-dependent.
+	c := okf.Concept{Path: "a/b", Type: "Concept", Body: "café \"<&>\"\n", Frontmatter: obj("n", 1)}
+	if _, _, err := tools.c.Create(ctx, tools.t, c, "t"); err != nil {
 		t.Fatal(err)
 	}
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "a/b"}})

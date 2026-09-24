@@ -2,11 +2,13 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,6 +49,7 @@ type Hit struct {
 	Title       string
 	Description string
 	Score       float64
+	Status      string // "deprecated", "stale", or empty
 }
 
 // Summary is a concept table row: Hit without the score, plus TenantID for mixed-tenant pages.
@@ -354,6 +357,9 @@ func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 // same as over the tenant. $1 is terms, $2 prefix, $3 limit, $4 the tenant, which RLS
 // enforces anyway; naming it lets the planner lead with it.
 //
+// It fetches 2×limit; Search demotes deprecated and stale concepts and trims to limit.
+// ponytail: demotion reorders only the top 2×limit; rank over every hit if deep demotions matter.
+//
 // MATERIALIZED, or the planner inlines docs and avgdl and recounts them once per hit, and
 // repeats the card lookup once per ranked path. Cards come by `path = ANY`, a primary-key
 // index condition under RLS; a join on path was demoted to a filter over the whole tenant.
@@ -373,28 +379,60 @@ ranked AS MATERIALIZED (
   WHERE starts_with(h.path, coalesce($2::text, ''))
   GROUP BY h.path
   ORDER BY score DESC, h.path
-  LIMIT $3
+  LIMIT $3 * 2
 ),
 cards AS MATERIALIZED (
-  SELECT c.path, c.type, c.title, c.description FROM concept c
+  SELECT c.path, c.type, c.title, c.description,
+         coalesce(c.frontmatter->>'status', ''), coalesce(c.frontmatter->>'stale_after', '')
+  FROM concept c
   WHERE c.tenant_id = $4 AND c.path = ANY (ARRAY(SELECT path FROM ranked))
 )
-SELECT c.path, c.type, c.title, c.description, r.score
+SELECT c.*, r.score
 FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
 
+type searchRow struct {
+	Path, Type, Title, Description, Status, StaleAfter string
+	Score                                              float64
+}
+
+// staleAt reads stale_after, an ISO 8601 instant, or a bare date as other OKF tools write it.
+func staleAt(v string) (time.Time, bool) {
+	if t, err := time.Parse(time.RFC3339, v); err == nil {
+		return t, true
+	}
+	t, err := time.Parse(time.DateOnly, v)
+	return t, err == nil
+}
+
 // Search returns ranked cards, never bodies. An empty result beats an invalid query.
+// A deprecated concept scores 0.3 times its BM25 and a stale one 0.6.
 func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]Hit, error) {
 	terms := tsquery(query)
 	if terms == "" || limit <= 0 {
 		return nil, nil
 	}
-	var out []Hit
+	var rows []searchRow
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
+		rows, err = collect[searchRow](ctx, tx, searchSQL, terms, prefix, limit, tenant)
 		return err
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	out := make([]Hit, 0, len(rows))
+	for _, r := range rows {
+		h := Hit{r.Path, r.Type, r.Title, r.Description, r.Score, ""}
+		if r.Status == "deprecated" {
+			h.Status, h.Score = "deprecated", h.Score*0.3
+		} else if t, ok := staleAt(r.StaleAfter); ok && !now.Before(t) {
+			h.Status, h.Score = "stale", h.Score*0.6
+		}
+		out = append(out, h)
+	}
+	slices.SortStableFunc(out, func(a, b Hit) int { return cmp.Compare(b.Score, a.Score) })
+	return out[:min(limit, len(out))], nil
 }
 
 // grepSQL is _GREP: the snippet comes from the match position in one haystack the predicate also reads.

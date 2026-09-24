@@ -3,10 +3,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -46,6 +49,8 @@ func NewTools(cs *store.ConceptStore, tenant uuid.UUID, actor string) *Tools {
 type writeResult struct {
 	Path    string `json:"path"`
 	Version int    `json:"version"`
+	// Unverified reports that the edit dropped a human's verified mark.
+	Unverified bool `json:"unverified,omitempty"`
 }
 
 type conflictResult struct {
@@ -60,6 +65,7 @@ type searchHit struct {
 	Title       string  `json:"title"`
 	Description string  `json:"description"`
 	Score       float64 `json:"score"`
+	Status      string  `json:"status,omitempty"`
 }
 
 type grepHit struct {
@@ -128,11 +134,41 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	return c, nil
 }
 
+// changesVerified reports whether kw's frontmatter sets a verified mark other than the stored one.
+func changesVerified(kw map[string]any, stored *okf.Map) bool {
+	fm, ok := kw["frontmatter"].(*okf.Map)
+	if !ok {
+		return false
+	}
+	v, ok := fm.Get("verified")
+	if !ok {
+		return false
+	}
+	var old any
+	if stored != nil {
+		old, _ = stored.Get("verified")
+	}
+	a, _ := json.Marshal(v)
+	b, _ := json.Marshal(old)
+	return !bytes.Equal(a, b)
+}
+
+var errVerified = toolErr("verified is set by a human reviewer, never by a tool; leave it out or pass it back unchanged")
+
+// stamp records the caller as the author of the concept's current text.
+func (t *Tools) stamp(c okf.Concept) {
+	c.Frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
+}
+
 func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (writeResult, error) {
+	if changesVerified(kw, nil) {
+		return writeResult{}, errVerified
+	}
 	c, err := t.concept(path, kw)
 	if err != nil {
 		return writeResult{}, err
 	}
+	t.stamp(c)
 	version, created, err := t.c.Create(ctx, t.t, c, t.actor)
 	if err != nil {
 		return writeResult{}, err
@@ -140,7 +176,7 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 	if !created {
 		return writeResult{}, toolErr("concept already exists at " + path)
 	}
-	return writeResult{path, version}, nil
+	return writeResult{Path: path, Version: version}, nil
 }
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
@@ -152,11 +188,15 @@ func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, k
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
 	}
-	return t.write(ctx, *existing, path, expectedVersion, kw)
+	return t.write(ctx, *existing, path, expectedVersion, kw, false)
 }
 
-// write writes kw over the concept the caller already read.
-func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any) (any, error) {
+// write writes kw over the concept the caller already read. A text change drops the verified
+// mark and restamps generated, unless it only appends a link.
+func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any, linkOnly bool) (any, error) {
+	if changesVerified(kw, existing.Frontmatter) {
+		return nil, errVerified
+	}
 	merged := map[string]any{
 		"type": existing.Type, "title": existing.Title, "description": existing.Description,
 		"body": existing.Body, "frontmatter": existing.Frontmatter,
@@ -167,6 +207,12 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	c, err := t.concept(path, merged)
 	if err != nil {
 		return nil, err
+	}
+	unverified := false
+	if !linkOnly && (c.Title != existing.Title || c.Description != existing.Description || c.Body != existing.Body) {
+		_, unverified = c.Frontmatter.Get("verified")
+		c.Frontmatter.Delete("verified")
+		t.stamp(c)
 	}
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)
 	if errors.Is(err, store.ErrNotFound) {
@@ -179,7 +225,7 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	if conflict != nil {
 		return conflictResult{true, conflict.CurrentVersion, conflict.CurrentBody}, nil
 	}
-	return writeResult{path, version}, nil
+	return writeResult{path, version, unverified}, nil
 }
 
 func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *string) ([]searchHit, error) {
@@ -238,7 +284,7 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 		}
 		if slices.Contains(source.Links, toPath) {
 			// Idempotent: a retrying agent MUST NOT append the link twice.
-			return writeResult{fromPath, source.Version}, nil
+			return writeResult{Path: fromPath, Version: source.Version}, nil
 		}
 		// Rooted, not relative: a bare to_path would resolve against the source's own directory.
 		body := strings.TrimRight(source.Body, "\n") + "\n\n[" + toPath + "](/" + toPath + ".md)\n"
@@ -247,7 +293,7 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 			return nil, toolErr("to_path " + okf.PyReprString(toPath) + " is not a concept path such as detect/dormant-rules")
 		}
 		version := source.Version
-		result, err := t.write(ctx, *source, fromPath, &version, map[string]any{"body": body})
+		result, err := t.write(ctx, *source, fromPath, &version, map[string]any{"body": body}, true)
 		if err != nil {
 			return nil, err
 		}

@@ -96,7 +96,7 @@
           "name": "okf_list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.\n\nA card with `status` is `deprecated` or past its `stale_after` date, and ranks lower. Prefer a current concept over it.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -140,6 +140,13 @@
                     },
                     "score": {
                       "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "deprecated",
+                        "stale"
+                      ]
                     }
                   },
                   "required": [
@@ -259,7 +266,7 @@
           "name": "okf_create"
         },
         {
-          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.\n\n`frontmatter` is replaced whole. To retire a concept, pass its frontmatter from okf_read with `status: deprecated` added, and link its replacement in `body`. Search then ranks it lower.",
           "inputSchema": {
             "properties": {
               "path": {
@@ -479,7 +486,7 @@
           "name": "okf_list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.\n\nA card with `status` is `deprecated` or past its `stale_after` date, and ranks lower. Prefer a current concept over it.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -524,6 +531,13 @@
                     },
                     "score": {
                       "type": "number"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "deprecated",
+                        "stale"
+                      ]
                     }
                   },
                   "required": [
@@ -642,7 +656,7 @@
           "name": "okf_create"
         },
         {
-          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.\n\n`frontmatter` is replaced whole. To retire a concept, pass its frontmatter from okf_read with `status: deprecated` added, and link its replacement in `body`. Search then ranks it lower.",
           "inputSchema": {
             "type": "object",
             "properties": {

@@ -167,6 +167,45 @@ func TestSearchWeighsARareTermAboveACommonOne(t *testing.T) {
 	}
 }
 
+// Identical text, so only the lifecycle frontmatter separates the scores.
+func TestSearchDemotesDeprecatedAndStaleConcepts(t *testing.T) {
+	for path, kv := range map[string][]any{
+		"live":     nil,
+		"old":      {"status", "deprecated"},
+		"expired":  {"stale_after", "2020-01-01"},
+		"instant":  {"stale_after", "2020-01-01T00:00:00+00:00"},
+		"future":   {"stale_after", "2999-01-01"},
+		"later":    {"stale_after", "2999-01-01T00:00:00Z"},
+		"bad-date": {"stale_after", "soon"},
+		"stable":   {"status", "stable"},
+	} {
+		fm := okf.NewMap()
+		for i := 0; i < len(kv); i += 2 {
+			fm.Set(kv[i].(string), kv[i+1])
+		}
+		create(t, okf.Concept{Path: path, Type: "Concept", Body: "failover pager", Frontmatter: fm})
+	}
+	cs, tenant := fixture(t)
+	hits, err := cs.Search(ctx, tenant, "failover", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	var order []string
+	for _, h := range hits {
+		got[h.Path] = h.Status
+		order = append(order, h.Path)
+	}
+	want := map[string]string{"live": "", "future": "", "later": "", "bad-date": "", "stable": "",
+		"expired": "stale", "instant": "stale", "old": "deprecated"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("statuses = %v, want %v", got, want)
+	}
+	if !slices.Equal(order[5:], []string{"expired", "instant", "old"}) {
+		t.Fatalf("order = %v, want stale then deprecated last", order)
+	}
+}
+
 // The posting trigger replaces a concept's terms on update.
 func TestSearchFollowsAnUpdate(t *testing.T) {
 	create(t, okf.Concept{Path: "a/b", Type: "Concept", Body: "alpha"})

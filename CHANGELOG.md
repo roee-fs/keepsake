@@ -15,6 +15,19 @@ test enforces it and the release workflow refuses otherwise.
 - `compose.yaml`: `docker compose up` runs a single-tenant keepsake on
   `localhost:8000`, with no Kubernetes.
 - `docs/`: the MCP tool reference, operations, and alternatives.
+- `okf_search` demotes a concept whose frontmatter says `status: deprecated`
+  (score ×0.3) or whose `stale_after` date has passed (×0.6). Its card carries
+  an optional `status` field. The `okf_update` description tells agents to
+  retire a concept this way. `stale_after` is read as an ISO 8601 instant, as
+  the OKF spec defines it, or as a bare date.
+- Tool writes stamp OKF `generated: {by, at}` with the caller and the time,
+  on create and on any change to the title, description or body.
+
+### Security
+
+- A tool call can no longer set or change `verified`, so an agent can't mark
+  its own work as human-reviewed. A text change through `okf_update` drops an
+  existing mark and returns `"unverified": true`. `okf_relate` keeps it.
 
 ## 0.3.0 — 2026-09-24
 

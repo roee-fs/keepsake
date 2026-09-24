@@ -86,10 +86,13 @@ func toolDefinitions() []*mcp.Tool {
 				"are OR-ed, so every extra term broadens the result instead of narrowing " +
 				"it: add terms to cast wider, drop them to focus. `limit` is required — " +
 				"ask for the fewest results you can use. `prefix` confines the search to " +
-				"one part of the tree.",
+				"one part of the tree.\n\n" +
+				"A card with `status` is `deprecated` or past its `stale_after` date, and " +
+				"ranks lower. Prefer a current concept over it.",
 			InputSchema: schema(obj("query", str(), "limit", limit(), "prefix", str()), "query", "limit"),
 			OutputSchema: results(schema(
-				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number")),
+				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
+					"status", obj("type", "string", "enum", []string{"deprecated", "stale"})),
 				"path", "type", "title", "description", "score",
 			)),
 		},
@@ -127,7 +130,10 @@ func toolDefinitions() []*mcp.Tool {
 				"have. Pass `expected_version` (from okf_read) to make the write a " +
 				"compare-and-swap: if anything has been written since, nothing changes and " +
 				"you get back the current version and body to merge against. Leave it out " +
-				"only when overwriting whatever is there is acceptable.",
+				"only when overwriting whatever is there is acceptable.\n\n" +
+				"`frontmatter` is replaced whole. To retire a concept, pass its " +
+				"frontmatter from okf_read with `status: deprecated` added, and link its " +
+				"replacement in `body`. Search then ranks it lower.",
 			InputSchema: schema(
 				withConceptFields("path", str(), "expected_version", obj("type", "integer", "minimum", 1, "maximum", MaxVersion)),
 				"path",
