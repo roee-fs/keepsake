@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Records the README's demo GIF with asciinema and renders it with agg. Needs
-# ANTHROPIC_API_KEY, like demo/run.sh. The GIF cuts stand-up and teardown but keeps the
-# "Ready in" line, and caps idle time at 2s, which each agent's "answered in" line discloses.
+# Records the README's demo GIF with asciinema and renders it with agg. The GIF cuts
+# stand-up and teardown but keeps the "Ready in" line, and caps idle time at 2s, which
+# each agent's "answered in" line discloses.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

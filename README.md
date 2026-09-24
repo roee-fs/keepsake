@@ -12,9 +12,9 @@ What one agent learns, the next one knows. One command shows it:
 git clone https://github.com/roee-fs/keepsake && cd keepsake && ./demo/run.sh
 ```
 
-It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm, jq,
-[Claude Code](https://docs.claude.com/en/docs/claude-code/setup) and
-`ANTHROPIC_API_KEY`. It installs the chart on a throwaway kind cluster and imports
+It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm, jq and a
+logged-in [Claude Code](https://docs.claude.com/en/docs/claude-code/setup).
+It installs the chart on a throwaway kind cluster and imports
 an on-call team's knowledge base. Agent A asks who to page before a Postgres
 failover and gets a stale answer. Agent B, which just ran a failover drill, records
 what it learned. Agent A asks again in a new session and gets the right answer and

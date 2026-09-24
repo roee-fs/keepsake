@@ -42,14 +42,9 @@ if ((${#missing[@]})); then
   echo "  claude  https://docs.claude.com/en/docs/claude-code/setup" >&2
   exit 1
 fi
-# The agents run with --bare, so they ignore your Claude Code settings and login.
-if [[ -z ${ANTHROPIC_API_KEY:-} ]]; then
-  echo "ANTHROPIC_API_KEY must be set: the agents are real Claude sessions." >&2
-  exit 1
-fi
 
 teardown() {
-  rm -f "${transcript:-}"
+  rm -rf "${transcript:-}" "${agent_dir:-}"
   $KEEP || kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 }
 trap teardown EXIT
@@ -73,6 +68,9 @@ one. Update each with expected_version set to the version you read, and say in t
 correction what changed and why, so the next agent to read it learns both."
 MCP_CONFIG=$(jq -cn --arg url "$MCP" '{mcpServers: {keepsake: {type: "http", url: $url}}}')
 transcript=$(mktemp)
+# Agents start in an empty directory with only project settings, so your own Claude Code
+# settings, hooks, plugins and CLAUDE.md never reach them. Your login still does.
+agent_dir=$(mktemp -d)
 
 # One fresh Claude session with only keepsake for memory. It prints each MCP call as it
 # happens, then the answer, which it also leaves in $answer. Extra flags go to claude.
@@ -80,9 +78,9 @@ agent() {
   local who=$1 system=$2 prompt=$3 start=$SECONDS
   shift 3
   printf '\033[1m%s:\033[0m %s\n' "$who" "$prompt"
-  claude -p "$prompt" --bare --model "$MODEL" --append-system-prompt "$system" \
-    --strict-mcp-config --mcp-config "$MCP_CONFIG" --tools "" --allowedTools mcp__keepsake \
-    --output-format stream-json --verbose "$@" |
+  (cd "$agent_dir" && claude -p "$prompt" --setting-sources project --model "$MODEL" \
+    --append-system-prompt "$system" --strict-mcp-config --mcp-config "$MCP_CONFIG" \
+    --tools "" --allowedTools mcp__keepsake --output-format stream-json --verbose "$@") |
     tee "$transcript" |
     jq -rj --unbuffered 'select(.type == "assistant") | .message.content[]
       | select(.type == "tool_use")
