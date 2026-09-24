@@ -230,6 +230,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 	// Python advertises tools without list-change notifications, and no logging.
 	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+		Instructions: instructions,
 	})
 	tools := toolDefinitions()
 	// One fewer than the pool, so a burst queues here and the console keeps a connection.
