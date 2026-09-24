@@ -71,6 +71,8 @@ test enforces it and the release workflow refuses otherwise.
   - `migrate` against a database stamped with a revision this release does not
     know prints `keepsake: Can't locate revision identified by '<id>'` and exits
     1. Python raised a traceback, also with exit 1.
+- `okf_relate` leaves one blank line before the link it appends. On a body that
+  ended in a newline, which is every imported concept, it left two.
 
 ### Security
 
