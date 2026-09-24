@@ -3,7 +3,6 @@ package server
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,11 +34,6 @@ var openapiJSON = func() []byte {
 	}
 	return b.Bytes()
 }()
-
-// docsHTML is get_swagger_ui_html(openapi_url="openapi.json", title="keepsake API") from FastAPI 0.141.1.
-//
-//go:embed docs.html
-var docsHTML []byte
 
 // Long enough to outlast a port-forward session, short enough to bound a leaked cookie.
 const sessionTTL = 12 * time.Hour
@@ -75,7 +69,6 @@ var routeTable = []route{
 	{"POST /session", (*api).login, true},
 	{"DELETE /session", (*api).logout, false},
 	{"GET /openapi.json", (*api).openapi, false},
-	{"GET /docs", (*api).docs, false},
 	{"GET /tenants", (*api).tenants, false},
 	{"GET /stats", (*api).stats, false},
 	{"GET /stats/timeseries", (*api).timeseries, false},
@@ -539,11 +532,6 @@ func (a *api) logout(w http.ResponseWriter, r *http.Request) {
 func (a *api) openapi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(openapiJSON)
-}
-
-func (a *api) docs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(docsHTML)
 }
 
 func (a *api) tenants(w http.ResponseWriter, r *http.Request) {

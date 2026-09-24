@@ -292,14 +292,6 @@ func TestOpenAPISchemaIsServedBehindTheSessionGuard(t *testing.T) {
 	}
 }
 
-func TestDocsUIIsServedBehindTheSessionGuard(t *testing.T) {
-	rec := newConsole(t).login().get("/docs")
-	wantStatus(t, rec, http.StatusOK)
-	if !strings.Contains(rec.Header().Get("Content-Type"), "text/html") || !strings.Contains(rec.Body.String(), "url: 'openapi.json'") {
-		t.Fatalf("docs = %s %s", rec.Header().Get("Content-Type"), rec.Body)
-	}
-}
-
 func TestTenantsListsEveryTenantWithAConcept(t *testing.T) {
 	c := newConsole(t).login()
 	seeded := c.seeded()

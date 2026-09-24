@@ -16,6 +16,11 @@ test enforces it and the release workflow refuses otherwise.
   `localhost:8000`, with no Kubernetes.
 - `docs/`: the MCP tool reference, operations, and alternatives.
 
+### Removed
+
+- The Swagger UI at `/api/docs`. It loaded its scripts from a CDN, and nothing
+  linked to it. `/api/openapi.json` still serves the contract.
+
 ## 0.3.0 — 2026-09-24
 
 ### Added
