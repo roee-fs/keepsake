@@ -26,6 +26,58 @@ test enforces it and the release workflow refuses otherwise.
   mode, and refuses any mode other than `none` or `jwt`.
 - `serve` refuses the nil UUID as its tenant in none mode, instead of starting
   and then failing every tool call.
+- `okf_search` ranks with BM25 (k1=0.9, b=0.4) over a new `posting` table: one
+  row per concept and term, kept in step by a trigger on `concept`. On BEIR,
+  nDCG@10 rises from 0.387 to 0.682 on SciFact, 0.258 to 0.327 on NFCorpus and
+  0.029 to 0.227 on FiQA. On LongMemEval session retrieval, recall@5 rises from
+  0.854 to 0.928. In a 100k-concept tenant, a search takes 6-150ms against
+  260-440ms before; one common term takes 81ms against 339ms. These times skip
+  row-level security. As the app role, a 3-term search takes 63ms against 41ms.
+  `bench/rankers.py` reproduces all of it.
+- A query word joined by `_`, such as `purge_tenant`, now matches either part
+  rather than the phrase. Use `okf_grep` for an exact identifier.
+- Search runs as the app role under row-level security, like every other read.
+  It needs no `SECURITY DEFINER` and no extension.
+- The MCP server sends `instructions`: treat keepsake as memory of any kind,
+  search it before answering, follow links, prefer the more specific source, say
+  when it holds no answer, and update rather than duplicate. Claude passes 49 of
+  56 held-out LongMemEval questions with them, against 44 with a wording that
+  described a team knowledge base, and 32-33 of the 33 demo tasks.
+  `bench/longmemeval.py` builds the tuning and holdout sets.
+
+### Security
+
+- `purge_tenant` no longer grants `EXECUTE` to `PUBLIC`. Since 0.1.0, any role
+  with `USAGE` on the schema could purge any tenant by setting the GUC first.
+  Only `okf_app` holds `USAGE` in `managed` mode.
+
+### Upgrading
+
+- The migration backfills `posting` from every concept inside its own
+  transaction. Writes to `concept` wait until it commits, and the time grows
+  with the number of concepts. Reads go on.
+- The backfill MUST have free disk of about 20 times the size of `concept`: 8
+  for `posting` and 12 for WAL. In `managed` mode WAL shares the volume, and
+  `helm upgrade` never resizes it, so grow `spec.storage.size` on the
+  `<release>-db` cluster first.
+- `posting` takes about 8 times the space of `concept`: 4.6 GB against 576 MB
+  for 195k synthetic concepts of about 150 words. A write that changes a
+  concept's text also rewrites its postings: 0.71ms per concept against 0.11ms.
+- In `existing` mode, a server role other than `okf_app` needs `SELECT`,
+  `INSERT` and `DELETE` on `posting`. Without them, `okf_search` fails, and so
+  does every create, delete, and update that changes a concept's text or path,
+  from 0.2.0 pods too. `posting` does not exist until the migration runs,
+  so you MUST grant them first, as the owner role: `ALTER DEFAULT PRIVILEGES FOR
+  ROLE <owner> IN SCHEMA okf GRANT SELECT, INSERT, DELETE ON TABLES TO <server
+  role>;`. `managed` mode grants them to `okf_app`.
+- The server never calls `purge_tenant`. A role that runs it by hand needs
+  `EXECUTE` on it, which `PUBLIC` no longer holds.
+- A 0.2.0 pod accepts the new schema, so pods MAY roll in any order.
+- A rollback to 0.2.0 MUST first take the schema back to revision 0004, as the
+  owner role, with `okf` replaced by your `KEEPSAKE_SCHEMA` if you set one:
+  `BEGIN; DROP TRIGGER concept_posting ON okf.concept; DROP TABLE okf.posting;
+  DROP FUNCTION okf.posting_sync(); UPDATE okf.alembic_version SET version_num =
+  '0004'; COMMIT;`.
 
 ## 0.2.0 — 2026-09-23
 
