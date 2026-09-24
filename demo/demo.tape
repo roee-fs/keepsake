@@ -15,7 +15,7 @@ Set Height 860
 Set Padding 20
 Set TypingSpeed 60ms
 
-Env PAUSE 8
+Env PAUSE "8"
 
 Type "./demo/run.sh"
 Sleep 500ms
