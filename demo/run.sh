@@ -26,6 +26,8 @@ OUT=${OUT:-/tmp/keepsake-demo-export}
 IMAGE=${IMAGE:-ghcr.io/roee-fs/keepsake:$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' charts/keepsake/Chart.yaml)}
 MCP=http://localhost:$NODE_PORT/mcp
 export KUBECONFIG="${TMPDIR:-/tmp}/$CLUSTER-kubeconfig"
+# A pager would stop the demo until the reader presses q.
+export GIT_PAGER=cat
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 beat() { bold "[${SECONDS}s] $*"; }
@@ -139,12 +141,12 @@ if git -C "$OUT" diff --cached --quiet -- . ':!index.md' ':!log.md'; then
   shown git -C "$OUT" diff --cached --stat -- . ':!index.md' ':!log.md'
   echo "No diff: every concept came back byte-for-byte."
 elif [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
-  git -C "$OUT" --no-pager diff --cached -- . ':!index.md' ':!log.md'
+  git -C "$OUT" diff --cached -- . ':!index.md' ':!log.md'
   echo "the demo bundle did not round-trip" >&2
   exit 1
 else
-  bold "Each difference below SHOULD be one of the six fidelity exceptions in the README. Anything else is a bug; please report it."
-  git -C "$OUT" --no-pager diff --cached -- . ':!index.md' ':!log.md'
+  bold "Each difference below SHOULD be a known round-trip limit, such as a dropped frontmatter comment or requoted scalar. Anything else is a bug; please report it."
+  git -C "$OUT" diff --cached -- . ':!index.md' ':!log.md'
 fi
 git -C "$OUT" -c user.name=demo -c user.email=demo@localhost commit -qm "exported by keepsake"
 
@@ -164,8 +166,8 @@ if [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
   beat "Export again and diff"
   shown keepsake export /out
   git -C "$OUT" add -A
-  shown git -C "$OUT" --no-pager diff --cached --stat
-  git -C "$OUT" --no-pager diff --cached
+  shown git -C "$OUT" diff --cached --stat
+  git -C "$OUT" diff --cached
   if ! diff <(git -C "$OUT" diff --cached --name-only) demo/expected-changes.txt; then
     echo "the agent changed files demo/expected-changes.txt does not list" >&2
     exit 1

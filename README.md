@@ -79,18 +79,6 @@ RLS.
 **No lock-in.** MIT, no hosted tier, no registry, no required runtime. Your
 knowledge is markdown; `keepsake export` hands it back byte-for-byte.
 
-### Fidelity
-
-Byte-for-byte has six known exceptions, each pinned by a test:
-
-- CRLF line endings are normalised to LF.
-- Comments in frontmatter are dropped.
-- An unquoted YAML date (`2026-01-01`) comes back as a string.
-- A hand-written block-style list re-emits flow-style (`tags: [a, b]`).
-- Scalar quoting on known fields is not kept.
-- Unknown frontmatter keys come back in jsonb's order (shorter keys first), not
-  the order they were written.
-
 ## Looking at what agents stored
 
 The chart serves a read-only admin console from the same pod and port as `/mcp`
