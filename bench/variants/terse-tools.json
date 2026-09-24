@@ -1,0 +1,12 @@
+{
+  "description": "One-line tool descriptions, to measure what the shipped guidance earns.",
+  "tools": {
+    "okf_list": "List concepts under a prefix, with counts per type.",
+    "okf_search": "Keyword search over concepts. Returns ranked paths and titles.",
+    "okf_grep": "Regex search over concept text. Returns paths and snippets.",
+    "okf_read": "Read one concept: body, frontmatter, links and backlinks.",
+    "okf_create": "Create a concept at a new path.",
+    "okf_update": "Update an existing concept.",
+    "okf_relate": "Add a link from one concept to another."
+  }
+}

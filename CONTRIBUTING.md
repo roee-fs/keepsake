@@ -27,7 +27,7 @@ Run what CI runs:
 test -z "$(gofmt -l .)"
 go vet ./...
 go test -race ./...
-uv run ruff check e2e tests
+uv run ruff check e2e bench tests
 uv run pytest tests
 ```
 
@@ -53,6 +53,23 @@ a change; `bash e2e/down.sh` deletes it.
 concurrency, resilience, a real agent — and is deliberately **not** checked in.
 If you need it, ask; it is kept out of the repository because it is a working
 tool rather than a gate.
+
+## Benchmarks
+
+`bench/` measures search and agent behaviour. Each script needs Docker and Go.
+
+- `python3 bench/beir.py` scores `okf_search` on BEIR over MCP. A change to
+  search MUST keep SciFact nDCG@10 at 0.66 or above.
+- `python3 bench/rankers.py` compares rankers on BEIR and LongMemEval, and times
+  them in a 100k-concept tenant.
+- `python3 bench/run.py` runs Claude over MCP on the tasks in
+  `bench/tasks.json`, once per variant in `bench/variants/`. It needs the
+  `claude` CLI and costs about $0.05 a run. A change to a tool description or to
+  the server instructions MUST come with its result.
+- `python3 bench/longmemeval.py` turns LongMemEval into two sets of 56 agent
+  tasks for `run.py --tasks-file`: `tune.json` and `holdout.json`. Tune on the
+  first. A result you report MUST come from the holdout, run once, after tuning
+  is done.
 
 ## The console
 

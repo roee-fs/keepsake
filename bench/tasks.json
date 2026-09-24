@@ -1,0 +1,101 @@
+[
+  {
+    "id": "failover-steps",
+    "kind": "lookup",
+    "prompt": "Our Postgres primary is gone. Which replica should we promote, and with what command?",
+    "expect": {
+      "reads": ["runbooks/db-failover"],
+      "answer": ["pg_ctl promote", "lag"]
+    }
+  },
+  {
+    "id": "page-channel",
+    "kind": "stale-fact",
+    "prompt": "The main database primary has been unreachable for five minutes. Which Slack channel do I page?",
+    "expect": {
+      "answer": ["data-platform-oncall"]
+    }
+  },
+  {
+    "id": "data-loss-limit",
+    "kind": "vocabulary-mismatch",
+    "prompt": "If we have to recover the main database, how much recent data are we allowed to lose?",
+    "expect": {
+      "answer": ["\\b(one|1)[ -]?min|\\b60 ?s"]
+    }
+  },
+  {
+    "id": "https-owner",
+    "kind": "vocabulary-mismatch",
+    "prompt": "Which team owns the component that handles HTTPS for our public traffic?",
+    "expect": {
+      "answer": ["\\bedge\\b"]
+    }
+  },
+  {
+    "id": "stampede-oncall",
+    "kind": "multi-hop",
+    "prompt": "Which datastore got overwhelmed during the cache stampede, and which on-call channel should be paged for it today?",
+    "expect": {
+      "answer": ["postgres", "data-platform-oncall"]
+    }
+  },
+  {
+    "id": "valkey-dependents",
+    "kind": "backlinks",
+    "prompt": "Which services break if someone flushes Valkey, and how does each one break?",
+    "expect": {
+      "answer": ["auth", "billing"]
+    }
+  },
+  {
+    "id": "flushall-alternative",
+    "kind": "exact-string",
+    "prompt": "Someone wants to run FLUSHALL on the cache to clear a bad key. What should they do instead?",
+    "expect": {
+      "reads": ["runbooks/cache-flush"],
+      "answer": ["prefix", "scale"]
+    }
+  },
+  {
+    "id": "valkey-rto",
+    "kind": "unanswerable",
+    "prompt": "What is our RTO for Valkey?",
+    "expect": {
+      "judge": "The knowledge base defines an RTO only for Postgres (fifteen minutes). It defines none for Valkey. PASS if the answer says no Valkey RTO is documented. FAIL if it states a Valkey RTO, or presents the Postgres figure as Valkey's."
+    }
+  },
+  {
+    "id": "record-incident",
+    "kind": "write",
+    "prompt": "Record this incident in the knowledge base: on 2026-09-20 the search indexer fell an hour behind after a database failover, because it kept reading from the old primary. Link it to whatever it involved.",
+    "expect": {
+      "search_before_write": true,
+      "after": {
+        "added": 1,
+        "new": [{"prefix": "incidents/", "body": ["/services/search-indexer", "/runbooks/db-failover"]}]
+      }
+    }
+  },
+  {
+    "id": "fix-stale-runbook",
+    "kind": "update",
+    "prompt": "The database failover runbook tells people to page a Slack channel that has been archived. Fix it.",
+    "expect": {
+      "search_before_write": true,
+      "after": {
+        "added": 0,
+        "changed": {"runbooks/db-failover": {"body": ["data-platform-oncall"], "body_not": ["in `#dba-oncall`"]}}
+      }
+    }
+  },
+  {
+    "id": "duplicate-term",
+    "kind": "dedupe",
+    "prompt": "Add a glossary entry defining RPO as the most data a recovery may lose.",
+    "expect": {
+      "search_before_write": true,
+      "after": {"added": 0}
+    }
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "description": "No tools: the whole bundle in the system prompt. The baseline for progressive disclosure through tools.",
+  "bundle_in_prompt": true,
+  "instructions": null,
+  "tools": {
+    "okf_list": null,
+    "okf_search": null,
+    "okf_grep": null,
+    "okf_read": null,
+    "okf_create": null,
+    "okf_update": null,
+    "okf_relate": null
+  }
+}

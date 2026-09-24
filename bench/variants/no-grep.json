@@ -1,0 +1,4 @@
+{
+  "description": "Shipped tools without okf_grep, to measure what grep earns.",
+  "tools": {"okf_grep": null}
+}
