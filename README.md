@@ -6,20 +6,22 @@ A Kubernetes-native memory substrate for fleets of agents.
 
 ## Try it
 
-Your agents' memory is a folder of markdown. One command proves it:
+What one agent learns, the next one knows. One command shows it:
 
 ```bash
 git clone https://github.com/roee-fs/keepsake && cd keepsake && ./demo/run.sh
 ```
 
-It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm and jq. It
-installs the chart on a throwaway kind cluster and imports a 25-concept on-call
-knowledge base. It exports that straight back and shows an empty diff. A scripted
-agent then reads a stale runbook over MCP, fixes it, and files an incident
-saying why. A second export shows exactly those changes. Then it deletes the cluster. The markdown stays.
+It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm, jq,
+[Claude Code](https://docs.claude.com/en/docs/claude-code/setup) and
+`ANTHROPIC_API_KEY`. It installs the chart on a throwaway kind cluster and imports
+an on-call team's knowledge base. Agent A asks who to page before a Postgres
+failover and gets a stale answer. Agent B, which just ran a failover drill, records
+what it learned. Agent A asks again in a new session and gets the right answer and
+the reason. The agents are real Claude sessions whose only memory is keepsake, over
+MCP. Then it deletes the cluster.
 
-Run it on your own notes: `./demo/run.sh ~/my-okf-bundle`. Add `--keep` to leave
-the cluster up and point your own agent at it.
+Add `--keep` to leave the cluster up and point your own agent at it.
 
 ## Why
 
