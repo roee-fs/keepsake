@@ -199,7 +199,7 @@ def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
                 if resp.status == 200:
                     return
         except OSError:
-            pass
+            pass  # Not listening yet: poll again.
         time.sleep(0.2)
     raise TimeoutError(f"{url} never became ready")
 

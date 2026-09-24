@@ -10,10 +10,11 @@ tune.json and report them on holdout.json, which a tuning loop MUST NOT read.
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
     python3 bench/longmemeval.py --curate single-session-preference multi-session
-    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/curate-tune.json --timeout 1200 --budget 4
+    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/curate-tune.json --variants baseline --trials 1 \
+        --timeout 1200 --budget 4
     python3 bench/longmemeval.py --curated bench/results/<that run>
-    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-raw.json
-    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-curated.json
+    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-raw.json --variants baseline
+    python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-curated.json --variants baseline
 """
 
 from __future__ import annotations
@@ -172,11 +173,16 @@ def curate(split: str, kinds: list[str]) -> None:
     print(f"{len(curation)} curation tasks -> {path}")
 
 
-def curated(split: str, run: Path) -> None:
+def curated(split: str, run: Path, variant: str = "baseline") -> None:
     """Pairs each curated memory from a run with its question: <split>-raw.json and <split>-curated.json."""
     exports = {}
-    for line in (run / "results.jsonl").read_text().splitlines():
-        r = json.loads(line)
+    rows = [
+        json.loads(line) for line in (run / "results.jsonl").read_text().splitlines()
+    ]
+    # One variant's lowest trial, so the pairing never depends on which trial finished last.
+    for r in sorted(rows, key=lambda r: r["trial"]):
+        if r["variant"] != variant or r["task"] in exports:
+            continue
         if not r.get("export") or r.get("error"):
             continue
         # A curation that wrote nothing leaves the raw memory, which would dilute the comparison.
