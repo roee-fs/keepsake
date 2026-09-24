@@ -57,8 +57,8 @@ tool rather than a gate.
 ## Benchmarks
 
 `bench/` measures search and agent behaviour. Each script needs Docker and Go.
-`bench/benchmarks.pdf` holds the current results, printed from `bench/benchmarks.html`
-in a browser. A change that moves them MUST update both.
+`bench/benchmarks.pdf` holds the current results. A change that moves them MUST
+update it.
 
 - `python3 bench/beir.py` scores `okf_search` on BEIR over MCP. A change to
   search MUST keep SciFact nDCG@10 at 0.66 or above.

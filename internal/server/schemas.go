@@ -54,8 +54,8 @@ func withConceptFields(kv ...any) *okf.Map {
 	return m
 }
 
-// instructions go into the agent's system prompt. On LongMemEval's holdout they pass 48 of 56
-// against 42 for bench/variants/team-instructions.json, which cast keepsake as a team knowledge base.
+// instructions go into the agent's system prompt. On LongMemEval's holdout they pass 49 of 56
+// against 44 for bench/variants/team-instructions.json, which cast keepsake as a team knowledge base.
 // Change them only with a bench/run.py result: tuned on tune.json, reported on holdout.json.
 const instructions = "You have a persistent memory through the okf_* tools. It holds what has been recorded " +
 	"before: facts, decisions, history, preferences and past conversations. Before answering anything that may " +

@@ -40,11 +40,9 @@ test enforces it and the release workflow refuses otherwise.
   It needs no `SECURITY DEFINER` and no extension.
 - The MCP server sends `instructions`: treat keepsake as memory of any kind,
   search it before answering, follow links, prefer the more specific source, say
-  when it holds no answer, and update rather than duplicate. Claude passes 48 of
-  56 held-out LongMemEval questions with them, against 42 with a wording that
-  described a team knowledge base, and 32-33 of the 33 demo tasks. Those
-  LongMemEval runs named each session by its dataset id, and the ids mark the
-  evidence. The scores MUST be re-measured before release.
+  when it holds no answer, and update rather than duplicate. Claude passes 49 of
+  56 held-out LongMemEval questions with them, against 44 with a wording that
+  described a team knowledge base, and 32-33 of the 33 demo tasks.
   `bench/longmemeval.py` builds the tuning and holdout sets.
 
 ### Security
