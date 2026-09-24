@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -604,5 +605,29 @@ func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
 		if log := readFile(t, filepath.Join(out, "log.md")); !strings.Contains(log, want+"\n") {
 			t.Errorf("want %s:\n%s", want, log)
 		}
+	}
+}
+
+// The demo's first diff is empty only while this holds.
+func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
+	src := filepath.Join("..", "..", "demo", "bundle")
+	if errs, err := ValidateBundle(src); err != nil || len(errs) > 0 {
+		t.Fatal(err, errs)
+	}
+	cs, tenant, out := conceptStore(t), uuid.New(), t.TempDir()
+	mustImport(t, cs, tenant, src)
+	mustExport(t, cs, tenant, out)
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		if got := readFile(t, filepath.Join(out, rel)); got != readFile(t, p) {
+			t.Errorf("%s came back as:\n%s", rel, got)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
