@@ -185,7 +185,7 @@ func Verify(ctx context.Context, s *Store, schema string) error {
 				return misconfigured("%s.%s has no row-level security policy scoping it"+
 					" to one tenant", schema, name)
 			}
-			// Permissive policies are ORed, so every expression of every one must read a GUC.
+			// Permissive policies are ORed, so every expression of every one MUST read a GUC.
 			for _, p := range policies[name] {
 				if fault := policyFault(p); fault != "" {
 					return misconfigured("%s.%s policy %s %s", schema, name, p.name, fault)

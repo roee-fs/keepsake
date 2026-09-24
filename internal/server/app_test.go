@@ -156,7 +156,7 @@ func TestStaticBundlePresentServesTheConsoleLastWithSPAFallback(t *testing.T) {
 		if resp.StatusCode != 200 || body != shell {
 			t.Fatalf("%s = %d %q", p, resp.StatusCode, body)
 		}
-		// The shell names this build's assets, so it must not outlive an upgrade.
+		// The shell names this build's assets, so it MUST NOT outlive an upgrade.
 		if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
 			t.Fatalf("%s Cache-Control = %q", p, cc)
 		}
@@ -164,7 +164,7 @@ func TestStaticBundlePresentServesTheConsoleLastWithSPAFallback(t *testing.T) {
 	if resp, _ := send(t, http.MethodGet, base+"/assets/app.js", ""); resp.Header.Get("Cache-Control") != "" {
 		t.Fatalf("a hashed asset is served with Cache-Control %q", resp.Header.Get("Cache-Control"))
 	}
-	// The console must not stop the router redirecting a trailing slash.
+	// The console MUST NOT stop the router redirecting a trailing slash.
 	if resp, _ := send(t, http.MethodPost, base+"/mcp/", "{}"); resp.StatusCode != 307 || resp.Header.Get("Location") != "/mcp" {
 		t.Fatalf("POST /mcp/ = %d %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
