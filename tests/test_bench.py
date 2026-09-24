@@ -184,3 +184,24 @@ def test_a_longmemeval_task_carries_the_official_judge_prompt() -> None:
     )
     assert abstained["kind"] == "abstention"
     assert "unanswerable" in abstained["expect"]["judge_template"]
+
+
+def test_curated_pairs_each_question_with_one_variants_first_trial(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import longmemeval
+
+    monkeypatch.setattr(longmemeval, "OUT", tmp_path)
+    monkeypatch.setattr(grade, "load_bundle", lambda _: {"user/profile": ""})
+    (tmp_path / "tune.json").write_text(json.dumps([{"id": "q", "bundle": "raw"}]))
+    run = tmp_path / "run"
+    run.mkdir()
+    rows = [
+        {"variant": "baseline", "task": "q", "trial": 2, "export": "b2"},
+        {"variant": "baseline", "task": "q", "trial": 1, "export": "b1"},
+        {"variant": "terse-tools", "task": "q", "trial": 1, "export": "t1"},
+    ]
+    (run / "results.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    longmemeval.curated("tune", run)
+    paired = json.loads((tmp_path / "tune-curated.json").read_text())
+    assert [t["bundle"] for t in paired] == ["b1"]
