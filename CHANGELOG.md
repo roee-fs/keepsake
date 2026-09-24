@@ -8,7 +8,7 @@ Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and a
 SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
 test enforces it and the release workflow refuses otherwise.
 
-## Unreleased
+## 0.2.0 — 2026-09-23
 
 ### Added
 
@@ -25,6 +25,8 @@ test enforces it and the release workflow refuses otherwise.
 - A link graph of one tenant's concepts in the console, backed by
   `GET /api/graph`. It draws up to 500 concepts and marks link targets no
   concept holds.
+- `demo/run.sh`, which installs the chart on kind, round-trips a bundle and has
+  an agent edit it over MCP, then diffs the export.
 
 ### Changed
 
