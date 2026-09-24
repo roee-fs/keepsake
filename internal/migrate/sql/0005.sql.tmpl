@@ -35,9 +35,9 @@ BEGIN
   RETURN NULL;
 END $$;
 
--- The columns `search` is generated from, since a trigger cannot name a generated column.
+-- The key and the columns `search` is generated from, since a trigger cannot name a generated column.
 CREATE TRIGGER concept_posting
-AFTER INSERT OR UPDATE OF path, title, description, body OR DELETE ON {{.SCHEMA}}.concept
+AFTER INSERT OR UPDATE OF tenant_id, path, title, description, body OR DELETE ON {{.SCHEMA}}.concept
 FOR EACH ROW EXECUTE FUNCTION {{.SCHEMA}}.posting_sync();
 
 -- The backfill reads every tenant through admin_read, so concept keeps FORCE and its readers never wait.
