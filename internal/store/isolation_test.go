@@ -3,7 +3,7 @@
 // the connection handling above them scopes every statement and leaves no scope
 // behind on a pooled connection.
 //
-// package store_test, not store: TestMain must migrate a database before any test
+// package store_test, not store: TestMain MUST migrate a database before any test
 // runs, and internal/migrate imports internal/store, so an internal test file here
 // importing internal/migrate would be an import cycle.
 package store_test
@@ -11,6 +11,8 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -170,7 +172,7 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 	if code := pgErrCode(t, err); code != "42501" {
 		t.Fatalf("code = %s, want InsufficientPrivilege (42501)", code)
 	}
-	// The transaction aborted, so the scope must be gone from that connection too.
+	// The transaction aborted, so the scope MUST be gone from that connection too.
 	probeUntilScopedConnectionReturns(t, s, scoped)
 }
 
@@ -456,7 +458,7 @@ func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
 	}
 }
 
-// A regression test for the acquire timeout: it must bound only the wait for a
+// A regression test for the acquire timeout: it MUST bound only the wait for a
 // pooled connection, not the transaction that connection then runs. Before the
 // fix, BeginTxFunc reused the acquire's timed context for COMMIT too, so a slow
 // fn failed at commit instead of succeeding.
@@ -548,6 +550,14 @@ func TestIsUnavailableDoesNotClassifyAnUnrelatedDeadline(t *testing.T) {
 	}
 	if store.IsUnavailable(err) {
 		t.Errorf("IsUnavailable(%v) = true, want false for a query-level deadline", err)
+	}
+}
+
+// A server that dies mid-query sends no error; pgconn wraps the read's io.ErrUnexpectedEOF.
+func TestIsUnavailableClassifiesADroppedConnection(t *testing.T) {
+	err := fmt.Errorf("failed to receive message: %w", io.ErrUnexpectedEOF)
+	if !store.IsUnavailable(err) {
+		t.Errorf("IsUnavailable(%v) = false, want true", err)
 	}
 }
 
