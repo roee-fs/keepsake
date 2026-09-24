@@ -2,6 +2,29 @@
 
 A Kubernetes-native memory substrate for fleets of agents.
 
+![demo: install, import, an agent edits over MCP, export, diff](https://github.com/roee-fs/keepsake/blob/pr-assets/demo.gif?raw=true)
+
+## Try it
+
+What one agent learns, the next one knows. One command shows it:
+
+```bash
+git clone https://github.com/roee-fs/keepsake && cd keepsake && ./demo/run.sh
+```
+
+It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm, jq and a
+logged-in [Claude Code](https://docs.claude.com/en/docs/claude-code/setup).
+It installs the chart on a throwaway kind cluster and imports
+an on-call team's knowledge base. Agent A asks who to page before a Postgres
+failover and gets a stale answer. Agent B, which just ran a failover drill, records
+what it learned. Agent A asks again in a new session and gets the right answer and
+the reason. The agents are real Claude sessions whose only memory is keepsake, over
+MCP. Then it deletes the cluster.
+
+Add `--keep` to leave the cluster up and point your own agent at it.
+
+## Why
+
 Agents lose everything when the context window closes. Keepsake gives them a
 durable, shared knowledge base they read and write over MCP — stored in
 Postgres, isolated per tenant by the database itself, and importable and
@@ -59,18 +82,6 @@ RLS.
 
 **No lock-in.** MIT, no hosted tier, no registry, no required runtime. Your
 knowledge is markdown; `keepsake export` hands it back byte-for-byte.
-
-### Fidelity
-
-Byte-for-byte has six known exceptions, each pinned by a test:
-
-- CRLF line endings are normalised to LF.
-- Comments in frontmatter are dropped.
-- An unquoted YAML date (`2026-01-01`) comes back as a string.
-- A hand-written block-style list re-emits flow-style (`tags: [a, b]`).
-- Scalar quoting on known fields is not kept.
-- Unknown frontmatter keys come back in jsonb's order (shorter keys first), not
-  the order they were written.
 
 ## Looking at what agents stored
 

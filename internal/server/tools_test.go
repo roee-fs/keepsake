@@ -317,6 +317,36 @@ func TestRelateIsIdempotent(t *testing.T) {
 	}
 }
 
+// An imported body ends in a newline, so the link MUST NOT land after two blank lines.
+func TestRelateLeavesOneBlankLineBeforeTheLink(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/x", map[string]any{"body": "start\n"})
+	if _, err := tools.Relate(ctx, "a/x", "b/y"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, tools, "a/x").Body; got != "start\n\n[b/y](/b/y.md)\n" {
+		t.Fatalf("body = %q", got)
+	}
+}
+
+// A written body MUST come back LF-only, as an imported one does.
+func TestWritesNormaliseCRLF(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/x", map[string]any{"body": "one\r\ntwo\r\n"})
+	if got := read(t, tools, "a/x").Body; got != "one\ntwo\n" {
+		t.Fatalf("created body = %q", got)
+	}
+	if _, err := tools.Update(ctx, "a/x", nil, map[string]any{"body": "three\r\n"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Relate(ctx, "a/x", "b/y"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, tools, "a/x").Body; got != "three\n\n[b/y](/b/y.md)\n" {
+		t.Fatalf("updated body = %q", got)
+	}
+}
+
 // New: a to_path whose link would not read back as to_path MUST NOT be appended.
 func TestRelateRejectsANonCanonicalTarget(t *testing.T) {
 	tools := newTools(t)
