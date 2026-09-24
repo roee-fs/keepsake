@@ -102,6 +102,8 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	if err != nil {
 		return okf.Concept{}, err
 	}
+	// As import does, so an exported bundle is LF-only however the body arrived.
+	body = strings.ReplaceAll(body, "\r\n", "\n")
 	// Absent means empty; anything present MUST be an object, or null would erase.
 	frontmatter := okf.NewMap()
 	if v, ok := kw["frontmatter"]; ok {
