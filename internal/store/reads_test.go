@@ -182,6 +182,21 @@ func TestSearchFollowsAnUpdate(t *testing.T) {
 	}
 }
 
+// Only a role that bypasses RLS can move a concept, and its postings MUST move with it.
+func TestSearchFollowsAConceptToAnotherTenant(t *testing.T) {
+	create(t, okf.Concept{Path: "a/moved", Type: "Concept", Body: "zqxmoved"})
+	cs, tenant := fixture(t)
+	other := uuid.New()
+	pgtest.Exec(t, db.AdminDSN, fmt.Sprintf(
+		"UPDATE okf.concept SET tenant_id = '%s' WHERE tenant_id = '%s' AND path = 'a/moved'", other, tenant))
+	for id, want := range map[uuid.UUID]int{tenant: 0, other: 1} {
+		hits, err := cs.Search(ctx, id, "zqxmoved", 10, nil)
+		if err != nil || len(hits) != want {
+			t.Fatalf("Search in %s = %+v, %v, want %d hits", id, hits, err, want)
+		}
+	}
+}
+
 // A posting key holds a whole lexeme beside the path, and random hex does not compress.
 func TestALongTokenBesideALongPathStillWrites(t *testing.T) {
 	random := func(n int) string {

@@ -27,7 +27,7 @@ Run what CI runs:
 test -z "$(gofmt -l .)"
 go vet ./...
 go test -race ./...
-uv run ruff check e2e tests
+uv run ruff check e2e bench tests
 uv run pytest tests
 ```
 
