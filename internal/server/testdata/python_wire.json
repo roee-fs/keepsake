@@ -25,6 +25,7 @@
           "listChanged": false
         }
       },
+      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "protocolVersion": "2025-11-25",
       "serverInfo": {
         "name": "keepsake",
@@ -58,6 +59,7 @@
           "listChanged": false
         }
       },
+      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "protocolVersion": "2025-06-18",
       "serverInfo": {
         "name": "keepsake",
@@ -425,6 +427,7 @@
           "listChanged": false
         }
       },
+      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "resultType": "complete",
       "supportedVersions": [
         "2026-07-28"

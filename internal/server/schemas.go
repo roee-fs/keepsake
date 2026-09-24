@@ -54,6 +54,16 @@ func withConceptFields(kv ...any) *okf.Map {
 	return m
 }
 
+// instructions go into the agent's system prompt. On LongMemEval's holdout they pass 48 of 56
+// against 42 for bench/variants/team-instructions.json, which cast keepsake as a team knowledge base.
+// Change them only with a bench/run.py result: tuned on tune.json, reported on holdout.json.
+const instructions = "You have a persistent memory through the okf_* tools. It holds what has been recorded " +
+	"before: facts, decisions, history, preferences and past conversations. Before answering anything that may " +
+	"depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links " +
+	"and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more " +
+	"recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating " +
+	"a concept, search for an existing one and update it instead if it exists. Name the paths you relied on."
+
 // toolDefinitions is written for an agent reading it cold, with no other documentation.
 func toolDefinitions() []*mcp.Tool {
 	tools := []*mcp.Tool{
