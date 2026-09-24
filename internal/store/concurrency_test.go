@@ -229,7 +229,7 @@ func TestAConflictingUpdateAppendsNoRevision(t *testing.T) {
 }
 
 // YAML loads an unquoted 2026-01-01 as a date, which okf's parser already turns
-// into the plain string "2026-01-01" (Task 3/4's divergence 1). It must still
+// into the plain string "2026-01-01" (Task 3/4's divergence 1). It MUST still
 // round-trip through jsonb byte-identically.
 func TestFrontmatterCarryingADateSurvivesAWrite(t *testing.T) {
 	s := openApp(t)
@@ -310,7 +310,7 @@ func TestRevisionSnapshotCarriesEveryFieldAndTheNewVersion(t *testing.T) {
 }
 
 // The second concept's NUL byte fails at the database, inside the same
-// transaction ImportMany runs the whole bundle in, so the first must not survive.
+// transaction ImportMany runs the whole bundle in, so the first MUST NOT survive.
 func TestImportManyIsOneTransaction(t *testing.T) {
 	s := openApp(t)
 	cs := store.NewConceptStore(s)

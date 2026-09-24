@@ -44,7 +44,8 @@ func EnvPort() int {
 
 // listen serves h until SIGINT or SIGTERM, then shuts down gracefully. Tests replace it.
 var listen = func(addr string, h http.Handler) error {
-	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	// IdleTimeout is uvicorn's keep-alive timeout; zero would keep an idle connection forever.
+	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	errc := make(chan error, 1)
