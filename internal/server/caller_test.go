@@ -92,6 +92,20 @@ func TestAnAudienceListContainingKeepsakeIsAccepted(t *testing.T) {
 	}
 }
 
+func TestAMinterClockAFewSecondsOffIsTolerated(t *testing.T) {
+	now := time.Now().Unix()
+	for name, mutate := range map[string]func(map[string]any){
+		"minter behind": func(c map[string]any) { c["exp"] = now - 10 },
+		"minter ahead":  func(c map[string]any) { c["nbf"] = now + 10 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if code, _, body := call(t, "Bearer "+sign(key, hs256, claims(uuid.NewString(), mutate))); code != 200 {
+				t.Fatalf("got %d %q", code, body)
+			}
+		})
+	}
+}
+
 func TestAnInvalidTokenIsUnauthorized(t *testing.T) {
 	tenant := uuid.NewString()
 	valid := sign(key, hs256, claims(tenant, nil))
@@ -107,12 +121,12 @@ func TestAnInvalidTokenIsUnauthorized(t *testing.T) {
 		"two segments":          {"Bearer " + parts[0] + "." + parts[1]},
 		"wrong secret":          {"Bearer " + sign([]byte(strings.Repeat("x", 32)), hs256, claims(tenant, nil))},
 		"tampered payload":      {"Bearer " + tampered},
-		"alg none":              {"Bearer " + parts[0][:0] + base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`)) + "." + parts[1] + "."},
+		"alg none":              {"Bearer " + base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`)) + "." + parts[1] + "."},
 		"alg HS512":             {"Bearer " + sign(key, map[string]any{"alg": "HS512"}, claims(tenant, nil))},
 		"wrong issuer":          {"Bearer " + sign(key, hs256, claims(tenant, set("iss", "other")))},
 		"wrong audience":        {"Bearer " + sign(key, hs256, claims(tenant, set("aud", "other")))},
 		"no audience":           {"Bearer " + sign(key, hs256, claims(tenant, without("aud")))},
-		"expired":               {"Bearer " + sign(key, hs256, claims(tenant, set("exp", time.Now().Unix()-1)))},
+		"expired":               {"Bearer " + sign(key, hs256, claims(tenant, set("exp", time.Now().Unix()-120)))},
 		"no expiry":             {"Bearer " + sign(key, hs256, claims(tenant, without("exp")))},
 		"not yet valid":         {"Bearer " + sign(key, hs256, claims(tenant, set("nbf", time.Now().Unix()+60)))},
 		"no subject":            {"Bearer " + sign(key, hs256, claims(tenant, without("sub")))},

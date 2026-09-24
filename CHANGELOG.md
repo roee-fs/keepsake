@@ -24,6 +24,8 @@ test enforces it and the release workflow refuses otherwise.
 
 - The deployment sets `KEEPSAKE_AUTH_MODE`. `serve` refuses `--tenant` in jwt
   mode, and refuses any mode other than `none` or `jwt`.
+- `serve` refuses the nil UUID as its tenant in none mode, instead of starting
+  and then failing every tool call.
 
 ## 0.2.0 — 2026-09-23
 

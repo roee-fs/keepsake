@@ -22,6 +22,9 @@ import (
 // minSecret is HS256's key size; a shorter secret is guessable offline from any one token.
 const minSecret = 32
 
+// leeway absorbs clock skew between the minter and this pod, in seconds, on exp and nbf.
+const leeway = 30
+
 type caller struct {
 	tenant uuid.UUID
 	actor  string
@@ -139,9 +142,9 @@ func (j *JWT) verify(token string) (caller, error) {
 		return caller{}, errors.New("wrong iss")
 	case !slices.Contains(c.Aud, j.Audience):
 		return caller{}, errors.New("wrong aud")
-	case c.Exp == nil || now >= *c.Exp:
+	case c.Exp == nil || now >= *c.Exp+leeway:
 		return caller{}, errors.New("expired or no exp")
-	case c.Nbf != nil && now < *c.Nbf:
+	case c.Nbf != nil && now < *c.Nbf-leeway:
 		return caller{}, errors.New("not yet valid")
 	case c.Sub == "":
 		return caller{}, errors.New("no sub")

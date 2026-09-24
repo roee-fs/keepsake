@@ -319,7 +319,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 func authFromEnv(tenant string) (func(http.Handler) http.Handler, error) {
 	switch mode := os.Getenv("KEEPSAKE_AUTH_MODE"); mode {
 	case "", "none":
-		id, err := tenantID(tenant)
+		id, err := callerTenant(tenant)
 		if err != nil {
 			return nil, err
 		}
@@ -339,21 +339,28 @@ func authFromEnv(tenant string) (func(http.Handler) http.Handler, error) {
 	}
 }
 
+// callerTenant is tenantID without the nil uuid, which the MCP tools refuse to serve.
+func callerTenant(value string) (uuid.UUID, error) {
+	id, err := tenantID(value)
+	if err == nil && id == uuid.Nil {
+		return id, errors.New("the nil uuid is not a tenant")
+	}
+	return id, err
+}
+
 // runToken prints a token for one tenant, signed with the first secret jwt mode verifies.
 func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
-	id, err := tenantID(o.tenant)
+	id, err := callerTenant(o.tenant)
 	if err != nil {
 		return 0, err
-	}
-	if id == uuid.Nil {
-		return 0, errors.New("the nil uuid is not a tenant")
 	}
 	if o.sub == "" {
 		return 0, errors.New("--sub is required")
 	}
+	// exp is whole seconds, so a shorter ttl would mint a token that is already expired.
 	ttl, err := time.ParseDuration(o.ttl)
-	if err != nil || ttl <= 0 {
-		return 0, fmt.Errorf("--ttl must be a positive duration such as 1h, not %s", okf.PyReprString(o.ttl))
+	if err != nil || ttl < time.Second {
+		return 0, fmt.Errorf("--ttl must be a duration of at least 1s, such as 1h, not %s", okf.PyReprString(o.ttl))
 	}
 	j, err := server.JWTFromEnv()
 	if err != nil {

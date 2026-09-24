@@ -65,6 +65,14 @@ func TestServeRefusesATenantInJWTMode(t *testing.T) {
 	}
 }
 
+func TestServeRefusesTheNilTenant(t *testing.T) {
+	fakeListen(t)
+	code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.Nil.String())
+	if code != 1 || !strings.Contains(stderr, "nil uuid") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+}
+
 func TestServeRefusesAnUnknownAuthMode(t *testing.T) {
 	t.Setenv("KEEPSAKE_AUTH_MODE", "proxy")
 	fakeListen(t)
@@ -80,6 +88,7 @@ func TestTokenNeedsATenantASubjectAndADuration(t *testing.T) {
 		{"token", "--sub", "alice"},
 		{"token", "--tenant", uuid.NewString()},
 		{"token", "--tenant", uuid.NewString(), "--sub", "alice", "--ttl", "soon"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "alice", "--ttl", "500ms"},
 		{"token", "--tenant", uuid.Nil.String(), "--sub", "alice"},
 	} {
 		if code, stdout, stderr := run(t, args...); code != 1 || stdout != "" {
