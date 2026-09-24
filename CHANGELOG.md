@@ -8,7 +8,7 @@ Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and a
 SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
 test enforces it and the release workflow refuses otherwise.
 
-## Unreleased
+## 0.3.0 — 2026-09-24
 
 ### Added
 
