@@ -1,40 +1,35 @@
 #!/usr/bin/env bash
-# The round-trip drill: install keepsake on kind, import a bundle, let an agent edit it
-# over MCP, export, and diff. Usage: demo/run.sh [bundle-dir] [--keep]
+# Shared memory for agents: install keepsake on kind, import a knowledge base, and watch
+# one agent learn what another agent wrote. Usage: demo/run.sh [--keep]
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BUNDLE=demo/bundle
 KEEP=false
 for arg in "$@"; do
   case $arg in
     --keep) KEEP=true ;;
-    -*) echo "usage: demo/run.sh [bundle-dir] [--keep]" >&2; exit 2 ;;
-    *) BUNDLE=$arg ;;
+    *) echo "usage: demo/run.sh [--keep]" >&2; exit 2 ;;
   esac
 done
-[[ -d $BUNDLE ]] || { echo "not a directory: $BUNDLE" >&2; exit 2; }
-BUNDLE=$(cd "$BUNDLE" && pwd)
 
 CLUSTER=keepsake-demo
 # Distinct from up.sh's 30900 and the e2e's 30800, so all three can run on one machine.
 NODE_PORT=31000
 PG_NODE_PORT=31432
 TENANT=00000000-0000-0000-0000-000000000001
-OUT=${OUT:-/tmp/keepsake-demo-export}
 IMAGE=${IMAGE:-ghcr.io/roee-fs/keepsake:$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' charts/keepsake/Chart.yaml)}
+# Haiku 4.5 often skips the search or writes a stray concept; Sonnet 5 follows the brief.
+MODEL=${MODEL:-claude-sonnet-5}
 MCP=http://localhost:$NODE_PORT/mcp
 export KUBECONFIG="${TMPDIR:-/tmp}/$CLUSTER-kubeconfig"
-# A pager would stop the demo until the reader presses q.
-export GIT_PAGER=cat
 
 bold() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 beat() { bold "[${SECONDS}s] $*"; }
 shown() { printf '\033[2m$ %s\033[0m\n' "$*"; "$@"; }
 
 missing=()
-for tool in docker kind kubectl helm jq curl git; do
+for tool in docker kind kubectl helm jq curl claude; do
   command -v "$tool" >/dev/null || missing+=("$tool")
 done
 if ((${#missing[@]})); then
@@ -44,39 +39,60 @@ if ((${#missing[@]})); then
   echo "  kubectl https://kubernetes.io/docs/tasks/tools/" >&2
   echo "  helm    https://helm.sh/docs/intro/install/" >&2
   echo "  jq      https://jqlang.org/download/" >&2
+  echo "  claude  https://docs.claude.com/en/docs/claude-code/setup" >&2
   exit 1
 fi
 
-# Only the default is ours to delete; any other OUT MUST not exist yet.
-if [[ -e $OUT && $OUT != /tmp/keepsake-demo-export ]]; then
-  echo "refusing to overwrite $OUT" >&2
-  exit 2
-fi
-
 teardown() {
+  rm -rf "${transcript:-}" "${agent_dir:-}"
   $KEEP || kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 }
 trap teardown EXIT
 
 # The keepsake CLI, run from the same image on the kind network so it reaches Postgres
-# through the node. --user keeps exported files owned by the caller.
+# through the node.
 keepsake() {
-  docker run --rm --network kind --user "$(id -u):$(id -g)" \
-    -v "$BUNDLE:/bundle:ro" -v "$OUT:/out" \
+  docker run --rm --network kind -v "$PWD/demo/bundle:/bundle:ro" \
     -e KEEPSAKE_DSN="postgres://okf_app:app@$CLUSTER-control-plane:$PG_NODE_PORT/keepsake" \
     -e KEEPSAKE_TENANT_ID="$TENANT" \
     "$IMAGE" keepsake "$@"
 }
 
-# One tools/call, printed as the curl it is. A tool error fails the demo.
-mcp() {
-  local request
-  request=$(jq -cn --arg name "$1" --argjson args "$2" \
-    '{jsonrpc: "2.0", id: 1, method: "tools/call", params: {name: $name, arguments: $args}}')
-  printf '\033[2m$ curl %s -d %s\033[0m\n' "$MCP" "'${request:0:90}…'" >&2
-  curl -sS --fail-with-body "$MCP" -H 'Content-Type: application/json' -H 'Accept: application/json' -d "$request" |
-    jq -e '.result | if .isError then error(.content[0].text) else .structuredContent end'
+READER="You answer questions from a knowledge base that several agents share through the \
+keepsake MCP tools. Search it and read what you find before you answer. Answer in at most \
+two sentences, name the concept paths you used, and if it records why something is so, \
+say why."
+WRITER="You keep a knowledge base that several agents share through the keepsake MCP tools. \
+When you learn something it lacks, search for the concepts it contradicts and read each \
+one. Update each with expected_version set to the version you read, and say in the \
+correction what changed and why, so the next agent to read it learns both."
+MCP_CONFIG=$(jq -cn --arg url "$MCP" '{mcpServers: {keepsake: {type: "http", url: $url}}}')
+transcript=$(mktemp)
+# Agents start in an empty directory with only project settings, so your own Claude Code
+# settings, hooks, plugins and CLAUDE.md never reach them. Your login still does.
+agent_dir=$(mktemp -d)
+
+# One fresh Claude session with only keepsake for memory. It prints each MCP call as it
+# happens, then the answer, which it also leaves in $answer. Extra flags go to claude.
+agent() {
+  local who=$1 system=$2 prompt=$3 start=$SECONDS
+  shift 3
+  printf '\033[1m%s:\033[0m %s\n' "$who" "$prompt"
+  (cd "$agent_dir" && claude -p "$prompt" --setting-sources project --model "$MODEL" \
+    --append-system-prompt "$system" --strict-mcp-config --mcp-config "$MCP_CONFIG" \
+    --tools "" --allowedTools mcp__keepsake --output-format stream-json --verbose "$@") |
+    tee "$transcript" |
+    jq -rj --unbuffered 'select(.type == "assistant") | .message.content[]
+      | select(.type == "tool_use")
+      | "\u001b[2m  → \(.name | sub("mcp__keepsake__"; "")) \(.input | del(.body) | tojson | .[:100])\u001b[0m\n"'
+  answer=$(jq -r 'select(.type == "result") | .result' "$transcript")
+  printf '\033[32m  %s\033[0m\n' "$answer"
+  printf '\033[2m  answered in %ss\033[0m\n' "$((SECONDS - start))"
 }
+
+QUESTION="Who do I page before a Postgres failover?"
+# Agent A only answers, so it cannot fix what it reads instead of answering.
+READ_ONLY=(--disallowedTools mcp__keepsake__okf_create mcp__keepsake__okf_update mcp__keepsake__okf_relate)
 
 beat "Stand up keepsake on kind"
 kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
@@ -125,55 +141,22 @@ for _ in $(seq 60); do curl -sf "http://localhost:$NODE_PORT/readyz" >/dev/null 
 password=$(kubectl get secret keepsake-admin -o jsonpath='{.data.password}' | base64 -d)
 bold "Ready in ${SECONDS}s. Console: http://localhost:$NODE_PORT (password: $password)"
 
-beat "Import your bundle"
-rm -rf "$OUT" && mkdir -p "$OUT"
-tar -C "$BUNDLE" --exclude=.git -cf - . | tar -C "$OUT" -xf -
-git -C "$OUT" init -q
-git -C "$OUT" add -A
-git -C "$OUT" -c user.name=demo -c user.email=demo@localhost commit -qm "the bundle you brought"
+beat "Import an on-call team's knowledge base"
 shown keepsake import /bundle
 
-beat "Export it straight back and diff against the original"
-shown keepsake export /out
-# index.md and log.md are generated at export, never stored.
-git -C "$OUT" add -A
-if git -C "$OUT" diff --cached --quiet -- . ':!index.md' ':!log.md'; then
-  shown git -C "$OUT" diff --cached --stat -- . ':!index.md' ':!log.md'
-  echo "No diff: every concept came back byte-for-byte."
-elif [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
-  git -C "$OUT" diff --cached -- . ':!index.md' ':!log.md'
-  echo "the demo bundle did not round-trip" >&2
+beat "Agent A asks"
+agent "Agent A" "$READER" "$QUESTION" "${READ_ONLY[@]}"
+
+beat "Agent B, which just ran a failover drill, tells keepsake what it learned"
+agent "Agent B" "$WRITER" "I just ran a Postgres failover drill. The runbook said to page #dba-oncall. \
+Nobody answered: that channel was archived when the DBA team became data platform. Data \
+platform answered on #data-platform-oncall. Record this."
+
+beat "Agent A asks again, in a new session"
+agent "Agent A" "$READER" "$QUESTION" "${READ_ONLY[@]}"
+if [[ $answer != *data-platform-oncall* ]]; then
+  echo "agent A did not learn what agent B recorded" >&2
   exit 1
-else
-  bold "Each difference below SHOULD be a known round-trip limit, such as a dropped frontmatter comment or requoted scalar. Anything else is a bug; please report it."
-  git -C "$OUT" diff --cached -- . ':!index.md' ':!log.md'
-fi
-git -C "$OUT" -c user.name=demo -c user.email=demo@localhost commit -qm "exported by keepsake"
-
-if [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
-  beat "An agent fixes a stale runbook over MCP"
-  runbook=$(mcp okf_read '{"path": "runbooks/db-failover"}')
-  fixed=$(jq -c '{path, expected_version: .version,
-    body: (.body | sub("the DBA on-call in `#dba-oncall`"; "the data platform on-call in `#data-platform-oncall`"))}' <<<"$runbook")
-  mcp okf_update "$fixed" >/dev/null
-  mcp okf_create "$(jq -cn '{
-    path: "incidents/2026-09-failover-drill", type: "Incident", title: "Failover drill",
-    description: "A drill paged a channel nobody reads.",
-    frontmatter: {tags: ["postgres", "drill"]},
-    body: "The [failover runbook](/runbooks/db-failover.md) paged `#dba-oncall`, which [data platform](/teams/data-platform.md) archived in August. Nobody answered. The runbook now pages `#data-platform-oncall`.\n"}')" >/dev/null
-  mcp okf_relate '{"from_path": "services/postgres", "to_path": "incidents/2026-09-failover-drill"}' >/dev/null
-
-  beat "Export again and diff"
-  shown keepsake export /out
-  git -C "$OUT" add -A
-  shown git -C "$OUT" diff --cached --stat
-  git -C "$OUT" diff --cached
-  if ! diff <(git -C "$OUT" diff --cached --name-only) demo/expected-changes.txt; then
-    echo "the agent changed files demo/expected-changes.txt does not list" >&2
-    exit 1
-  fi
-  # Set by demo.tape, so the recording holds on the diff.
-  sleep "${PAUSE:-0}"
 fi
 
 if $KEEP; then
@@ -181,10 +164,7 @@ if $KEEP; then
   echo "  claude mcp add --transport http keepsake $MCP"
   echo "Delete it with: kind delete cluster --name $CLUSTER"
 else
-  beat "Walk away"
+  beat "Tear down"
   shown helm uninstall keepsake
   shown kind delete cluster --name "$CLUSTER"
-  shown ls "$OUT"
-  bold "The cluster is gone. Your knowledge isn't: $OUT"
-  echo "Rerun with --keep to point your own agent at it."
 fi

@@ -7,7 +7,4 @@ tags: [team]
 Formerly the DBA team. Renamed to data platform in August 2026 when it took over
 [Valkey](/services/valkey.md) and the [search indexer](/services/search-indexer.md).
 
-On-call pages go to `#data-platform-oncall`. The old `#dba-oncall` channel is
-archived and nobody reads it.
-
 Owns [Postgres](/services/postgres.md).
