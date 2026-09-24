@@ -191,11 +191,7 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			plain := strings.Replace(in, "_", "", -1)
 			intv, err := strconv.ParseInt(plain, 0, 64)
 			if err == nil {
-				if intv == int64(int(intv)) {
-					return intTag, int(intv)
-				} else {
-					return intTag, intv
-				}
+				return intTag, intOrInt64(intv)
 			}
 			uintv, err := strconv.ParseUint(plain, 0, 64)
 			if err == nil {
@@ -210,11 +206,7 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			if strings.HasPrefix(plain, "0b") {
 				intv, err := strconv.ParseInt(plain[2:], 2, 64)
 				if err == nil {
-					if intv == int64(int(intv)) {
-						return intTag, int(intv)
-					} else {
-						return intTag, intv
-					}
+					return intTag, intOrInt64(intv)
 				}
 				uintv, err := strconv.ParseUint(plain[2:], 2, 64)
 				if err == nil {
@@ -223,11 +215,7 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			} else if strings.HasPrefix(plain, "-0b") {
 				intv, err := strconv.ParseInt("-"+plain[3:], 2, 64)
 				if err == nil {
-					if true || intv == int64(int(intv)) {
-						return intTag, int(intv)
-					} else {
-						return intTag, intv
-					}
+					return intTag, intOrInt64(intv)
 				}
 			}
 			// Octals as introduced in version 1.2 of the spec.
@@ -237,11 +225,7 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			if strings.HasPrefix(plain, "0o") {
 				intv, err := strconv.ParseInt(plain[2:], 8, 64)
 				if err == nil {
-					if intv == int64(int(intv)) {
-						return intTag, int(intv)
-					} else {
-						return intTag, intv
-					}
+					return intTag, intOrInt64(intv)
 				}
 				uintv, err := strconv.ParseUint(plain[2:], 8, 64)
 				if err == nil {
@@ -250,11 +234,7 @@ func resolve(tag string, in string) (rtag string, out interface{}) {
 			} else if strings.HasPrefix(plain, "-0o") {
 				intv, err := strconv.ParseInt("-"+plain[3:], 8, 64)
 				if err == nil {
-					if true || intv == int64(int(intv)) {
-						return intTag, int(intv)
-					} else {
-						return intTag, intv
-					}
+					return intTag, intOrInt64(intv)
 				}
 			}
 		default:
@@ -287,6 +267,15 @@ func encodeBase64(s string) string {
 		}
 	}
 	return string(out[:k])
+}
+
+// intOrInt64 is v as an int where an int holds it (keepsake). Upstream converted negative
+// binary and octal values unguarded, which truncates them where int is 32 bits.
+func intOrInt64(v int64) interface{} {
+	if v >= math.MinInt && v <= math.MaxInt {
+		return int(v)
+	}
+	return v
 }
 
 // This is a subset of the formats allowed by the regular expression
