@@ -91,8 +91,11 @@ EOF
 context=$(kubectl config current-context)
 [[ "$context" == "kind-$CLUSTER" ]] || { echo "refusing to run against $context" >&2; exit 1; }
 
-docker image inspect "$IMAGE" >/dev/null 2>&1 || docker pull "$IMAGE"
-kind load docker-image "$IMAGE" --name "$CLUSTER"
+# A registry image is pulled by the node, since kind cannot side-load a multi-platform
+# one. Only a local build, which no registry has, is loaded.
+if ! docker pull -q "$IMAGE" >/dev/null 2>&1; then
+  kind load docker-image "$IMAGE" --name "$CLUSTER"
+fi
 kubectl apply -f e2e/postgres.yaml
 kubectl apply -f - <<EOF
 apiVersion: v1
