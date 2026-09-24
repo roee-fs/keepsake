@@ -29,15 +29,27 @@ securityContext:
     drop: ["ALL"]
 
 service:
-  # Carries the authenticated console alongside the unauthenticated MCP endpoint.
+  # Carries the authenticated console alongside the MCP endpoint, which is
+  # unauthenticated in auth mode none.
   # Keep this ClusterIP. Reach it with `kubectl port-forward svc/<release> 8000:8000`.
   type: ClusterIP
   port: 8000
   nodePort: null # only honoured when type is NodePort or LoadBalancer
 
 auth:
-  mode: none # the only mode implemented; proxy and token are not built yet
-  fixedTenantId: "00000000-0000-0000-0000-000000000001"
+  # none: every /mcp request is fixedTenantId, and anything that reaches the Service
+  # can read and write it. jwt: each request carries an HS256 bearer token whose
+  # tctx.tenant claim picks the tenant, so one release serves many tenants.
+  mode: none # none | jwt
+  fixedTenantId: "00000000-0000-0000-0000-000000000001" # none mode only
+  jwt:
+    issuer: "" # required in jwt mode; the exact iss your token minter sets
+    audience: keepsake
+    # Required in jwt mode. A Secret you create, holding key `secrets`: one secret
+    # of at least 32 bytes per line. The first signs `keepsake token`; every line
+    # verifies, so rotation is add, switch the minter, remove. The server reads it
+    # at startup: restart the Deployment after changing it.
+    existingSecret: ""
 
 ui:
   # Disabled skips both the static mount and the /api mount. Rendered as

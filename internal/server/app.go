@@ -16,16 +16,17 @@ import (
 	"github.com/roee-fs/keepsake/internal/store"
 )
 
-// The revision log records the server, since a request carries no caller identity.
+// The revision log's actor in auth mode none, where a request carries no caller identity.
 const actor = "mcp"
 
 // Where the image bakes the built console; KEEPSAKE_STATIC_DIR overrides it.
 const defaultStaticDir = "/app/static"
 
 type Config struct {
-	DSN      string
-	TenantID uuid.UUID
-	Schema   string
+	DSN    string
+	Schema string
+	// Auth binds each /mcp request to its tenant: FixedTenant or JWT.Middleware.
+	Auth func(http.Handler) http.Handler
 }
 
 // BuildApp serves /mcp and /readyz and returns a closer, or fails when the database does not isolate tenants.
@@ -42,7 +43,8 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 
 	cs := store.NewConceptStore(s)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", NewMCPHandler(NewTools(cs, cfg.TenantID, actor)))
+	// Outside the MCP handler, so a request is refused before its body is read.
+	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

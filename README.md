@@ -98,6 +98,28 @@ Then log in at `http://localhost:8000` with that password.
 
 ![Console overview](https://github.com/roee-fs/keepsake/blob/pr-assets/overview-one-tenant.png?raw=true)
 
+## Serving many tenants
+
+By default a release serves one tenant, `auth.fixedTenantId`, to anything that
+reaches it. `auth.mode: jwt` serves many: each `/mcp` request carries an HS256
+bearer token, and its `tctx.tenant` claim picks the tenant.
+
+```bash
+openssl rand -hex 32 | kubectl create secret generic keepsake-jwt --from-file=secrets=/dev/stdin
+helm install keepsake charts/keepsake --set auth.mode=jwt \
+  --set auth.jwt.issuer=platform --set auth.jwt.existingSecret=keepsake-jwt
+```
+
+Your orchestrator holds the same secret and signs a short-lived token per call.
+The HMAC key is the line's text as-is, not its hex-decoded bytes:
+`{"iss": "platform", "aud": "keepsake", "sub": "run:42", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
+The secret MUST NOT be readable by anything an LLM drives. A client that can run
+code, or that only takes a static header, gets a token for its own tenant instead:
+
+```bash
+kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub alice --ttl 720h
+```
+
 ## Roadmap
 
 **v1 — the substrate**
@@ -120,7 +142,10 @@ Then log in at `http://localhost:8000` with that password.
 
 **Next**
 
-- [ ] `proxy` and `token` auth modes (v1 ships `none`)
+- [x] `jwt` auth mode: one release serves many tenants, each request's tenant
+      taken from a signed token
+- [ ] OIDC and Kubernetes ServiceAccount tokens for `jwt` mode, verified against
+      the issuer's published keys
 - [x] A review UI over what agents believe — the thing `git diff` gave OKF for
       free and every hosted memory product dropped
 - [ ] Semantic search (pgvector + reciprocal rank fusion over the lexical index)

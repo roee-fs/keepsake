@@ -1,5 +1,5 @@
-// The seven tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant is bound
-// at startup, so no tool takes one, and no tool returns a body the agent could not read.
+// The seven tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant comes from
+// the request's caller, so no tool takes one, and no tool returns a body the agent could not read.
 package server
 
 import (

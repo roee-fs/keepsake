@@ -8,6 +8,25 @@ Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and a
 SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
 test enforces it and the release workflow refuses otherwise.
 
+## Unreleased
+
+### Added
+
+- `auth.mode: jwt`. Each `/mcp` request carries an HS256 bearer token, and its
+  `tctx.tenant` claim picks the tenant, so one release serves many tenants. The
+  server checks `iss`, `aud` and `exp`, answers 401 for a bad token and 403 for
+  one naming no tenant, and records `sub` as `updated_by`. Secrets come from
+  `KEEPSAKE_JWT_SECRET_FILE`, one per line, so a secret rotates without downtime.
+- `keepsake token --tenant T --sub S --ttl D`, which prints a token for one
+  tenant, for clients that must not hold the secret.
+
+### Changed
+
+- The deployment sets `KEEPSAKE_AUTH_MODE`. `serve` refuses `--tenant` in jwt
+  mode, and refuses any mode other than `none` or `jwt`.
+- `serve` refuses the nil UUID as its tenant in none mode, instead of starting
+  and then failing every tool call.
+
 ## 0.2.0 — 2026-09-23
 
 ### Added

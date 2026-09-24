@@ -31,12 +31,30 @@
     "auth": {
       "type": "object",
       "properties": {
-        "mode": {"enum": ["none"]},
+        "mode": {"enum": ["none", "jwt"]},
         "fixedTenantId": {
           "type": "string",
           "pattern": "^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"
+        },
+        "jwt": {
+          "type": "object",
+          "properties": {
+            "issuer": {"type": "string"},
+            "audience": {"type": "string", "minLength": 1},
+            "existingSecret": {"type": "string"}
+          }
         }
-      }
+      },
+      "allOf": [{
+        "if": {"properties": {"mode": {"const": "jwt"}}, "required": ["mode"]},
+        "then": {
+          "properties": {"jwt": {
+            "properties": {"issuer": {"minLength": 1}, "existingSecret": {"minLength": 1}},
+            "required": ["issuer", "existingSecret"]
+          }},
+          "required": ["jwt"]
+        }
+      }]
     },
     "service": {
       "type": "object",

@@ -502,8 +502,6 @@ func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	restore := store.SetAcquireTimeout(20 * time.Millisecond)
-	defer restore()
 
 	holding := make(chan struct{})
 	release := make(chan struct{})
@@ -516,6 +514,9 @@ func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 		})
 	}()
 	<-holding
+	// Only now: a 20ms timeout on the holder's own acquire can fail it and never close holding.
+	restore := store.SetAcquireTimeout(20 * time.Millisecond)
+	defer restore()
 	defer func() {
 		close(release)
 		if err := <-done; err != nil {
