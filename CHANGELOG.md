@@ -61,11 +61,12 @@ test enforces it and the release workflow refuses otherwise.
   `helm upgrade` never resizes it, so grow `spec.storage.size` on the
   `<release>-db` cluster first.
 - `posting` takes about 8 times the space of `concept`: 4.6 GB against 576 MB
-  for 195k synthetic concepts of about 150 words. Every write to a concept also
-  rewrites its postings: 0.71ms per concept against 0.11ms.
+  for 195k synthetic concepts of about 150 words. A write that changes a
+  concept's text also rewrites its postings: 0.71ms per concept against 0.11ms.
 - In `existing` mode, a server role other than `okf_app` needs `SELECT`,
-  `INSERT` and `DELETE` on `posting`. Without them, `okf_search` and every write
-  fail, from 0.2.0 pods too. `posting` does not exist until the migration runs,
+  `INSERT` and `DELETE` on `posting`. Without them, `okf_search` fails, and so
+  does every create, delete, and update that changes a concept's text or path,
+  from 0.2.0 pods too. `posting` does not exist until the migration runs,
   so you MUST grant them first, as the owner role: `ALTER DEFAULT PRIVILEGES FOR
   ROLE <owner> IN SCHEMA okf GRANT SELECT, INSERT, DELETE ON TABLES TO <server
   role>;`. `managed` mode grants them to `okf_app`.
