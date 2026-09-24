@@ -20,5 +20,5 @@ Env PAUSE 8
 Type "./demo/run.sh"
 Sleep 500ms
 Enter
-Wait+Screen@4m /Your knowledge isn't/
+Wait@4m
 Sleep 4s

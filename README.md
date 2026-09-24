@@ -2,8 +2,6 @@
 
 A Kubernetes-native memory substrate for fleets of agents.
 
-![demo: install, import, an agent edits over MCP, export, diff](https://github.com/roee-fs/keepsake/blob/pr-assets/demo.gif?raw=true)
-
 ## Try it
 
 Your agents' memory is a folder of markdown. One command proves it:

@@ -45,6 +45,12 @@ if ((${#missing[@]})); then
   exit 1
 fi
 
+# Only the default is ours to delete; any other OUT MUST not exist yet.
+if [[ -e $OUT && $OUT != /tmp/keepsake-demo-export ]]; then
+  echo "refusing to overwrite $OUT" >&2
+  exit 2
+fi
+
 teardown() {
   $KEEP || kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 }
@@ -116,7 +122,7 @@ bold "Ready in ${SECONDS}s. Console: http://localhost:$NODE_PORT (password: $pas
 
 beat "Import your bundle"
 rm -rf "$OUT" && mkdir -p "$OUT"
-cp -R "$BUNDLE/." "$OUT"
+tar -C "$BUNDLE" --exclude=.git -cf - . | tar -C "$OUT" -xf -
 git -C "$OUT" init -q
 git -C "$OUT" add -A
 git -C "$OUT" -c user.name=demo -c user.email=demo@localhost commit -qm "the bundle you brought"
@@ -125,14 +131,18 @@ shown keepsake import /bundle
 beat "Export it straight back and diff against the original"
 shown keepsake export /out
 # index.md and log.md are generated at export, never stored.
-if git -C "$OUT" diff --quiet -- . ':!index.md' ':!log.md'; then
-  shown git -C "$OUT" diff --stat -- . ':!index.md' ':!log.md'
+git -C "$OUT" add -A
+if git -C "$OUT" diff --cached --quiet -- . ':!index.md' ':!log.md'; then
+  shown git -C "$OUT" diff --cached --stat -- . ':!index.md' ':!log.md'
   echo "No diff: every concept came back byte-for-byte."
+elif [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
+  git -C "$OUT" --no-pager diff --cached -- . ':!index.md' ':!log.md'
+  echo "the demo bundle did not round-trip" >&2
+  exit 1
 else
   bold "Each difference below SHOULD be one of the six fidelity exceptions in the README. Anything else is a bug; please report it."
-  git -C "$OUT" --no-pager diff -- . ':!index.md' ':!log.md'
+  git -C "$OUT" --no-pager diff --cached -- . ':!index.md' ':!log.md'
 fi
-git -C "$OUT" add -A
 git -C "$OUT" -c user.name=demo -c user.email=demo@localhost commit -qm "exported by keepsake"
 
 if [[ $BUNDLE == "$PWD/demo/bundle" ]]; then
