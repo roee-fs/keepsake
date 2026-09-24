@@ -1,0 +1,10 @@
+-- Rewrite admin_read so scoped reads keep the tenant index.
+--
+-- 0003's bare GUC test, ORed with tenant_isolation, hid tenant_id from every index,
+-- so each tenant-scoped read scanned every tenant's rows.
+--
+-- A range on tenant_id, so the planner can BitmapOr it with tenant_isolation's
+-- equality. With the GUC off the bound is NULL and the arm matches nothing.
+ALTER POLICY {{.ADMIN_POLICY}} ON {{.SCHEMA}}.concept USING (tenant_id >= CASE WHEN current_setting('{{.ADMIN_GUC}}', true) = 'on' THEN '00000000-0000-0000-0000-000000000000'::uuid END);
+
+ALTER POLICY {{.ADMIN_POLICY}} ON {{.SCHEMA}}.concept_revision USING (tenant_id >= CASE WHEN current_setting('{{.ADMIN_GUC}}', true) = 'on' THEN '00000000-0000-0000-0000-000000000000'::uuid END);

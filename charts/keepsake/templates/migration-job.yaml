@@ -22,7 +22,7 @@ spec:
     spec:
       restartPolicy: OnFailure
       # This Job sets no KEEPSAKE_PORT to shadow the injected one, so without this
-      # every upgrade's hook crash-loops. See keepsake.cli._env_port.
+      # every upgrade's hook crash-loops. See cli.EnvPort in internal/cli/cli.go.
       enableServiceLinks: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}

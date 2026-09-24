@@ -1,0 +1,122 @@
+// Package migrate replays 8f2af2e:src/keepsake/store/migrations/versions/ without Alembic,
+// through the same <schema>.alembic_version, so an Alembic-migrated database upgrades in place.
+package migrate
+
+import (
+	"context"
+	"embed"
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"text/template"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/roee-fs/keepsake/internal/store"
+)
+
+//go:embed sql/*.sql.tmpl
+var sqlFS embed.FS
+
+// appRole is restated, as 2de90d2:src/keepsake/store/migrations/versions/0001_initial.py restates it.
+const appRole = "okf_app"
+
+type fields struct {
+	SCHEMA       string
+	TENANT_GUC   string
+	ADMIN_GUC    string
+	ADMIN_POLICY string
+	APP_ROLE     string
+}
+
+type migration struct {
+	revision string
+	tmpl     *template.Template
+}
+
+var migrations = loadMigrations()
+
+// loadMigrations reads sql/ in name order, which ReadDir guarantees.
+func loadMigrations() []migration {
+	entries, err := sqlFS.ReadDir("sql")
+	if err != nil {
+		panic(err)
+	}
+	out := make([]migration, 0, len(entries))
+	for _, e := range entries {
+		revision := strings.TrimSuffix(e.Name(), ".sql.tmpl")
+		tmpl := template.Must(template.ParseFS(sqlFS, "sql/"+e.Name()))
+		out = append(out, migration{revision: revision, tmpl: tmpl})
+	}
+	return out
+}
+
+// Up applies every migration past schema's alembic_version in one transaction; at head it changes nothing.
+func Up(ctx context.Context, dsn, schema string) error {
+	schema, err := store.ValidatedSchema(schema)
+	if err != nil {
+		return err
+	}
+
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error { return up(ctx, tx, schema) })
+}
+
+func up(ctx context.Context, tx pgx.Tx, schema string) error {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('keepsake-migrate'))`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", schema)); err != nil {
+		return err
+	}
+	// Alembic's own DDL for its bookkeeping table.
+	if _, err := tx.Exec(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.alembic_version (
+		version_num varchar(32) NOT NULL,
+		CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+	)`, schema)); err != nil {
+		return err
+	}
+
+	var current string
+	err := tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if current != "" && !slices.ContainsFunc(migrations, func(m migration) bool { return m.revision == current }) {
+		return fmt.Errorf("Can't locate revision identified by '%s'", current)
+	}
+
+	f := fields{
+		SCHEMA:       schema,
+		TENANT_GUC:   store.TenantGUC,
+		ADMIN_GUC:    store.AdminGUC,
+		ADMIN_POLICY: store.AdminPolicy,
+		APP_ROLE:     appRole,
+	}
+	for _, m := range migrations {
+		if m.revision <= current {
+			continue
+		}
+		var sql strings.Builder
+		if err := m.tmpl.Execute(&sql, f); err != nil {
+			return fmt.Errorf("migration %s: %w", m.revision, err)
+		}
+		if _, err := tx.Exec(ctx, sql.String()); err != nil {
+			return fmt.Errorf("migration %s: %w", m.revision, err)
+		}
+		if _, err := tx.Exec(ctx, fmt.Sprintf("DELETE FROM %s.alembic_version", schema)); err != nil {
+			return fmt.Errorf("migration %s: %w", m.revision, err)
+		}
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
+			"INSERT INTO %s.alembic_version (version_num) VALUES ($1)", schema), m.revision); err != nil {
+			return fmt.Errorf("migration %s: %w", m.revision, err)
+		}
+		current = m.revision
+	}
+	return nil
+}

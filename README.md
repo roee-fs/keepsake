@@ -62,12 +62,15 @@ knowledge is markdown; `keepsake export` hands it back byte-for-byte.
 
 ### Fidelity
 
-Byte-for-byte has four known exceptions, each pinned by a test:
+Byte-for-byte has six known exceptions, each pinned by a test:
 
 - CRLF line endings are normalised to LF.
 - Comments in frontmatter are dropped.
 - An unquoted YAML date (`2026-01-01`) comes back as a string.
 - A hand-written block-style list re-emits flow-style (`tags: [a, b]`).
+- Scalar quoting on known fields is not kept.
+- Unknown frontmatter keys come back in jsonb's order (shorter keys first), not
+  the order they were written.
 
 ## Looking at what agents stored
 
@@ -88,7 +91,7 @@ Then log in at `http://localhost:8000` with that password.
 
 **v1 — the substrate**
 
-- [x] `okf_core`: OKF parse/serialize with round-trip fidelity
+- [x] `okf`: OKF parse/serialize with round-trip fidelity
 - [x] Link extraction and per-write validation
 - [x] Schema migration: concepts, revisions, RLS policies, tenant purge
 - [x] Tenant-scoped connection handling
@@ -125,8 +128,8 @@ Pre-release. Nothing here is stable yet.
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the setup, the checks CI runs, and what
-a good change looks like. `uv sync && uv run pytest` is the whole loop; the tests
-bring up PostgreSQL in a container themselves.
+a good change looks like. `go test ./...` is the whole loop; the tests bring up
+PostgreSQL in a container themselves.
 
 Found something touching tenant isolation? [`SECURITY.md`](SECURITY.md) — report
 it privately, not as an issue.

@@ -1,0 +1,812 @@
+[
+  {
+    "name": "BLOCK_DESCRIPTION",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "",
+    "description": "The spec sits beneath the convention.\nThe convention sits beneath the habit.\n",
+    "body": "Body.\n",
+    "exported": "---\ntype: Concept\ndescription: \"The spec sits beneath the convention.\\nThe convention sits beneath the habit.\\n\"\n---\nBody.\n"
+  },
+  {
+    "name": "COL_BLOCK_LIST",
+    "path": "doc",
+    "jsonb_text": "{\"list\": [\"a\", \"b\"]}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nlist: [a, b]\n---\nb\n"
+  },
+  {
+    "name": "COL_EMPTY_LIST",
+    "path": "doc",
+    "jsonb_text": "{\"items\": []}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nitems: []\n---\nb\n"
+  },
+  {
+    "name": "COL_EMPTY_MAP",
+    "path": "doc",
+    "jsonb_text": "{\"m\": {}}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nm: {}\n---\nb\n"
+  },
+  {
+    "name": "COL_LEAF_LIST",
+    "path": "doc",
+    "jsonb_text": "{\"items\": [\"a\", \"b\", \"c\"]}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nitems: [a, b, c]\n---\nb\n"
+  },
+  {
+    "name": "COL_LEAF_MAP",
+    "path": "doc",
+    "jsonb_text": "{\"m\": {\"a\": 1, \"b\": 2}}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nm: {a: 1, b: 2}\n---\nb\n"
+  },
+  {
+    "name": "COL_LIST_OF_MAPS",
+    "path": "doc",
+    "jsonb_text": "{\"items\": [{\"a\": 1, \"b\": 2}, {\"a\": 3, \"b\": 4}]}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nitems:\n- {a: 1, b: 2}\n- {a: 3, b: 4}\n---\nb\n"
+  },
+  {
+    "name": "COL_LIST_WITH_NULL",
+    "path": "doc",
+    "jsonb_text": "{\"items\": [\"a\", null, \"b\"]}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nitems: [a, null, b]\n---\nb\n"
+  },
+  {
+    "name": "COL_MAP_OF_LISTS",
+    "path": "doc",
+    "jsonb_text": "{\"m\": {\"a\": [1, 2], \"b\": [3, 4]}}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nm:\n  a: [1, 2]\n  b: [3, 4]\n---\nb\n"
+  },
+  {
+    "name": "COL_NESTED_3DEEP",
+    "path": "doc",
+    "jsonb_text": "{\"m\": {\"a\": {\"b\": {\"c\": 1}}}}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nm:\n  a:\n    b: {c: 1}\n---\nb\n"
+  },
+  {
+    "name": "CRLF",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "T",
+    "description": "",
+    "body": "Body.\n",
+    "exported": "---\ntype: Concept\ntitle: T\n---\nBody.\n"
+  },
+  {
+    "name": "DOC",
+    "path": "doc",
+    "jsonb_text": "{\"tags\": [\"architecture\", \"tooling\"], \"custom_vendor_field\": \"keep-me\"}",
+    "type": "Concept",
+    "title": "Five Layer Architecture",
+    "description": "How the layers stack.",
+    "body": "The spec sits beneath the convention.\n",
+    "exported": "---\ntype: Concept\ntitle: Five Layer Architecture\ndescription: How the layers stack.\ntags: [architecture, tooling]\ncustom_vendor_field: keep-me\n---\nThe spec sits beneath the convention.\n"
+  },
+  {
+    "name": "MINIMAL",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "Five Layer Architecture",
+    "description": "",
+    "body": "The spec sits beneath the convention.\n",
+    "exported": "---\ntype: Concept\ntitle: Five Layer Architecture\n---\nThe spec sits beneath the convention.\n"
+  },
+  {
+    "name": "NO_TRAILING_NEWLINE",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "Body with no trailing newline",
+    "exported": "---\ntype: Concept\n---\nBody with no trailing newline"
+  },
+  {
+    "name": "NUM_0_1",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 0.1}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 0.1\n---\nb\n"
+  },
+  {
+    "name": "NUM_1",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 1}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 1\n---\nb\n"
+  },
+  {
+    "name": "NUM_1E20",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 100000000000000000000}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 100000000000000000000\n---\nb\n"
+  },
+  {
+    "name": "NUM_1E_NEG7",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 0.0000001}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 1e-07\n---\nb\n"
+  },
+  {
+    "name": "NUM_1_0",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 1.0}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 1.0\n---\nb\n"
+  },
+  {
+    "name": "NUM_1_50",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 1.5}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 1.5\n---\nb\n"
+  },
+  {
+    "name": "NUM_BIGINT",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 123456789012345678901234567890}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 123456789012345678901234567890\n---\nb\n"
+  },
+  {
+    "name": "NUM_NEG0",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 0}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 0\n---\nb\n"
+  },
+  {
+    "name": "NUM_PI",
+    "path": "doc",
+    "jsonb_text": "{\"n\": 3.141592653589793}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nn: 3.141592653589793\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TITLE_EMPTY",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TITLE_NULL",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TITLE_TILDE",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_BOOL",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "True",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: 'True'\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_DATE",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "2026-01-01",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: '2026-01-01'\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_FLOAT",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "1.5",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: '1.5'\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_INT",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "42",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: '42'\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_LIST",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "['a', 'b']",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: \"['a', 'b']\"\n---\nb\n"
+  },
+  {
+    "name": "PROMOTED_TYPE_MAP",
+    "path": "doc",
+    "jsonb_text": "{}",
+    "type": "{'a': 1}",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: \"{'a': 1}\"\n---\nb\n"
+  },
+  {
+    "name": "QUOTED_TITLE",
+    "path": "doc",
+    "jsonb_text": "{\"nickname\": \"keep-me\"}",
+    "type": "Concept",
+    "title": "Five Layer Architecture",
+    "description": "",
+    "body": "The spec sits beneath the convention.\n",
+    "exported": "---\ntype: Concept\ntitle: Five Layer Architecture\nnickname: keep-me\n---\nThe spec sits beneath the convention.\n"
+  },
+  {
+    "name": "REFUSE_ANCHOR_ALIAS",
+    "path": "doc",
+    "jsonb_text": "{\"a\": \"value\", \"b\": \"value\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\na: value\nb: value\n---\nb\n"
+  },
+  {
+    "name": "REFUSE_BINARY",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"b'hello'\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: b'hello'\n---\nb\n"
+  },
+  {
+    "name": "REFUSE_LOCAL_TAG",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"bar\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: bar\n---\nb\n"
+  },
+  {
+    "name": "REFUSE_MERGE_KEY",
+    "path": "doc",
+    "jsonb_text": "{\"v\": {\"a\": 1, \"b\": 2}, \"base\": {\"a\": 1}}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: {a: 1, b: 2}\nbase: {a: 1}\n---\nb\n"
+  },
+  {
+    "name": "REFUSE_SET",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"set(odict_keys(['a', 'b']))\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: set(odict_keys(['a', 'b']))\n---\nb\n"
+  },
+  {
+    "name": "UNKNOWN_KEY_ORDER",
+    "path": "doc",
+    "jsonb_text": "{\"a\": 2, \"b\": 4, \"zz\": 1, \"mmm\": 3}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\na: 2\nb: 4\nzz: 1\nmmm: 3\n---\nb\n"
+  },
+  {
+    "name": "V_AMP",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"&amp\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '&amp'\n---\nb\n"
+  },
+  {
+    "name": "V_AT",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"@at\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '@at'\n---\nb\n"
+  },
+  {
+    "name": "V_BANG",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"!bang\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '!bang'\n---\nb\n"
+  },
+  {
+    "name": "V_BRACE_X",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"{x\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '{x'\n---\nb\n"
+  },
+  {
+    "name": "V_BRACKET_X",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"[x\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '[x'\n---\nb\n"
+  },
+  {
+    "name": "V_CAFE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"café\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: café\n---\nb\n"
+  },
+  {
+    "name": "V_COLON_SPACE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"a: b\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 'a: b'\n---\nb\n"
+  },
+  {
+    "name": "V_COMMA_XY",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"x,y\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: x,y\n---\nb\n"
+  },
+  {
+    "name": "V_DASH",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"-\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '-'\n---\nb\n"
+  },
+  {
+    "name": "V_DASH_X",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"- x\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '- x'\n---\nb\n"
+  },
+  {
+    "name": "V_DATE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"2026-01-01\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '2026-01-01'\n---\nb\n"
+  },
+  {
+    "name": "V_DATETIME_OFFSET",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"2026-01-01 10:00:00+02:00\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '2026-01-01 10:00:00+02:00'\n---\nb\n"
+  },
+  {
+    "name": "V_DATETIME_Z",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"2026-01-01T10:00:00+00:00\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '2026-01-01T10:00:00+00:00'\n---\nb\n"
+  },
+  {
+    "name": "V_EMOJI",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"emoji 🎉\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: emoji 🎉\n---\nb\n"
+  },
+  {
+    "name": "V_EMPTY",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: ''\n---\nb\n"
+  },
+  {
+    "name": "V_EXP_INT",
+    "path": "doc",
+    "jsonb_text": "{\"v\": 1000.0}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 1000.0\n---\nb\n"
+  },
+  {
+    "name": "V_HASH",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"a #b\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 'a #b'\n---\nb\n"
+  },
+  {
+    "name": "V_HEX",
+    "path": "doc",
+    "jsonb_text": "{\"v\": 31}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 31\n---\nb\n"
+  },
+  {
+    "name": "V_JAPANESE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"日本語\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 日本語\n---\nb\n"
+  },
+  {
+    "name": "V_LEADING_SPACE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \" lead\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: ' lead'\n---\nb\n"
+  },
+  {
+    "name": "V_LONG5000",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: \n  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n---\nb\n"
+  },
+  {
+    "name": "V_MULTILINE_ESCAPED",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"multi\\nline\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: \"multi\\nline\"\n---\nb\n"
+  },
+  {
+    "name": "V_NO",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"no\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: no\n---\nb\n"
+  },
+  {
+    "name": "V_NULL_LOWER",
+    "path": "doc",
+    "jsonb_text": "{\"v\": null}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv:\n---\nb\n"
+  },
+  {
+    "name": "V_NULL_TITLE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": null}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv:\n---\nb\n"
+  },
+  {
+    "name": "V_OCTAL",
+    "path": "doc",
+    "jsonb_text": "{\"v\": 15}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 15\n---\nb\n"
+  },
+  {
+    "name": "V_OFF",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"off\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: off\n---\nb\n"
+  },
+  {
+    "name": "V_ON",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"on\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: on\n---\nb\n"
+  },
+  {
+    "name": "V_PCT",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"%pct\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '%pct'\n---\nb\n"
+  },
+  {
+    "name": "V_QUESTION_X",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"? x\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '? x'\n---\nb\n"
+  },
+  {
+    "name": "V_QUOTED_123",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"123\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '123'\n---\nb\n"
+  },
+  {
+    "name": "V_QUOTED_1_0",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"1.0\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '1.0'\n---\nb\n"
+  },
+  {
+    "name": "V_QUOTED_YES",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"yes\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: yes\n---\nb\n"
+  },
+  {
+    "name": "V_SINGLE_QUOTED_DATE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"2026-01-01\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '2026-01-01'\n---\nb\n"
+  },
+  {
+    "name": "V_STAR",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"*star\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: '*star'\n---\nb\n"
+  },
+  {
+    "name": "V_TAB_ESCAPED",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"tab\\there\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: \"tab\\there\"\n---\nb\n"
+  },
+  {
+    "name": "V_TILDE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": null}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv:\n---\nb\n"
+  },
+  {
+    "name": "V_TRAILING_SPACE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"trail \"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 'trail '\n---\nb\n"
+  },
+  {
+    "name": "V_TRUE_LOWER",
+    "path": "doc",
+    "jsonb_text": "{\"v\": true}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: true\n---\nb\n"
+  },
+  {
+    "name": "V_TRUE_TITLE",
+    "path": "doc",
+    "jsonb_text": "{\"v\": true}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: true\n---\nb\n"
+  },
+  {
+    "name": "V_UNDERSCORE_INT",
+    "path": "doc",
+    "jsonb_text": "{\"v\": 1000}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: 1000\n---\nb\n"
+  },
+  {
+    "name": "V_YES",
+    "path": "doc",
+    "jsonb_text": "{\"v\": \"yes\"}",
+    "type": "Concept",
+    "title": "",
+    "description": "",
+    "body": "b\n",
+    "exported": "---\ntype: Concept\nv: yes\n---\nb\n"
+  }
+]

@@ -23,9 +23,8 @@ why, a limit you accepted deliberately.
 
 ---
 
-- [ ] `uv run ruff check . && uv run ruff format --check .`
-- [ ] `uv run ty check src tests e2e`
-- [ ] `uv run lint-imports` — the layering contracts still hold
-- [ ] `uv run pytest`
+- [ ] `test -z "$(gofmt -l .)" && go vet ./...`
+- [ ] `go test -race ./...`, including `layering_test.go`
+- [ ] `uv run ruff check e2e tests && uv run pytest tests`
 - [ ] If this changes the schema, it is a **new** migration and `helm upgrade`
       re-running the hook against a database already at head is fine

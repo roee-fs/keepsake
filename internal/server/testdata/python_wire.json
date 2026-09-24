@@ -1,0 +1,830 @@
+[
+  {
+    "name": "legacy initialize",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "t",
+          "version": "1"
+        }
+      }
+    },
+    "result": {
+      "capabilities": {
+        "experimental": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "protocolVersion": "2025-11-25",
+      "serverInfo": {
+        "name": "keepsake",
+        "version": ""
+      }
+    }
+  },
+  {
+    "name": "legacy initialize 2025-06-18",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "t",
+          "version": "1"
+        }
+      }
+    },
+    "result": {
+      "capabilities": {
+        "experimental": {},
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "protocolVersion": "2025-06-18",
+      "serverInfo": {
+        "name": "keepsake",
+        "version": ""
+      }
+    }
+  },
+  {
+    "name": "legacy tools/list",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2025-11-25"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/list"
+    },
+    "result": {
+      "tools": [
+        {
+          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.",
+          "inputSchema": {
+            "properties": {
+              "prefix": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_list"
+        },
+        {
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "inputSchema": {
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200
+              },
+              "prefix": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query",
+              "limit"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_search",
+          "outputSchema": {
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "type",
+                    "title",
+                    "description",
+                    "score"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and okf_search's word matching is too loose. `limit` is required.",
+          "inputSchema": {
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200
+              }
+            },
+            "required": [
+              "pattern",
+              "limit"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_grep",
+          "outputSchema": {
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "snippet": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "snippet"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        {
+          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it. Returns null if nothing is stored at that path. Take paths from okf_list, okf_search or okf_grep.",
+          "inputSchema": {
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_read"
+        },
+        {
+          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with okf_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
+          "inputSchema": {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "frontmatter": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "path",
+              "type"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_create"
+        },
+        {
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "inputSchema": {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "expected_version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "frontmatter": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_update"
+        },
+        {
+          "description": "Record that one concept relates to another by appending a link from `from_path` to `to_path`. The edge then shows up as an outbound link on the source and as a backlink on the target.",
+          "inputSchema": {
+            "properties": {
+              "from_path": {
+                "type": "string"
+              },
+              "to_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from_path",
+              "to_path"
+            ],
+            "type": "object",
+            "additionalProperties": false
+          },
+          "name": "okf_relate"
+        }
+      ]
+    }
+  },
+  {
+    "name": "legacy tools/call",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2025-11-25"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_list",
+        "arguments": {}
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "{\"paths\": [], \"counts\": {}}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "structuredContent": {
+        "paths": [],
+        "counts": {}
+      }
+    }
+  },
+  {
+    "name": "legacy tools/call error",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2025-11-25"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_nope",
+        "arguments": {}
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "no such tool: okf_nope",
+          "type": "text"
+        }
+      ],
+      "isError": true
+    }
+  },
+  {
+    "name": "legacy tools/call null",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2025-11-25"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_read",
+        "arguments": {
+          "path": "x"
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "null",
+          "type": "text"
+        }
+      ],
+      "isError": false
+    }
+  },
+  {
+    "name": "modern server/discover",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "server/discover"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "server/discover",
+      "params": {
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "cacheScope": "private",
+      "capabilities": {
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "resultType": "complete",
+      "supportedVersions": [
+        "2026-07-28"
+      ],
+      "ttlMs": 0,
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  },
+  {
+    "name": "modern tools/list",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/list"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/list",
+      "params": {
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "cacheScope": "private",
+      "resultType": "complete",
+      "tools": [
+        {
+          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "prefix": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "name": "okf_list"
+        },
+        {
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score — and never a body; read a promising path with okf_read.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200
+              },
+              "prefix": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query",
+              "limit"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_search",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "score": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "type",
+                    "title",
+                    "description",
+                    "score"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and okf_search's word matching is too loose. `limit` is required.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 200
+              }
+            },
+            "required": [
+              "pattern",
+              "limit"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_grep",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string"
+                    },
+                    "snippet": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "snippet"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it. Returns null if nothing is stored at that path. Take paths from okf_list, okf_search or okf_grep.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_read"
+        },
+        {
+          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with okf_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "frontmatter": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "path",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_create"
+        },
+        {
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "expected_version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string"
+              },
+              "frontmatter": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_update"
+        },
+        {
+          "description": "Record that one concept relates to another by appending a link from `from_path` to `to_path`. The edge then shows up as an outbound link on the source and as a backlink on the target.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "from_path": {
+                "type": "string"
+              },
+              "to_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from_path",
+              "to_path"
+            ],
+            "additionalProperties": false
+          },
+          "name": "okf_relate"
+        }
+      ],
+      "ttlMs": 0,
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  },
+  {
+    "name": "modern tools/call",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/call",
+      "mcp-name": "okf_list"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_list",
+        "arguments": {},
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "{\"paths\": [], \"counts\": {}}",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete",
+      "structuredContent": {
+        "paths": [],
+        "counts": {}
+      },
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  },
+  {
+    "name": "modern tools/call error",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/call",
+      "mcp-name": "okf_nope"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_nope",
+        "arguments": {},
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "no such tool: okf_nope",
+          "type": "text"
+        }
+      ],
+      "isError": true,
+      "resultType": "complete",
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  },
+  {
+    "name": "modern tools/call null",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/call",
+      "mcp-name": "okf_read"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "okf_read",
+        "arguments": {
+          "path": "x"
+        },
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "null",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete",
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  }
+]
