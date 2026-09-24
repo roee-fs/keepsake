@@ -6,3 +6,6 @@ func SetGrepTimeoutMS(ms int) func() {
 	grepTimeoutMS = ms
 	return func() { grepTimeoutMS = orig }
 }
+
+// SearchSQL lets store_test EXPLAIN what Search runs.
+const SearchSQL = searchSQL

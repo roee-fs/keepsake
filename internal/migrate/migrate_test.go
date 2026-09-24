@@ -131,7 +131,8 @@ func TestPoliciesReadTheOkfGUC(t *testing.T) {
 		got = append(got, p)
 		seen[[2]string{p.table, p.name}] = true
 	}
-	want := map[[2]string]bool{}
+	// posting has no admin_read: the console never searches.
+	want := map[[2]string]bool{{"posting", "tenant_isolation"}: true}
 	for _, table := range []string{"concept", "concept_revision"} {
 		for _, name := range []string{"tenant_isolation", "admin_read"} {
 			want[[2]string{table, name}] = true
@@ -230,6 +231,19 @@ func TestAlembicVersionTableIsNotInPublic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, []string{"okf"}) {
 		t.Fatalf("namespaces = %v, want [okf]", got)
+	}
+}
+
+// purge_tenant acts on whichever tenant the caller names, so PUBLIC MUST NOT reach it.
+func TestOnlyTheAppRoleExecutesPurgeTenant(t *testing.T) {
+	var public, app bool
+	if err := appConn(t).QueryRow(context.Background(),
+		"SELECT has_function_privilege('public', 'okf.purge_tenant(uuid)', 'EXECUTE'), "+
+			"has_function_privilege('okf_app', 'okf.purge_tenant(uuid)', 'EXECUTE')").Scan(&public, &app); err != nil {
+		t.Fatal(err)
+	}
+	if public || !app {
+		t.Errorf("public = %v, okf_app = %v", public, app)
 	}
 }
 
@@ -373,16 +387,16 @@ func TestANonDefaultSchemaMigrates(t *testing.T) {
 		}
 		got = append(got, name)
 	}
-	want := []string{"concept", "concept_revision"}
+	want := []string{"concept", "concept_revision", "posting"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("guarded tables = %v, want %v", got, want)
 	}
 }
 
-// A fresh database at each revision an older Python release left it at. The fixture
+// A fresh database at each revision an older release left it at. The fixture
 // is built from the same embedded templates as Up itself.
 func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
-	for _, left := range []string{"0002", "0003"} {
+	for _, left := range []string{"0002", "0003", "0004"} {
 		t.Run(left, func(t *testing.T) { upgradeFrom(t, left) })
 	}
 }
@@ -425,6 +439,15 @@ func upgradeFrom(t *testing.T, left string) {
 		"INSERT INTO %s.alembic_version (version_num) VALUES ($1)", schema), left); err != nil {
 		t.Fatal(err)
 	}
+	// Concepts written before 0005, in two tenants, which the upgrade MUST backfill into posting.
+	tenants := []uuid.UUID{uuid.New(), uuid.New()}
+	for _, tenant := range tenants {
+		scope(t, tx, tenant)
+		if _, err := tx.Exec(ctx, fmt.Sprintf(
+			"INSERT INTO %s.concept (tenant_id, path, type, body) VALUES ($1, 'old', 'note', 'backfilled')", schema), tenant); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -438,8 +461,8 @@ func upgradeFrom(t *testing.T, left string) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "0004" {
-		t.Fatalf("version_num = %s, want 0004", version)
+	if version != "0005" {
+		t.Fatalf("version_num = %s, want 0005", version)
 	}
 
 	// The startup check pins admin_read to 0004's exact expression.
@@ -450,6 +473,12 @@ func upgradeFrom(t *testing.T, left string) {
 	defer s.Close()
 	if err := store.Verify(ctx, s, schema); err != nil {
 		t.Fatalf("the upgraded schema fails the startup check: %v", err)
+	}
+	for _, tenant := range tenants {
+		hits, err := store.NewConceptStore(s).Search(ctx, tenant, "backfilled", 10, nil)
+		if err != nil || len(hits) != 1 || hits[0].Path != "old" {
+			t.Fatalf("Search after upgrade = %+v, %v, want the pre-0005 concept", hits, err)
+		}
 	}
 }
 

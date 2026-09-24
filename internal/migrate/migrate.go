@@ -64,7 +64,8 @@ func Up(ctx context.Context, dsn, schema string) error {
 		return err
 	}
 	defer conn.Close(ctx)
-	return pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error { return up(ctx, tx, schema) })
+	// Read committed, since 0005's backfill MUST see concepts committed while it waits for its lock.
+	return pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error { return up(ctx, tx, schema) })
 }
 
 func up(ctx context.Context, tx pgx.Tx, schema string) error {

@@ -136,7 +136,7 @@ func TestANonDefaultSchemaMigratesAndServes(t *testing.T) {
 		WHERE relnamespace = $1::regnamespace AND relkind = 'r'
 		AND relrowsecurity AND relforcerowsecurity ORDER BY relname`, schema)
 	guarded, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil || !reflect.DeepEqual(guarded, []string{"concept", "concept_revision"}) {
+	if err != nil || !reflect.DeepEqual(guarded, []string{"concept", "concept_revision", "posting"}) {
 		t.Fatal(guarded, err)
 	}
 
