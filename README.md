@@ -2,6 +2,25 @@
 
 A Kubernetes-native memory substrate for fleets of agents.
 
+## Try it
+
+Your agents' memory is a folder of markdown. One command proves it:
+
+```bash
+git clone https://github.com/roee-fs/keepsake && cd keepsake && ./demo/run.sh
+```
+
+It needs Docker, [kind](https://kind.sigs.k8s.io/), kubectl, Helm and jq. It
+installs the chart on a throwaway kind cluster and imports a 25-concept on-call
+knowledge base. It exports that straight back and shows an empty diff. A scripted
+agent then reads a stale runbook over MCP, fixes it, and files an incident
+saying why. A second export shows exactly those changes. Then it deletes the cluster. The markdown stays.
+
+Run it on your own notes: `./demo/run.sh ~/my-okf-bundle`. Add `--keep` to leave
+the cluster up and point your own agent at it.
+
+## Why
+
 Agents lose everything when the context window closes. Keepsake gives them a
 durable, shared knowledge base they read and write over MCP — stored in
 Postgres, isolated per tenant by the database itself, and importable and
