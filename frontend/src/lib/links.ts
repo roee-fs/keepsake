@@ -1,4 +1,4 @@
-// A port of okf_core/links.py `_resolve`. The two MUST agree, or the body links and
+// A port of `Resolve` in okf/links.go. The two MUST agree, or the body links and
 // the "Links to" list name different concepts.
 const EXTERNAL = /^[a-z][a-z0-9+.-]*:\/\/|^(?:mailto|tel):|^\/\//i
 

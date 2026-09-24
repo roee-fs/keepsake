@@ -229,8 +229,8 @@ func TestAConflictingUpdateAppendsNoRevision(t *testing.T) {
 }
 
 // YAML loads an unquoted 2026-01-01 as a date, which okf's parser already turns
-// into the plain string "2026-01-01" (Task 3/4's divergence 1). It MUST still
-// round-trip through jsonb byte-identically.
+// into the plain string "2026-01-01". It MUST still round-trip through jsonb
+// byte-identically.
 func TestFrontmatterCarryingADateSurvivesAWrite(t *testing.T) {
 	s := openApp(t)
 	cs := store.NewConceptStore(s)

@@ -58,8 +58,7 @@ agent ──MCP──> keepsake ──> Postgres (RLS)
 
 Agents call the Service over MCP, and operators use the console through the
 same Service. A Helm hook runs the migration Job before every install and
-upgrade. Edit `assets/architecture.excalidraw` at [excalidraw.com](https://excalidraw.com)
-and re-export the PNG when the deployment changes.
+upgrade.
 
 ## How it differs
 

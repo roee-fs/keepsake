@@ -504,7 +504,7 @@ func TestExportMatchesPythonForEveryGolden(t *testing.T) {
 			writeFile(t, filepath.Join(tmp, "in"), "doc.md", readFile(t, "../../okf/testdata/corpus/"+g.Name+".md"))
 			_, err := ImportBundle(ctx, cs, tenant, filepath.Join(tmp, "in"))
 			if err != nil && strings.Contains(err.Error(), ": unsupported YAML tag ") {
-				t.Skip("deliberate divergence 3: Python accepts this tag and Go refuses it")
+				t.Skip("deliberate: Python accepts this tag and Go refuses it")
 			}
 			if err != nil {
 				t.Fatal(err)

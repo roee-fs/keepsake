@@ -75,7 +75,7 @@ spec:
             # probe would otherwise depend on that default never moving.
             - name: KEEPSAKE_PORT
               value: {{ $port | quote }}
-            # ui_enabled() compares against the literal string "true"; an unquoted
+            # UIEnabled in internal/server/auth.go compares against the string "true"; an unquoted
             # boolean renders bare and Kubernetes rejects it as an env value.
             - name: KEEPSAKE_UI
               value: {{ .Values.ui.enabled | quote }}

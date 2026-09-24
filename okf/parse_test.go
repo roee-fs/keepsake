@@ -40,7 +40,7 @@ func loadParseGoldens(t *testing.T) []parseGolden {
 	return gs
 }
 
-// isDeliberateRefusal names the cases Python accepts and Go refuses (divergence 3).
+// isDeliberateRefusal names the cases Python accepts and Go refuses on purpose.
 func isDeliberateRefusal(name string) bool {
 	return name == "REFUSE_BINARY" || name == "REFUSE_SET" || name == "REFUSE_LOCAL_TAG"
 }
@@ -280,7 +280,7 @@ func TestScalarsResolveAsRuamelDoes(t *testing.T) {
 		{"!!str 12", `"12"`, "12"},
 		{"! 12", `12`, "12"},
 		{"[1, 'a', true, null, 1.5, {k: [x]}]", `[1, "a", true, null, 1.5, {"k": ["x"]}]`, "[1, 'a', True, None, 1.5, {'k': ['x']}]"},
-		{`["it's", 'say "hi"', "both ' and \"", "é\x01\x7f \U0001F389"]`, `["it's", "say \"hi\"", "both ' and \"", "é\u0001\u007f 🎉"]`, `["it's", 'say "hi"', 'both \' and "', 'é\x01\x7f\xa0🎉']`},
+		{`["it's", 'say "hi"', "both ' and \"", "é\x01\x7f` + "\u00a0" + `\U0001F389"]`, `["it's", "say \"hi\"", "both ' and \"", "é\u0001\u007f` + "\u00a0" + `🎉"]`, `["it's", 'say "hi"', 'both \' and "', 'é\x01\x7f\xa0🎉']`},
 	} {
 		t.Run(c.yaml, func(t *testing.T) {
 			v, err := Parse("---\nv: "+c.yaml+"\n---\n", "p")

@@ -214,7 +214,7 @@ def test_jwt_mode_without_an_issuer_or_secret_is_rejected_by_the_schema(
 def test_ui_enabled_renders_as_the_string_ui_enabled_accepts(
     enabled: str, rendered: str
 ) -> None:
-    """ui.enabled is a YAML boolean, and ui_enabled() only accepts the string "true".
+    """ui.enabled is a YAML boolean, and UIEnabled only accepts the string "true".
 
     An unquoted render emits a bare `true`, which Kubernetes rejects as an env value.
     """

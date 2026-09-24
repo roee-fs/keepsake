@@ -1,4 +1,4 @@
-# Python tooling for e2e/ and the chart tests only. The server is Go.
+# Python tooling for e2e/, bench/ and the chart tests only. The server is Go.
 [project]
 name = "keepsake"
 version = "0.0.0"

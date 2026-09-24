@@ -139,8 +139,8 @@ const (
 	codeVersion       = -32022
 )
 
-// rpcError answers a JSON-RPC error with Python's status and code. The modern transport
-// writes a null id last; legacy messages keep divergence 11's wording.
+// rpcError answers a JSON-RPC error with Python's status and code, but not always its
+// message text. The modern transport writes a null id last; legacy writes it first.
 func rpcError(w http.ResponseWriter, e era, status int, id any, code int, msg string, data ...any) {
 	errObj := obj("code", code, "message", msg)
 	if len(data) > 0 {

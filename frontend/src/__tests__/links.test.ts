@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveLink } from '../lib/links'
 
-// Mirrors tests of okf_core.links: the console and the store MUST resolve alike.
+// Mirrors okf.Resolve: the console and the store MUST resolve alike.
 describe('resolveLink', () => {
   it.each([
     ['../infra/postgres.md', 'architecture/overview', 'infra/postgres'],

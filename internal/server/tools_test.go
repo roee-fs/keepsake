@@ -573,7 +573,7 @@ func TestAnArgumentOfTheWrongShapeIsAnErrorResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Divergence 2: the wording is santhosh-tekuri/jsonschema's, but it still names
+	// The wording is santhosh-tekuri/jsonschema's, not Python's, but it still names
 	// the field and the type it wanted.
 	msg := text(t, res)
 	if !res.IsError || !strings.Contains(msg, "frontmatter") || !strings.Contains(msg, "object") {
@@ -828,7 +828,7 @@ func TestOtherMethodsArePythons405(t *testing.T) {
 }
 
 // The wants are the Python server's status and JSON-RPC error code for the same
-// request; the message text is divergence 11's. Code 0 means no JSON-RPC error body,
+// request; the message text MAY differ from Python's. Code 0 means no JSON-RPC error body,
 // and -1 a result.
 func TestProtocolErrorsArePythons(t *testing.T) {
 	srv := httptest.NewServer(NewMCPHandler(newTools(t)))
