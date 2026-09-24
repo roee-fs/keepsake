@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"strings"
 
@@ -34,7 +35,8 @@ func IsUnavailable(err error) bool {
 			pgErr.Code == "57P01" || pgErr.Code == "57P02" || pgErr.Code == "57P03"
 	}
 
-	if errors.Is(err, puddle.ErrClosedPool) {
+	// pgconn reports a connection the server dropped mid-query as io.ErrUnexpectedEOF.
+	if errors.Is(err, puddle.ErrClosedPool) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
 

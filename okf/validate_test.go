@@ -95,6 +95,18 @@ func TestSizesAreBytesNotRunes(t *testing.T) {
 	}
 }
 
+func TestANULAnywhereInTheFrontmatterIsAnError(t *testing.T) {
+	nested := NewMap()
+	nested.Set("k", []any{"ok", "a\x00b"})
+	key := NewMap()
+	key.Set("a\x00", "v")
+	for _, fm := range []*Map{nested, key} {
+		if got := Validate(Concept{Path: "a/b", Type: "Concept", Frontmatter: fm}); !slices.Equal(got, []string{"frontmatter must not contain a NUL byte"}) {
+			t.Fatalf("got %q", got)
+		}
+	}
+}
+
 func TestErrorsComeInPythonOrder(t *testing.T) {
 	errs := Validate(Concept{Path: "/../index", Type: " "})
 	want := []string{"type is required", "path must be relative, not absolute", "path must not traverse upward"}

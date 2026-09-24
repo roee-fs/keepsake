@@ -61,6 +61,9 @@ test enforces it and the release workflow refuses otherwise.
   - `okf_relate` refuses a `to_path` whose appended link would not read back as
     that path, such as `./b/y` or `b y`. Python appended the link anyway and
     reported success.
+  - A write or `import` whose frontmatter holds a NUL byte is refused with
+    `frontmatter must not contain a NUL byte`. Python passed it to Postgres,
+    which refused the write with a driver error.
   - The startup check refuses a permissive tenant policy that does not read
     exactly `(tenant_id = (current_setting('okf.current_tenant'::text))::uuid)`.
     Python accepted any expression that mentioned `okf.current_tenant`, such as
@@ -71,6 +74,10 @@ test enforces it and the release workflow refuses otherwise.
   - `migrate` against a database stamped with a revision this release does not
     know prints `keepsake: Can't locate revision identified by '<id>'` and exits
     1. Python raised a traceback, also with exit 1.
+- `okf_relate` leaves one blank line before the link it appends. On a body that
+  ended in a newline, which is every imported concept, it left two.
+- `okf_create`, `okf_update` and `okf_relate` store CRLF in a body as LF, as
+  `import` does. They stored it verbatim, so `export` could write CRLF.
 
 ### Security
 

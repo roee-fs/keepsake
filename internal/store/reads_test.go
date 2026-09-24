@@ -26,7 +26,7 @@ var tenantCache sync.Map // *testing.T -> uuid.UUID
 // testTenant is a fresh uuid, generated once per test and cached, so create/read
 // (below) can share one tenant across the many calls one test makes without
 // threading it through every call, the way pytest's function-scoped tenant
-// fixture does. It must be random, not derived from t.Name(): TestMain starts one
+// fixture does. It MUST be random, not derived from t.Name(): TestMain starts one
 // database for the whole test binary and never resets it between tests, so under
 // `go test -count=2` a name-derived tenant would be the same UUID both runs and
 // see the first run's rows.
@@ -340,7 +340,7 @@ func TestGrepRejectsAnUncompilablePattern(t *testing.T) {
 }
 
 func TestGrepIsCancelledRatherThanHoldingThePod(t *testing.T) {
-	// Every store call blocks the pod's event loop, so an expensive pattern must be
+	// Every store call blocks the pod's event loop, so an expensive pattern MUST be
 	// the caller's problem and not every sibling agent's.
 	s := openApp(t)
 	cs := store.NewConceptStore(s)
@@ -408,8 +408,8 @@ func TestListTreatsThePrefixLiterally(t *testing.T) {
 	}
 }
 
-// The admin console's read paths. tenant=nil means every tenant and must take
-// AdminScope; a concrete tenant must never fall through to it.
+// The admin console's read paths. tenant=nil means every tenant and MUST take
+// AdminScope; a concrete tenant MUST NOT fall through to it.
 
 func TestPageReturnsSummariesUnderPrefix(t *testing.T) {
 	seed(t)
@@ -621,7 +621,7 @@ func TestActivityOfEveryTenantTagsEachRowWithItsOwnTenant(t *testing.T) {
 	}
 }
 
-// A path is unique only within a tenant, so a link held by one tenant must not
+// A path is unique only within a tenant, so a link held by one tenant MUST NOT
 // un-orphan the same path in another. Both directions are asserted: a fix that
 // only correlated one side of the anti-join would still pass half of this.
 func TestTotalsCountsAnOrphanPerTenantRatherThanAcrossTenants(t *testing.T) {
@@ -677,7 +677,7 @@ func TestActivityOfEveryTenantBreaksATiedRevisionByTenantId(t *testing.T) {
 
 	err := s.Scope(ctx, low, func(tx pgx.Tx) error {
 		// Lowest tenant first: an untied LIMIT keeps the row it scanned first, which
-		// is the one a descending tie-break must not return.
+		// is the one a descending tie-break MUST NOT return.
 		if _, err := tx.Exec(ctx, insertRevision, low, path); err != nil {
 			return err
 		}

@@ -266,7 +266,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 	// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.
 	return limitBody(mcp.DefaultMaxRequestBodyBytes, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		e := eraOf(r)
-		if r.Method != http.MethodPost && r.Method != http.MethodGet && r.Method != http.MethodHead || r.Method == http.MethodGet && e != legacy {
+		if r.Method != http.MethodPost && r.Method != http.MethodGet || r.Method == http.MethodGet && e != legacy {
 			methodNotAllowed(w, r.Method, e)
 			return
 		}
