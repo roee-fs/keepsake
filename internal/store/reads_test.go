@@ -5,6 +5,8 @@
 package store_test
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"slices"
@@ -146,6 +148,68 @@ func TestSearchRanksMoreMatchingTermsHigher(t *testing.T) {
 	}
 	if len(hits) == 0 || hits[0].Path != "detect/dormant" {
 		t.Fatalf("hits = %+v, want detect/dormant first", hits)
+	}
+}
+
+// IDF: without it, one hit on a common term ties one hit on a rare one.
+func TestSearchWeighsARareTermAboveACommonOne(t *testing.T) {
+	for i := range 4 {
+		create(t, okf.Concept{Path: fmt.Sprintf("common/%d", i), Type: "Concept", Body: "incident report"})
+	}
+	create(t, okf.Concept{Path: "rare/valkey", Type: "Concept", Body: "valkey note"})
+	cs, tenant := fixture(t)
+	hits, err := cs.Search(ctx, tenant, "incident valkey", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 5 || hits[0].Path != "rare/valkey" {
+		t.Fatalf("hits = %+v, want rare/valkey first of 5", hits)
+	}
+}
+
+// The posting trigger replaces a concept's terms on update.
+func TestSearchFollowsAnUpdate(t *testing.T) {
+	create(t, okf.Concept{Path: "a/b", Type: "Concept", Body: "alpha"})
+	cs, tenant := fixture(t)
+	if _, _, err := cs.Update(ctx, tenant, okf.Concept{Path: "a/b", Type: "Concept", Body: "bravo"}, "t", nil); err != nil {
+		t.Fatal(err)
+	}
+	for query, want := range map[string]int{"alpha": 0, "bravo": 1} {
+		hits, err := cs.Search(ctx, tenant, query, 10, nil)
+		if err != nil || len(hits) != want {
+			t.Fatalf("Search(%q) = %+v, %v, want %d hits", query, hits, err, want)
+		}
+	}
+}
+
+// Only a role that bypasses RLS can move a concept, and its postings MUST move with it.
+func TestSearchFollowsAConceptToAnotherTenant(t *testing.T) {
+	create(t, okf.Concept{Path: "a/moved", Type: "Concept", Body: "zqxmoved"})
+	cs, tenant := fixture(t)
+	other := uuid.New()
+	pgtest.Exec(t, db.AdminDSN, fmt.Sprintf(
+		"UPDATE okf.concept SET tenant_id = '%s' WHERE tenant_id = '%s' AND path = 'a/moved'", other, tenant))
+	for id, want := range map[uuid.UUID]int{tenant: 0, other: 1} {
+		hits, err := cs.Search(ctx, id, "zqxmoved", 10, nil)
+		if err != nil || len(hits) != want {
+			t.Fatalf("Search in %s = %+v, %v, want %d hits", id, hits, err, want)
+		}
+	}
+}
+
+// A posting key holds a whole lexeme beside the path, and random hex does not compress.
+func TestALongTokenBesideALongPathStillWrites(t *testing.T) {
+	random := func(n int) string {
+		b := make([]byte, n)
+		rand.Read(b)
+		return hex.EncodeToString(b)
+	}
+	path := "long/" + random(509)
+	create(t, okf.Concept{Path: path, Type: "Concept", Body: random(1000) + " valkey"})
+	cs, tenant := fixture(t)
+	hits, err := cs.Search(ctx, tenant, "valkey", 10, nil)
+	if err != nil || len(hits) != 1 || hits[0].Path != path {
+		t.Fatalf("Search = %+v, %v, want the long-path concept", hits, err)
 	}
 }
 

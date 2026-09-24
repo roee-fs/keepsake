@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -240,6 +241,69 @@ func TestUnsetScopeRaisesRatherThanReturningEverything(t *testing.T) {
 	// reset one fails the ::uuid cast on '' (22P02).
 	if code := pgErrCode(t, err); code != "42704" && code != "22P02" {
 		t.Fatalf("code = %s, want undefined_object (42704) or invalid_text_representation (22P02)", code)
+	}
+}
+
+// Search reads concept twice: one count and one fetch of the cards. The planner has run each
+// once per hit or per result instead, which is quadratic and took SciFact from 5ms to 4s.
+func TestSearchReadsConceptOncePerRead(t *testing.T) {
+	s := openApp(t)
+	cs, tenant := store.NewConceptStore(s), uuid.New()
+	for i := range 5 {
+		if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: fmt.Sprintf("a/%d", i), Type: "Concept", Body: "alpha"}, "t"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var plan []string
+	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF) "+store.SearchSQL, "alpha", nil, 100, tenant)
+		if err != nil {
+			return err
+		}
+		plan, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	for _, l := range plan {
+		if strings.Contains(l, " on concept") {
+			reads++
+			if !strings.Contains(l, "loops=1)") {
+				t.Errorf("concept read more than once: %s\n%s", l, strings.Join(plan, "\n"))
+			}
+		}
+	}
+	if reads == 0 {
+		t.Fatal(strings.Join(plan, "\n"))
+	}
+}
+
+// Search is only fast because FORCE RLS still lets the lexeme reach posting's index. A
+// predicate that is not leakproof would be demoted to a filter over the tenant's postings.
+func TestSearchKeepsThePostingIndexUnderRLS(t *testing.T) {
+	s := openApp(t)
+	var plan []string
+	err := s.Scope(ctx, uuid.New(), func(tx pgx.Tx) error {
+		// A table this small would otherwise be scanned whatever the policy says.
+		if _, err := tx.Exec(ctx, "SET LOCAL enable_seqscan = off"); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, "EXPLAIN SELECT path FROM okf.posting WHERE lexeme = 'secret'")
+		if err != nil {
+			return err
+		}
+		plan, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(plan, func(l string) bool {
+		return strings.Contains(l, "Index Cond:") && strings.Contains(l, "tenant_id =") && strings.Contains(l, "lexeme =")
+	}) {
+		t.Fatal(strings.Join(plan, "\n"))
 	}
 }
 

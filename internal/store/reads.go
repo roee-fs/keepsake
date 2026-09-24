@@ -349,7 +349,41 @@ func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 	return out, err
 }
 
-// Search returns ranked cards, never bodies. An empty result beats an invalid tsquery.
+// searchSQL is BM25 (k1=0.9, b=0.4) over posting. Document frequency is exact: OR-ed terms
+// make every concept holding a term a hit. avgdl is over the hits, which BEIR scores the
+// same as over the tenant. $1 is terms, $2 prefix, $3 limit, $4 the tenant, which RLS
+// enforces anyway; naming it lets the planner lead with it.
+//
+// MATERIALIZED, or the planner inlines docs and avgdl and recounts them once per hit, and
+// repeats the card lookup once per ranked path. Cards come by `path = ANY`, a primary-key
+// index condition under RLS; a join on path was demoted to a filter over the whole tenant.
+const searchSQL = `
+WITH terms AS (SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme),
+docs AS MATERIALIZED (SELECT count(*)::float8 AS n FROM concept WHERE tenant_id = $4),
+hits AS MATERIALIZED (
+  SELECT p.path, p.lexeme, p.tf::float8 AS tf, p.dl::float8 AS dl
+  FROM posting p JOIN terms t ON p.tenant_id = $4 AND p.lexeme = t.lexeme
+),
+df AS MATERIALIZED (SELECT lexeme, count(*)::float8 AS n FROM hits GROUP BY lexeme),
+avgdl AS MATERIALIZED (SELECT avg(dl) AS a FROM (SELECT DISTINCT path, dl FROM hits) d),
+ranked AS MATERIALIZED (
+  SELECT h.path, sum(ln(1 + (docs.n - df.n + 0.5) / (df.n + 0.5))
+                     * h.tf * 1.9 / (h.tf + 0.9 * (0.6 + 0.4 * h.dl / avgdl.a))) AS score
+  FROM hits h JOIN df ON df.lexeme = h.lexeme, docs, avgdl
+  WHERE starts_with(h.path, coalesce($2::text, ''))
+  GROUP BY h.path
+  ORDER BY score DESC, h.path
+  LIMIT $3
+),
+cards AS MATERIALIZED (
+  SELECT c.path, c.type, c.title, c.description FROM concept c
+  WHERE c.tenant_id = $4 AND c.path = ANY (ARRAY(SELECT path FROM ranked))
+)
+SELECT c.path, c.type, c.title, c.description, r.score
+FROM ranked r JOIN cards c ON c.path = r.path
+ORDER BY r.score DESC, c.path`
+
+// Search returns ranked cards, never bodies. An empty result beats an invalid query.
 func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]Hit, error) {
 	terms := tsquery(query)
 	if terms == "" || limit <= 0 {
@@ -357,14 +391,7 @@ func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query stri
 	}
 	var out []Hit
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[Hit](ctx, tx,
-			"SELECT path, type, title, description, "+
-				"       ts_rank_cd(search, to_tsquery('english', $1)) AS score "+
-				"FROM concept "+
-				"WHERE search @@ to_tsquery('english', $2) "+
-				"  AND starts_with(path, coalesce($3::text, '')) "+
-				"ORDER BY score DESC, path LIMIT $4",
-			terms, terms, prefix, limit)
+		out, err = collect[Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
 		return err
 	})
 	return out, err

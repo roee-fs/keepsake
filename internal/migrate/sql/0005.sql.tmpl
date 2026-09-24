@@ -1,0 +1,73 @@
+-- BM25 search over an inverted index: one posting per (concept, lexeme), kept by trigger.
+-- ts_rank_cd has no IDF, so with OR-ed terms a common word outranks a distinctive one.
+-- uuid and text equality are leakproof, so posting's primary key serves lookups under
+-- FORCE ROW LEVEL SECURITY, as the app role, with no SECURITY DEFINER.
+CREATE TABLE {{.SCHEMA}}.posting (
+  tenant_id uuid NOT NULL,
+  lexeme    text NOT NULL,
+  path      text NOT NULL,
+  tf        int  NOT NULL,
+  -- The concept's distinct lexemes: its length for BM25, repeated so scoring never reads concept.
+  dl        int  NOT NULL,
+  PRIMARY KEY (tenant_id, lexeme, path) INCLUDE (tf, dl)
+);
+
+-- Runs as the writer, so the policy below checks every row it writes.
+-- It skips lexemes over 1024 bytes: beside a 1024-byte path, their key passes btree's 2704-byte limit.
+CREATE FUNCTION {{.SCHEMA}}.posting_sync() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog AS $$
+BEGIN
+  -- Every update sets the text columns, most often to what they already hold.
+  IF TG_OP = 'UPDATE' AND NEW.tenant_id = OLD.tenant_id AND NEW.path = OLD.path AND NEW.search = OLD.search THEN
+    RETURN NULL;
+  END IF;
+  IF TG_OP <> 'INSERT' THEN
+    DELETE FROM {{.SCHEMA}}.posting p
+    WHERE p.tenant_id = OLD.tenant_id AND p.path = OLD.path
+      AND p.lexeme = ANY (tsvector_to_array(OLD.search));
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    INSERT INTO {{.SCHEMA}}.posting (tenant_id, lexeme, path, tf, dl)
+    SELECT NEW.tenant_id, u.lexeme, NEW.path, coalesce(array_length(u.positions, 1), 1), length(NEW.search)
+    FROM unnest(NEW.search) u
+    WHERE octet_length(u.lexeme) <= 1024;
+  END IF;
+  RETURN NULL;
+END $$;
+
+-- The key and the columns `search` is generated from, since a trigger cannot name a generated column.
+CREATE TRIGGER concept_posting
+AFTER INSERT OR UPDATE OF tenant_id, path, title, description, body OR DELETE ON {{.SCHEMA}}.concept
+FOR EACH ROW EXECUTE FUNCTION {{.SCHEMA}}.posting_sync();
+
+-- The backfill reads every tenant through admin_read, so concept keeps FORCE and its readers never wait.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = '{{.SCHEMA}}'
+                 AND tablename = 'concept' AND policyname = '{{.ADMIN_POLICY}}') THEN
+    RAISE EXCEPTION '{{.SCHEMA}}.concept has no {{.ADMIN_POLICY}} policy, so the backfill cannot read every tenant';
+  END IF;
+END $$;
+SELECT set_config('{{.ADMIN_GUC}}', 'on', true),
+       set_config('{{.TENANT_GUC}}', '00000000-0000-0000-0000-000000000000', true);
+ALTER TABLE {{.SCHEMA}}.posting ENABLE ROW LEVEL SECURITY;
+INSERT INTO {{.SCHEMA}}.posting (tenant_id, lexeme, path, tf, dl)
+SELECT c.tenant_id, u.lexeme, c.path, coalesce(array_length(u.positions, 1), 1), length(c.search)
+FROM {{.SCHEMA}}.concept c, unnest(c.search) u
+WHERE octet_length(u.lexeme) <= 1024;
+SELECT set_config('{{.ADMIN_GUC}}', 'off', true);
+ALTER TABLE {{.SCHEMA}}.posting FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON {{.SCHEMA}}.posting
+  USING      (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid)
+  WITH CHECK (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid);
+
+-- purge_tenant acts on whichever tenant the caller names in the GUC, so it gets the
+-- tables' grants rather than PUBLIC's, which it has had since 0001.
+REVOKE EXECUTE ON FUNCTION {{.SCHEMA}}.purge_tenant(uuid) FROM PUBLIC;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{.APP_ROLE}}') THEN
+    GRANT SELECT, INSERT, DELETE ON {{.SCHEMA}}.posting TO {{.APP_ROLE}};
+    GRANT EXECUTE ON FUNCTION {{.SCHEMA}}.purge_tenant(uuid) TO {{.APP_ROLE}};
+  END IF;
+END $$;
