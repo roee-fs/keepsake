@@ -225,6 +225,19 @@ def test_answer_any_matches_any_alias_after_normalizing() -> None:
     }
 
 
+def test_answer_any_matches_whole_words_only() -> None:
+    for alias, answer in (("Hu", "It was the church."), ("US", "I trust it"), ("45", "In 1945.")):
+        checks = grade.grade({"answer_any": [alias]}, [], answer, {}, {}, require_tools=False)
+        assert checks == {"answer ~ any alias": False}, (alias, answer)
+    checks = grade.grade({"answer_any": ["Hu"]}, [], "It was Hu Jintao.", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": True}
+
+
+def test_hyphens_and_slashes_separate_words() -> None:
+    checks = grade.grade({"answer_any": ["Jean-Paul Sartre"]}, [], "Jean Paul Sartre.", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": True}
+
+
 def test_an_alias_that_normalizes_to_nothing_never_matches() -> None:
     checks = grade.grade({"answer_any": ["The", "..."]}, [], "anything", {}, {}, require_tools=False)
     assert checks == {"answer ~ any alias": False}

@@ -46,6 +46,12 @@ def test_link_prefers_the_longer_overlapping_title_and_matches_literally() -> No
                    "[St. Louis (Missouri)](/p/3-st-louis-missouri.md).")
 
 
+def test_a_shorter_title_never_links_inside_any_mention_of_a_longer_one() -> None:
+    got = musique.link("New York City is big. New York City again.",
+                       [("New York City", "p/1-nyc"), ("New York", "p/2-ny")])
+    assert got == "[New York City](/p/1-nyc.md) is big. New York City again."
+
+
 def test_link_needs_a_whole_word_and_the_same_case() -> None:
     assert musique.link("Greenland and green.", [("Green", "p/2-green")]) == "Greenland and green."
 

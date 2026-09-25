@@ -26,8 +26,10 @@ GENERATED = {"index", "log"}
 
 
 def normalize(text: str) -> str:
-    """SQuAD's answer normalization: lowercase, no punctuation, no articles, single spaces."""
-    text = "".join(ch for ch in text.lower() if ch not in string.punctuation)
+    """SQuAD's answer normalization: lowercase, no punctuation, no articles, single spaces.
+    Unlike SQuAD, hyphens and slashes separate words, so "Jean-Paul" matches "Jean Paul"."""
+    text = re.sub(r"[-/]", " ", text.lower())
+    text = "".join(ch for ch in text if ch not in string.punctuation)
     return " ".join(w for w in text.split() if w not in {"a", "an", "the"})
 
 
@@ -126,7 +128,9 @@ def grade(
         checks[f"answer ~ /{rx}/"] = re.search(rx, answer, re.IGNORECASE) is not None
     if "answer_any" in expect:
         aliases = [a for a in map(normalize, expect["answer_any"]) if a]
-        checks["answer ~ any alias"] = any(a in normalize(answer) for a in aliases)
+        # Padded, so an alias matches whole words: "hu" must not pass "church".
+        said = f" {normalize(answer)} "
+        checks["answer ~ any alias"] = any(f" {a} " in said for a in aliases)
     if "judge" in expect or "judge_template" in expect:
         checks["judge"] = bool(judged)
     if expect.get("search_before_write"):

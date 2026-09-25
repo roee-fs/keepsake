@@ -56,12 +56,13 @@ def link(text: str, targets: list[tuple[str, str]], blockers: list[str] = ()) ->
     def free(s: int, e: int) -> bool:
         return all(e <= a or s >= b for a, b, _ in spans)
 
+    # Every mention of each title is reserved, longest first; only a target's first free one links.
     for title, path in sorted([*targets, *((b, None) for b in blockers)], key=lambda t: -len(t[0])):
+        linked = path is None
         for m in _word(title).finditer(text):
             if free(m.start(), m.end()):
-                spans.append((m.start(), m.end(), path))
-                if path is not None:
-                    break
+                spans.append((m.start(), m.end(), None if linked else path))
+                linked = True
     out, at = [], 0
     for s, e, path in sorted(spans):
         if path is not None:
