@@ -35,6 +35,7 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 	unpacked := &io.LimitedReader{R: gz, N: maxUnpacked + 1}
 	tr := tar.NewReader(unpacked)
 	seen := map[string]bool{}
+	var materialized int64
 	for {
 		hdr, err := tr.Next()
 		if unpacked.N <= 0 {
@@ -77,6 +78,11 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("not a tar archive: %w", err)
+		}
+		// Sparse entries expand without reading extra stream bytes, so bound decoded bytes too.
+		materialized += int64(len(text))
+		if materialized > maxUnpacked {
+			return nil, nil, errTooLarge
 		}
 		c, err := okf.Parse(string(text), prefix+"/"+rel)
 		if err == nil {
