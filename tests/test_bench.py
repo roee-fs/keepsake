@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bench"))
 import beir
 import grade
+import run
 
 
 def test_ndcg_and_recall_match_hand_computed_values() -> None:
@@ -205,6 +209,16 @@ def test_curated_pairs_each_question_with_one_variants_first_trial(
     longmemeval.curated("tune", run)
     paired = json.loads((tmp_path / "tune-curated.json").read_text())
     assert [t["bundle"] for t in paired] == ["b1"]
+
+
+def test_resolve_ref_returns_the_commit_sha() -> None:
+    sha = run.resolve_ref("HEAD")
+    assert len(sha) == 40 and all(ch in "0123456789abcdef" for ch in sha)
+
+
+def test_resolve_ref_refuses_an_unknown_ref() -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        run.resolve_ref("no-such-ref-anywhere")
 
 
 def _read(path: str, links: list, backlinks: list) -> dict:
