@@ -1,40 +1,47 @@
 name: release
 
-# Tag-driven: `git tag v0.2.0 && git push --tags`. The tag is the only input, so
-# there is no way to publish something that is not in the history.
+# Publishes whenever main carries a Chart.yaml appVersion with no tag yet, so merging
+# the PR from scripts/release.sh is the whole release. The tag is created last, on
+# the commit that was built, so nothing is published that is not in main's history.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: read
 
+# Two quick merges MUST NOT race to publish the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  # The version in the tag has to be the version in the tree, or the chart ships an
-  # appVersion pointing at an image tag that was never built. Checked before
-  # anything is published, because a release is hard to take back.
+  # Checked before anything is published, because a release is hard to take back.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
+      release: ${{ steps.version.outputs.release }}
       version: ${{ steps.version.outputs.version }}
       image: ${{ steps.image.outputs.image }}
       charts: ${{ steps.image.outputs.charts }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          enable-cache: true
       - id: version
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          tree=$(grep -E '^appVersion:' charts/keepsake/Chart.yaml | awk '{print $2}' | tr -d '"')
-          if [ "$tag" != "$tree" ]; then
-            echo "tag $GITHUB_REF_NAME says $tag, Chart.yaml appVersion says $tree" >&2
-            exit 1
+          version=$(grep -E '^appVersion:' charts/keepsake/Chart.yaml | awk '{print $2}' | tr -d '"')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "version=$tag" >> "$GITHUB_OUTPUT"
+      - if: steps.version.outputs.release == 'true'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
       # Derived, never written down twice: a GHCR namespace follows the repository
       # owner, so moving the repo between a user and an org silently makes a
       # hardcoded namespace one this token cannot push to. Lowercased because GHCR
@@ -48,27 +55,39 @@ jobs:
       # The chart's default image must be the one this release publishes, or an
       # install pulls a tag nobody pushed. A repository transfer breaks this loudly
       # rather than at the first `helm install` a stranger runs.
-      - run: |
+      - if: steps.version.outputs.release == 'true'
+        run: |
           set -euo pipefail
           declared=$(grep -E '^  repository:' charts/keepsake/values.yaml | awk '{print $2}')
           if [ "$declared" != "${{ steps.image.outputs.image }}" ]; then
             echo "chart default image is $declared, this release publishes ${{ steps.image.outputs.image }}" >&2
             exit 1
           fi
-      - run: uv sync --locked
-      # Holds Chart.yaml's version to its appVersion, and the community
-      # health files to their locations.
-      - run: uv run pytest tests/test_release_metadata.py -v
-      # A release with no changelog entry is a release nobody can read.
-      - run: |
+      - if: steps.version.outputs.release == 'true'
+        run: uv sync --locked
+      # Holds Chart.yaml's version to its appVersion, compose.yaml's image to both,
+      # and the community health files to their locations.
+      - if: steps.version.outputs.release == 'true'
+        run: uv run pytest tests/test_release_metadata.py -v
+      # A release with no changelog entry is a release nobody can read, and an
+      # Unreleased section left behind is one that misstates what shipped.
+      - if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
           set -euo pipefail
-          grep -q "^## ${GITHUB_REF_NAME#v}\b\|^## \[${GITHUB_REF_NAME#v}\]" CHANGELOG.md || {
-            echo "CHANGELOG.md has no '## ${GITHUB_REF_NAME#v}' section" >&2
+          grep -q "^## $VERSION\b\|^## \[$VERSION\]" CHANGELOG.md || {
+            echo "CHANGELOG.md has no '## $VERSION' section" >&2
             exit 1
           }
+          if grep -q '^## Unreleased' CHANGELOG.md; then
+            echo "CHANGELOG.md still has an Unreleased section" >&2
+            exit 1
+          fi
 
   image:
     needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -90,8 +109,8 @@ jobs:
         with:
           images: ${{ needs.check.outputs.image }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=v${{ needs.check.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.check.outputs.version }}
       # arm64 as well as amd64. Graviton and Apple silicon are where a good share
       # of clusters and every local `kind` on a Mac actually run, and a
       # single-arch image leaves them with no image at all. No QEMU: every stage
@@ -115,6 +134,7 @@ jobs:
 
   chart:
     needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -173,7 +193,9 @@ jobs:
             echo
             echo "See [CHANGELOG.md](CHANGELOG.md) for what changed."
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          # Creates the tag on the commit this run built.
+          gh release create "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
             --notes-file notes.md \
             "keepsake-$VERSION.cdx.json"
