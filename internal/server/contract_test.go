@@ -52,9 +52,6 @@ func TestResponsesMatchTheContract(t *testing.T) {
 
 	for _, rt := range routeTable {
 		method, pattern, _ := strings.Cut(rt.pattern, " ")
-		if pattern == "/docs" {
-			continue // include_in_schema=False in api.py.
-		}
 		specPath := strings.Replace(pattern, "{path...}", "{path}", 1)
 		item := doc.Paths.Find(specPath)
 		if item == nil || item.GetOperation(method) == nil {
