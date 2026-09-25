@@ -65,6 +65,7 @@
       }
     },
     "replicaCount": {"type": "integer", "minimum": 1},
+    "logLevel": {"enum": ["debug", "info", "warn", "error"]},
     "resources": {"type": "object"},
     "podSecurityContext": {"type": "object"},
     "securityContext": {"type": "object"}

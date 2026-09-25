@@ -3,6 +3,8 @@ image:
   tag: "" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
 replicaCount: 2
+# debug, info, warn or error. Info logs one line per tool call.
+logLevel: info
 
 # A request is what the scheduler honours; without one the pod is BestEffort and is
 # evicted first under node pressure. The limit is memory only on purpose — a CPU

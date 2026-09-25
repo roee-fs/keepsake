@@ -21,6 +21,13 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - Prometheus metrics at `/metrics` on `KEEPSAKE_METRICS_PORT`, 9090 by default:
   tool calls by tool and outcome, tool latency, and pool connections. The port is
   not on the Service. The chart annotates pods for scraping.
+- One log line per tool call, with its outcome, duration, tenant and actor. A
+  database outage, a console login and a refused console login are logged too.
+- `logLevel` in the chart and `KEEPSAKE_LOG_LEVEL`.
+
+### Changed
+
+- `serve` logs JSON lines, not `key=value` text.
 
 ## 0.3.0 — 2026-09-24
 

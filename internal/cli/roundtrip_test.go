@@ -447,11 +447,42 @@ func TestServeHandsTheListenerTheVerifiedAppAndTheParsedPort(t *testing.T) {
 	}
 }
 
-func TestServeLogsTheListenAddress(t *testing.T) {
+func TestServeLogsItsConfigurationAsJSON(t *testing.T) {
+	t.Setenv("KEEPSAKE_POOL_SIZE", "4")
 	fakeListen(t)
 	_, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123")
-	if !strings.Contains(stderr, "addr=0.0.0.0:9123") {
-		t.Fatalf("stderr %q does not name the listen address", stderr)
+	var line map[string]any
+	for _, raw := range strings.Split(strings.TrimSpace(stderr), "\n") {
+		var l map[string]any
+		if err := json.Unmarshal([]byte(raw), &l); err != nil {
+			t.Fatalf("stderr is not JSON: %q", stderr)
+		}
+		if l["msg"] == "listening" {
+			line = l
+		}
+	}
+	want := map[string]any{"msg": "listening", "addr": "0.0.0.0:9123", "auth_mode": "none", "schema": "okf", "pool_size": float64(4)}
+	for k, v := range want {
+		if line[k] != v {
+			t.Errorf("%s = %v, want %v", k, line[k], v)
+		}
+	}
+}
+
+func TestServeHonoursTheLogLevel(t *testing.T) {
+	t.Setenv("KEEPSAKE_LOG_LEVEL", "error")
+	fakeListen(t)
+	if _, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString()); stderr != "" {
+		t.Fatalf("a line below error passed an error level: %q", stderr)
+	}
+}
+
+func TestServeRefusesAnUnknownLogLevel(t *testing.T) {
+	t.Setenv("KEEPSAKE_LOG_LEVEL", "loud")
+	fakeListen(t)
+	code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString())
+	if code != 1 || !strings.Contains(stderr, "KEEPSAKE_LOG_LEVEL") {
+		t.Fatalf("exit %d: %s", code, stderr)
 	}
 }
 

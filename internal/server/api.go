@@ -144,7 +144,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		internalError(w, err)
+		internalError(w, nil, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -152,8 +152,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Write(bytes.TrimSuffix(b.Bytes(), []byte("\n")))
 }
 
-func internalError(w http.ResponseWriter, err error) {
-	slog.Error("api", "err", err)
+// internalError logs the route pattern, not the path, since a path names a concept. r MAY be nil.
+func internalError(w http.ResponseWriter, r *http.Request, err error) {
+	var method, route string
+	if r != nil {
+		method, route = r.Method, r.Pattern
+	}
+	slog.Error("api", "method", method, "route", route, "err", err)
 	// Starlette's PlainTextResponse: no trailing newline, unlike http.Error.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusInternalServerError)
@@ -161,13 +166,13 @@ func internalError(w http.ResponseWriter, err error) {
 }
 
 // reply answers v, or maps err as FastAPI does: a GrepError is a 400 and anything else a 500.
-func reply(w http.ResponseWriter, v any, err error) {
+func reply(w http.ResponseWriter, r *http.Request, v any, err error) {
 	var ge *store.GrepError
 	switch {
 	case errors.As(err, &ge):
 		writeJSON(w, http.StatusBadRequest, detail{ge.Msg})
 	case err != nil:
-		internalError(w, err)
+		internalError(w, r, err)
 	default:
 		writeJSON(w, http.StatusOK, v)
 	}
@@ -395,7 +400,7 @@ func revisions(rs []store.Revision) []revisionOut {
 func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
-		internalError(w, err)
+		internalError(w, r, err)
 		return "", false
 	}
 	invalid := func(typ string, loc []any, msg string, input any, ctx map[string]any) (string, bool) {
@@ -444,10 +449,13 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The peer, not X-Forwarded-For, which any client can set.
 	if !a.auth.CheckPassword(password) {
+		slog.Warn("console login refused", "remote_addr", r.RemoteAddr)
 		writeJSON(w, http.StatusUnauthorized, detail{"Unauthorized"})
 		return
 	}
+	slog.Info("console login", "remote_addr", r.RemoteAddr)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    a.auth.Issue(sessionTTL),
@@ -540,7 +548,7 @@ func (a *api) tenants(w http.ResponseWriter, r *http.Request) {
 	for _, t := range ts {
 		out = append(out, tenantCount{t.TenantID, t.Count})
 	}
-	reply(w, out, err)
+	reply(w, r, out, err)
 }
 
 func (a *api) stats(w http.ResponseWriter, r *http.Request) {
@@ -550,7 +558,7 @@ func (a *api) stats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, err := a.cs.Totals(r.Context(), tenant)
-	reply(w, totalsOut{t.Concepts, t.ByType, t.Revisions, t.Links, t.Orphans}, err)
+	reply(w, r, totalsOut{t.Concepts, t.ByType, t.Revisions, t.Links, t.Orphans}, err)
 }
 
 func (a *api) timeseries(w http.ResponseWriter, r *http.Request) {
@@ -565,7 +573,7 @@ func (a *api) timeseries(w http.ResponseWriter, r *http.Request) {
 	for _, d := range ds {
 		out = append(out, dailyWrite{pyDate(d.Date), d.Count})
 	}
-	reply(w, out, err)
+	reply(w, r, out, err)
 }
 
 func (a *api) concepts(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +590,7 @@ func (a *api) concepts(w http.ResponseWriter, r *http.Request) {
 	for _, s := range items {
 		page.Items = append(page.Items, summaryOut{s.Path, s.Type, s.Title, s.Description, s.Version, pyTime(s.UpdatedAt), s.TenantID})
 	}
-	reply(w, page, err)
+	reply(w, r, page, err)
 }
 
 func (a *api) concept(w http.ResponseWriter, r *http.Request) {
@@ -594,14 +602,14 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 	path := r.PathValue("path")
 	c, backlinks, history, err := a.cs.Detail(r.Context(), *tenant, path, historyLimit)
 	if err != nil {
-		reply(w, nil, err)
+		reply(w, r, nil, err)
 		return
 	}
 	if c == nil {
 		writeJSON(w, http.StatusNotFound, detail{"Not Found"})
 		return
 	}
-	reply(w, conceptDetail{
+	reply(w, r, conceptDetail{
 		c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Links, c.Version, backlinks, revisions(history),
 	}, err)
 }
@@ -615,7 +623,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Search(r.Context(), *tenant, q, limit, nil)
-	reply(w, convert(hits, func(h store.Hit) searchHit { return searchHit(h) }), err)
+	reply(w, r, convert(hits, func(h store.Hit) searchHit { return searchHit(h) }), err)
 }
 
 func (a *api) grep(w http.ResponseWriter, r *http.Request) {
@@ -627,7 +635,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Grep(r.Context(), *tenant, pattern, limit)
-	reply(w, convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), err)
+	reply(w, r, convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), err)
 }
 
 func (a *api) graph(w http.ResponseWriter, r *http.Request) {
@@ -638,10 +646,10 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := a.cs.Graph(r.Context(), *tenant, graphLimit+1)
 	if err != nil {
-		reply(w, nil, err)
+		reply(w, r, nil, err)
 		return
 	}
-	reply(w, buildGraph(rows), nil)
+	reply(w, r, buildGraph(rows), nil)
 }
 
 func buildGraph(rows []store.GraphRow) graphOut {
@@ -686,5 +694,5 @@ func (a *api) activity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rs, err := a.cs.Activity(r.Context(), tenant, limit)
-	reply(w, revisions(rs), err)
+	reply(w, r, revisions(rs), err)
 }

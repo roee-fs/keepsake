@@ -92,6 +92,25 @@ the pods, not the Service.
 `conflict` counts writes refused by `expected_version`. No metric carries a
 tenant. The Go runtime and process metrics are included as well.
 
+## Logs
+
+`keepsake serve` writes JSON lines to stderr. `logLevel` in the chart, or
+`KEEPSAKE_LOG_LEVEL`, sets the level: `debug`, `info` (the default), `warn` or
+`error`.
+
+| Message | Level | Fields |
+| --- | --- | --- |
+| `tool call` | info | `tool`, `outcome`, `duration_ms`, `tenant`, `actor` |
+| `database unavailable` | warn | `tool`, `err` |
+| `console login` / `console login refused` | info / warn | `remote_addr` |
+| `api` | error | `method`, `route`, `err` |
+| `tool call failed` | error | `tool`, `err` |
+| `refused /mcp request` | warn | `reason` |
+
+No line carries a tool's arguments, a concept body, a token or a password.
+`remote_addr` is the TCP peer, so behind a proxy it names the proxy. At `warn`,
+the per-call lines are dropped.
+
 ## Health
 
 `/readyz` answers once the startup check has passed and the pool can hand out a

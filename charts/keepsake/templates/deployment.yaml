@@ -82,6 +82,8 @@ spec:
               value: {{ $port | quote }}
             - name: KEEPSAKE_METRICS_PORT
               value: {{ $metricsPort | quote }}
+            - name: KEEPSAKE_LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
             # UIEnabled in internal/server/auth.go compares against the string "true"; an unquoted
             # boolean renders bare and Kubernetes rejects it as an env value.
             - name: KEEPSAKE_UI
