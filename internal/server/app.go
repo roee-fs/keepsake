@@ -29,16 +29,16 @@ type Config struct {
 	Auth func(http.Handler) http.Handler
 }
 
-// BuildApp serves /mcp and /readyz and returns a closer, or fails when the database does not isolate tenants.
-func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
+// BuildApp returns the app, its metrics handler and a closer, or fails when the database does not isolate tenants.
+func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, closeApp func(), err error) {
 	// Read before the pool opens, so a misconfigured console holds no connections.
 	password, err := AdminPassword()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	s, err := store.OpenVerified(ctx, cfg.DSN, cfg.Schema)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	cs := store.NewConceptStore(s)
@@ -80,7 +80,7 @@ func BuildApp(ctx context.Context, cfg Config) (http.Handler, func(), error) {
 	// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
 	mux.Handle("/api", fallback)
 	mux.Handle("/", fallback)
-	return refuseBrowsers(mux), func() { closeRoot(); s.Close() }, nil
+	return refuseBrowsers(mux), metricsHandler(s.Stat), func() { closeRoot(); s.Close() }, nil
 }
 
 // refuseBrowsers answers Starlette's bare 403 to a /mcp request with an Origin, which only a browser sends.

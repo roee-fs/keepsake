@@ -69,6 +69,9 @@ func OpenVerified(ctx context.Context, dsn, schema string) (*Store, error) {
 	return s, nil
 }
 
+// Stat snapshots the pool's connection counts.
+func (s *Store) Stat() *pgxpool.Stat { return s.pool.Stat() }
+
 // Close releases the pool's connections.
 func (s *Store) Close() { s.pool.Close() }
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf16"
 
 	"github.com/google/uuid"
@@ -169,6 +170,11 @@ func acquire(ctx context.Context, slot chan struct{}) (release func(), ok bool) 
 
 func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		start, outcome := time.Now(), "error"
+		defer func() {
+			toolCalls.WithLabelValues(name, outcome).Inc()
+			toolDuration.WithLabelValues(name).Observe(time.Since(start).Seconds())
+		}()
 		raw := req.Params.Arguments
 		if len(raw) == 0 || string(raw) == "null" {
 			raw = json.RawMessage("{}")
@@ -180,6 +186,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		}
 		// Enforced before dispatch, so a wrong shape is something the agent can correct.
 		if err := schema.Validate(plain(m)); err != nil {
+			outcome = "tool_error"
 			return failed(name + ": " + schemaErrors(err)), nil
 		}
 		args := map[string]any{}
@@ -205,8 +212,10 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		var te *ToolError
 		switch {
 		case errors.As(err, &te):
+			outcome = "tool_error"
 			return failed(te.Msg), nil
 		case store.IsUnavailable(err):
+			outcome = "unavailable"
 			return failed(unavailable), nil
 		case err != nil:
 			// A defect here, not the agent's mistake: it stays a protocol error.
@@ -216,6 +225,10 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		text, err := pyDumps(result)
 		if err != nil {
 			return nil, err
+		}
+		outcome = "ok"
+		if _, ok := result.(conflictResult); ok {
+			outcome = "conflict"
 		}
 		res := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
 		if result != nil {

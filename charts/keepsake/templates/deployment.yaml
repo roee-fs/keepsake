@@ -1,4 +1,5 @@
 {{- $port := 8000 -}}
+{{- $metricsPort := 9090 -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,6 +15,10 @@ spec:
     metadata:
       labels:
         app: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $metricsPort | quote }}
+        prometheus.io/path: /metrics
     spec:
       # Nothing here reads a Service link variable. See cli.EnvPort in internal/cli/cli.go.
       enableServiceLinks: false
@@ -75,6 +80,8 @@ spec:
             # probe would otherwise depend on that default never moving.
             - name: KEEPSAKE_PORT
               value: {{ $port | quote }}
+            - name: KEEPSAKE_METRICS_PORT
+              value: {{ $metricsPort | quote }}
             # UIEnabled in internal/server/auth.go compares against the string "true"; an unquoted
             # boolean renders bare and Kubernetes rejects it as an env value.
             - name: KEEPSAKE_UI
@@ -93,6 +100,9 @@ spec:
           ports:
             - name: http
               containerPort: {{ $port }}
+            # Not on the Service, so no Ingress can expose it.
+            - name: metrics
+              containerPort: {{ $metricsPort }}
           # /readyz answers only once the startup check has passed and the pool can
           # still hand out a connection. A bound port is not enough: after a database
           # failover a replica keeps its port, and its place in the Service, while its

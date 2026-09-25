@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -389,8 +390,8 @@ func TestMainExportsABundle(t *testing.T) {
 }
 
 type servedApp struct {
-	addr string
-	h    http.Handler
+	addr, metricsAddr string
+	h, metrics        http.Handler
 }
 
 // fakeListen replaces the listener the way the Python tests monkeypatch uvicorn.run.
@@ -398,9 +399,43 @@ func fakeListen(t *testing.T) *servedApp {
 	t.Helper()
 	got := &servedApp{}
 	orig := listen
-	listen = func(addr string, h http.Handler) error { got.addr, got.h = addr, h; return nil }
+	listen = func(apps map[string]http.Handler) error {
+		for addr, h := range apps {
+			if strings.HasSuffix(addr, ":9123") || strings.HasSuffix(addr, ":8000") {
+				got.addr, got.h = addr, h
+			} else {
+				got.metricsAddr, got.metrics = addr, h
+			}
+		}
+		return nil
+	}
 	t.Cleanup(func() { listen = orig })
 	return got
+}
+
+func TestServeServesMetricsOnTheirOwnPort(t *testing.T) {
+	t.Setenv("KEEPSAKE_METRICS_PORT", "9124")
+	served := fakeListen(t)
+	if code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if served.metricsAddr != "0.0.0.0:9124" {
+		t.Fatal(served.metricsAddr)
+	}
+	rec := httptest.NewRecorder()
+	served.metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
+		t.Fatalf("%d: %.200s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestServeRefusesAMetricsPortEqualToTheServePort(t *testing.T) {
+	t.Setenv("KEEPSAKE_METRICS_PORT", "9123")
+	fakeListen(t)
+	code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123")
+	if code != 1 || !strings.Contains(stderr, "KEEPSAKE_METRICS_PORT must differ") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
 }
 
 func TestServeHandsTheListenerTheVerifiedAppAndTheParsedPort(t *testing.T) {
