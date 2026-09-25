@@ -18,8 +18,9 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// Upload limits, vars so tests can lower them. ponytail: the whole bundle sits in memory; stream it if bundles outgrow these.
+// Upload limits, vars so tests can lower them. ponytail: the whole bundle sits in memory, so uploads run one at a time; stream them if bundles outgrow these.
 var (
+	uploads           = make(chan struct{}, 1)
 	maxUpload   int64 = 32 << 20
 	maxUnpacked int64 = 64 << 20
 	maxFiles          = 20_000
@@ -111,6 +112,14 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 		prefix := r.URL.Query().Get("prefix")
 		if !fs.ValidPath(prefix) || prefix == "." || strings.ContainsFunc(prefix, unicode.IsControl) {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
+			return
+		}
+		select {
+		case uploads <- struct{}{}:
+			defer func() { <-uploads }()
+		default:
+			w.Header().Set("Retry-After", "5")
+			writeJSON(w, r, http.StatusServiceUnavailable, detail{"another bundle upload is in progress"})
 			return
 		}
 		concepts, problems, err := readBundle(http.MaxBytesReader(w, r.Body, maxUpload), prefix)

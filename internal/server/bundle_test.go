@@ -314,3 +314,15 @@ func TestAnOversizedUploadIsRefused(t *testing.T) {
 		t.Fatalf("PUT = %d, want 413", code)
 	}
 }
+
+func TestAnUploadDuringAnotherIsRefused(t *testing.T) {
+	uploads <- struct{}{}
+	defer func() { <-uploads }()
+	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute))
+	rec := httptest.NewRecorder()
+	issuer.Middleware(replaceBundle(conceptStore(t))).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {
+		t.Fatalf("PUT = %d, Retry-After %q, want 503, 5", rec.Code, rec.Header().Get("Retry-After"))
+	}
+}
