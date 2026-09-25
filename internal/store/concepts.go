@@ -104,10 +104,8 @@ func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle
 	return len(bundle), nil
 }
 
-// replaceSQL deletes the concepts under $1 that $2 omits, with their history, and counts them.
-const replaceSQL = "WITH gone AS (DELETE FROM concept WHERE starts_with(path, $1) AND path <> ALL($2::text[]) RETURNING path), " +
-	"history AS (DELETE FROM concept_revision WHERE path IN (SELECT path FROM gone)) " +
-	"SELECT count(*) FROM gone"
+// replaceSQL deletes the concepts under $1 that $2 omits. NOT EXISTS keeps a generic plan from scanning $2 per row.
+const replaceSQL = "DELETE FROM concept WHERE starts_with(path, $1) AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) k WHERE k = path) RETURNING path"
 
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
 func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (deleted int, err error) {
@@ -124,11 +122,21 @@ func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, pre
 		return 0, err
 	}
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		// Two replaces of one prefix would otherwise each keep the path the other inserted.
-		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant.String()+"/"+prefix); err != nil {
+		// Every replace of a tenant serializes, so replaces of nested prefixes cannot interleave either.
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant.String()); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, replaceSQL, under, keep).Scan(&deleted); err != nil {
+		rows, err := tx.Query(ctx, replaceSQL, under, keep)
+		if err != nil {
+			return err
+		}
+		gone, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		deleted = len(gone)
+		// A separate statement takes a fresh snapshot, so it also sees a revision committed while the delete waited on a row lock.
+		if _, err := tx.Exec(ctx, "DELETE FROM concept_revision WHERE path = ANY($1)", gone); err != nil {
 			return err
 		}
 		return importWrites(ctx, tx, tenant, writes, actor)
