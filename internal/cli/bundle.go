@@ -72,34 +72,14 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 			return nil, fmt.Errorf("%s: %v", file, err)
 		}
 		if strict {
-			// Python lets json.dumps write NaN, which Postgres then refuses mid-import.
-			if nonFinite(concept.Frontmatter) {
-				return nil, fmt.Errorf("%s: frontmatter holds NaN or Infinity, which JSON cannot store", file)
-			}
 			// A stored invalid concept would fail a later okf_update on a field nobody touched.
-			if errs := okf.Validate(concept); len(errs) > 0 {
-				return nil, fmt.Errorf("%s: %s", file, strings.Join(errs, "; "))
+			if err := okf.Storable(concept); err != nil {
+				return nil, fmt.Errorf("%s: %v", file, err)
 			}
 		}
 		concepts = append(concepts, concept)
 	}
 	return concepts, nil
-}
-
-func nonFinite(v any) bool {
-	switch v := v.(type) {
-	case okf.NonFinite:
-		return true
-	case []any:
-		return slices.ContainsFunc(v, nonFinite)
-	case *okf.Map:
-		for _, k := range v.Keys() {
-			if x, _ := v.Get(k); nonFinite(x) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // ImportBundle stores the whole bundle in one transaction, all or nothing.

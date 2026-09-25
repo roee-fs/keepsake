@@ -114,3 +114,26 @@ func TestErrorsComeInPythonOrder(t *testing.T) {
 		t.Fatalf("got %q", errs)
 	}
 }
+
+func TestStorableRefusesNonFiniteFrontmatter(t *testing.T) {
+	c, err := Parse("---\ntype: Note\nscore: .nan\n---\nbody\n", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Storable(c); err == nil || err.Error() != "frontmatter holds NaN or Infinity, which JSON cannot store" {
+		t.Fatalf("Storable = %v", err)
+	}
+}
+
+func TestStorableJoinsEveryValidationError(t *testing.T) {
+	err := Storable(Concept{Path: "../x"})
+	if err == nil || err.Error() != "type is required; path must not traverse upward" {
+		t.Fatalf("Storable = %v", err)
+	}
+}
+
+func TestStorableAcceptsAValidConcept(t *testing.T) {
+	if err := Storable(Concept{Path: "a/b", Type: "Note"}); err != nil {
+		t.Fatal(err)
+	}
+}
