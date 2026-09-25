@@ -8,23 +8,13 @@ Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and a
 SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
 test enforces it and the release workflow refuses otherwise.
 
-## Unreleased
+## 0.3.0 — 2026-09-24
 
 ### Added
 
 - `compose.yaml`: `docker compose up` runs a single-tenant keepsake on
   `localhost:8000`, with no Kubernetes.
 - `docs/`: the MCP tool reference, operations, and alternatives.
-
-### Removed
-
-- The Swagger UI at `/api/docs`. It loaded its scripts from a CDN, and nothing
-  linked to it. `/api/openapi.json` still serves the contract.
-
-## 0.3.0 — 2026-09-24
-
-### Added
-
 - `auth.mode: jwt`. Each `/mcp` request carries an HS256 bearer token, and its
   `tctx.tenant` claim picks the tenant, so one release serves many tenants. The
   server checks `iss`, `aud` and `exp`, answers 401 for a bad token and 403 for
@@ -57,6 +47,11 @@ test enforces it and the release workflow refuses otherwise.
   56 held-out LongMemEval questions with them, against 44 with a wording that
   described a team knowledge base, and 32-33 of the 33 demo tasks.
   `bench/longmemeval.py` builds the tuning and holdout sets.
+
+### Removed
+
+- The Swagger UI at `/api/docs`. It loaded its scripts from a CDN, and nothing
+  linked to it. `/api/openapi.json` still serves the contract.
 
 ### Security
 
