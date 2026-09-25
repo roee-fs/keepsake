@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bench"))
+import iirc
 import musique
 
 
@@ -76,6 +77,79 @@ def test_task_reads_the_supporting_paragraphs_in_step_order() -> None:
     assert t["expect"] == {"reads": ["p/0-grant-green", "p/1-grant-s-first-stand"],
                            "answer_any": ["Blue Note", "Blue Note Records"]}
     assert t["prompt"] == RECORD["question"] and t["system_prompt"] == musique.HOST
+
+
+PASSAGE = {
+    "pid": "p1",
+    "title": "Thomas Bain",
+    "text": "Bain was born in London and studied in Geneva.",
+    "links": [
+        {"indices": [17, 23], "target": "London"},
+        {"indices": [39, 45], "target": "University of Geneva"},
+        {"indices": [0, 4], "target": "No Such Article"},
+        {"indices": [40, 99], "target": "London"},  # out of range: skipped
+    ],
+    "questions": [],
+}
+ARTICLES = {
+    "london": 'London is on the <a href="River%20thames">Thames</a> and near <a href="university%20of%20Geneva">Geneva</a>? <b>No</b> &amp; yes.',
+    "university of geneva": 'A university in <a href="Switzerland">Switzerland</a>, far from <a href="London">London</a>.',
+}
+
+
+def _question(qid: str, passages: list[str], kind: str = "span") -> dict:
+    return {
+        "qid": qid,
+        "question": "Where?",
+        "answer": {"type": kind, "answer_spans": [{"text": "Switzerland"}, {"text": "Swiss"}]},
+        "question_links": passages,
+        "context": [{"passage": "main", "text": "x"}] + [{"passage": p, "text": "y"} for p in passages],
+    }
+
+
+def test_iirc_main_passage_links_its_spans_and_skips_bad_ones() -> None:
+    concepts, _ = iirc.bundle(PASSAGE, ARTICLES, "linked")
+    title, type_, body = concepts["main/thomas-bain"]
+    assert (title, type_) == ("Thomas Bain", "Passage")
+    assert body == ("Bain was born in [London](/a/london.md) and studied in "
+                    "[Geneva](/a/university-of-geneva.md).")
+    assert set(concepts) == {"main/thomas-bain", "a/london", "a/university-of-geneva"}
+
+
+def test_iirc_articles_link_each_other_and_drop_other_html() -> None:
+    concepts, _ = iirc.bundle(PASSAGE, ARTICLES, "linked")
+    assert concepts["a/london"] == ("London", "Article",
+        "London is on the Thames and near [Geneva](/a/university-of-geneva.md)? No & yes.")
+    assert concepts["a/university-of-geneva"][2] == (
+        "A university in Switzerland, far from [London](/a/london.md).")
+
+
+def test_iirc_none_bundle_keeps_the_text_without_links() -> None:
+    concepts, _ = iirc.bundle(PASSAGE, ARTICLES, "none")
+    assert all("](" not in body for _, _, body in concepts.values())
+    assert concepts["main/thomas-bain"][2] == PASSAGE["text"]
+
+
+def test_iirc_slug_collisions_get_a_suffix() -> None:
+    passage = {**PASSAGE, "links": [{"indices": [17, 23], "target": "London"},
+                                    {"indices": [39, 45], "target": "London!"}]}
+    _, paths = iirc.bundle(passage, {"london": "a", "london!": "b"}, "linked")
+    assert paths == {"london": "a/london", "london!": "a/london-2"}
+
+
+def test_iirc_task_reads_main_then_gold_passages_in_context_order() -> None:
+    _, paths = iirc.bundle(PASSAGE, ARTICLES, "linked")
+    t = iirc.task(PASSAGE, _question("q1", ["University of Geneva", "London"]), "linked", paths)
+    assert t["kind"] == "2link+" and t["bundle"] == "linked/q1"
+    assert t["expect"] == {"reads": ["main/thomas-bain", "a/university-of-geneva", "a/london"],
+                           "answer_any": ["Switzerland", "Swiss"]}
+    assert iirc.task(PASSAGE, _question("q2", ["Nowhere"]), "linked", paths) is None
+
+
+def test_iirc_eligible_needs_a_span_answer_and_a_linked_passage() -> None:
+    assert iirc.eligible(_question("q", ["London"]))
+    assert not iirc.eligible(_question("q", ["London"], kind="value"))
+    assert not iirc.eligible(_question("q", []))
 
 
 def test_sample_takes_per_hop_questions_of_each_depth() -> None:
