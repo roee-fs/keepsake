@@ -291,6 +291,12 @@ def test_link_metrics_count_link_only_reads_and_missed_links() -> None:
     assert m == {"reads": 3, "offered": 4, "link_only_reads": 1, "missed_links": 1}
 
 
+def test_a_failed_read_is_neither_a_read_nor_a_follow() -> None:
+    failed = {**_read("b", [], []), "error": True, "output": "no such concept"}
+    m = grade.link_metrics([_read("a", ["b"], []), failed], required=["b"])
+    assert m == {"reads": 1, "offered": 1, "link_only_reads": 0, "missed_links": 1}
+
+
 def test_summary_tolerates_rows_without_link_metrics() -> None:
     row = {"variant": "v", "task": "t", "trial": 1, "passed": True, "checks": {},
            **grade.metrics([], {})}

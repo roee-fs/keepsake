@@ -187,6 +187,8 @@ def link_metrics(
         except ValueError:
             out = None
         if c["tool"] == "okf_read":
+            if c.get("error"):
+                continue
             path = concept_path(c["input"].get("path", ""))
             reads += 1
             if path in offered and path not in read:
@@ -247,8 +249,10 @@ def summarize(rows: list[dict[str, Any]]) -> str:
     variants = sorted({r["variant"] for r in rows})
     tasks = list(dict.fromkeys(r["task"] for r in rows))
     out = [
-        "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds "
-        "| input tokens | reads | link-only reads | missed links |",
+        (
+            "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds "
+            "| input tokens | reads | link-only reads | missed links |"
+        ),
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for v in variants:

@@ -158,6 +158,25 @@ def test_iirc_eligible_needs_a_span_answer_and_a_linked_passage() -> None:
     assert not iirc.eligible(_question("q", []))
 
 
+def test_iirc_extract_ignores_a_partial_file_and_keys_the_cache_by_archive(tmp_path: Path) -> None:
+    import io
+    import tarfile
+
+    archive = tmp_path / "a.tgz"
+    with tarfile.open(archive, "w:gz") as tar:
+        data = "ünïcode".encode()
+        info = tarfile.TarInfo("x/dev.json")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    dest = iirc._extract(archive, "x/dev.json", tmp_path, "0123456789abcdef")
+    assert dest.name == "0123456789ab-dev.json"
+    # An interrupted extraction leaves only a .part, which a later run must not trust.
+    dest.unlink()
+    dest.with_name(dest.name + ".part").write_text("trunc")
+    assert iirc._extract(archive, "x/dev.json", tmp_path, "0123456789abcdef").read_bytes() == data
+    assert not dest.with_name(dest.name + ".part").exists()
+
+
 def test_sample_takes_per_hop_questions_of_each_depth() -> None:
     records = [{"id": f"{h}hop__{i}", "question_decomposition": [{}] * h} for h in (2, 3, 4) for i in range(5)]
     got = musique.sample(records, per_hop=2, seed=0)

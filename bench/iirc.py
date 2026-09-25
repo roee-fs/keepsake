@@ -108,12 +108,16 @@ def task(passage: dict, q: dict, kind: str, paths: dict[str, str]) -> dict | Non
     }
 
 
-def _extract(archive: Path, member: str, dest: Path) -> Path:
+def _extract(archive: Path, member: str, directory: Path, sha256: str) -> Path:
+    """Extracts member once per archive: the name carries the archive's hash, and the write is atomic."""
+    dest = directory / f"{sha256[:12]}-{Path(member).name}"
     if not dest.exists():
+        part = dest.with_name(dest.name + ".part")
         with tarfile.open(archive) as tar:
             f = tar.extractfile(member)
             assert f is not None, member
-            dest.write_bytes(f.read())
+            part.write_bytes(f.read())
+        part.replace(dest)
     return dest
 
 
@@ -124,8 +128,10 @@ def main() -> None:
     args = p.parse_args()
     questions = grade.fetch(QUESTIONS[0], DATA / "iirc_train_dev.tgz", QUESTIONS[1])
     archive = grade.fetch(ARTICLES[0], DATA / "context_articles.tar.gz", ARTICLES[1])
-    dev = json.loads(_extract(questions, "iirc_train_dev/dev.json", DATA / "dev.json").read_text())
-    articles = json.loads(_extract(archive, "context_articles.json", DATA / "context_articles.json").read_text())
+    dev = json.loads(_extract(questions, "iirc_train_dev/dev.json", DATA, QUESTIONS[1]).read_text(encoding="utf-8"))
+    articles = json.loads(
+        _extract(archive, "context_articles.json", DATA, ARTICLES[1]).read_text(encoding="utf-8")
+    )
 
     pool: dict[str, list[tuple[dict, dict]]] = defaultdict(list)
     for passage in dev:
@@ -146,9 +152,9 @@ def main() -> None:
             for path, (title, type_, body) in concepts.items():
                 f = OUT / kind / q["qid"] / f"{path}.md"
                 f.parent.mkdir(parents=True, exist_ok=True)
-                f.write_text(f"---\ntype: {type_}\ntitle: {json.dumps(title)}\n---\n{body}\n")
+                f.write_text(f"---\ntype: {type_}\ntitle: {json.dumps(title)}\n---\n{body}\n", encoding="utf-8")
             tasks.append(task(passage, q, kind, paths))
-        (OUT / f"iirc-{kind}.json").write_text(json.dumps(tasks, indent=2))
+        (OUT / f"iirc-{kind}.json").write_text(json.dumps(tasks, indent=2), encoding="utf-8")
     print(f"wrote {len(chosen)} questions x {len(KINDS)} bundles to {OUT}")
 
 

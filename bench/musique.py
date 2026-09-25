@@ -17,6 +17,7 @@ import random
 import re
 import shutil
 from collections import defaultdict
+from itertools import pairwise
 from pathlib import Path
 
 import grade
@@ -85,7 +86,7 @@ def bodies(record: dict, kind: str) -> dict[str, str]:
     elif kind == "chain":
         by_idx = {p["idx"]: p for p in paras}
         steps = [d["paragraph_support_idx"] for d in record["question_decomposition"]]
-        for a, b in zip(steps, steps[1:]):
+        for a, b in pairwise(steps):
             if a == b:
                 continue
             src, dst = by_idx[a], by_idx[b]
@@ -128,7 +129,7 @@ def write(record: dict, kind: str) -> None:
     for path, body in bodies(record, kind).items():
         f = root / f"{path}.md"
         f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(f"---\ntype: Paragraph\ntitle: {json.dumps(titles[path])}\n---\n{body}\n")
+        f.write_text(f"---\ntype: Paragraph\ntitle: {json.dumps(titles[path])}\n---\n{body}\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -137,14 +138,14 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0, help="Sampling seed. Default: 0.")
     args = p.parse_args()
     source = grade.fetch(URL, DATA / "musique_ans_v1.0_dev.jsonl", SHA256)
-    records = [json.loads(line) for line in source.read_text().splitlines() if line.strip()]
+    records = [json.loads(line) for line in source.read_text(encoding="utf-8").splitlines() if line.strip()]
     chosen = sample(records, args.per_hop, args.seed)
     shutil.rmtree(OUT, ignore_errors=True)
     for kind in KINDS:
         for r in chosen:
             write(r, kind)
         tasks = [task(r, kind) for r in chosen]
-        (OUT / f"musique-{kind}.json").write_text(json.dumps(tasks, indent=2))
+        (OUT / f"musique-{kind}.json").write_text(json.dumps(tasks, indent=2), encoding="utf-8")
     print(f"wrote {len(chosen)} questions x {len(KINDS)} bundles to {OUT}")
 
 
