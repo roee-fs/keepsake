@@ -393,7 +393,7 @@ def trial(
             require_tools=not variant.get("bundle_in_prompt"),
         )
         row["passed"] = "error" not in row and all(row["checks"].values())
-        row.update(grade.metrics(calls, result))
+        row.update(grade.metrics(calls, result, task["expect"].get("reads", [])))
         row["answer"] = answer
     return row
 

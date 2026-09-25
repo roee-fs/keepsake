@@ -139,12 +139,15 @@ def _paths(items: Any) -> list[str]:
     ]
 
 
-def link_metrics(calls: list[dict[str, Any]]) -> dict[str, int]:
-    """How agents use okf_read's links: offered once each, followed if read afterwards."""
+def link_metrics(
+    calls: list[dict[str, Any]], required: Iterable[str] = ()
+) -> dict[str, int]:
+    """How agents use okf_read's links. A link-only read opens a path no search, grep or list
+    had shown; a missed link is a required path the agent was linked to and never read."""
     searched: set[str] = set()
     read: set[str] = set()
     offered: set[str] = set()
-    followed = link_only = reads = 0
+    link_only = reads = 0
     for c in calls:
         try:
             out = json.loads(c.get("output") or "null")
@@ -154,7 +157,6 @@ def link_metrics(calls: list[dict[str, Any]]) -> dict[str, int]:
             path = concept_path(c["input"].get("path", ""))
             reads += 1
             if path in offered and path not in read:
-                followed += 1
                 link_only += path not in searched
             read.add(path)
             if isinstance(out, dict):
@@ -168,12 +170,14 @@ def link_metrics(calls: list[dict[str, Any]]) -> dict[str, int]:
     return {
         "reads": reads,
         "offered": len(offered),
-        "followed": followed,
         "link_only_reads": link_only,
+        "missed_links": len({concept_path(p) for p in required} & (offered - read)),
     }
 
 
-def metrics(calls: list[dict[str, Any]], result: dict[str, Any]) -> dict[str, Any]:
+def metrics(
+    calls: list[dict[str, Any]], result: dict[str, Any], required: Iterable[str] = ()
+) -> dict[str, Any]:
     usage = result.get("usage") or {}
     return {
         "calls": len(calls),
@@ -195,7 +199,7 @@ def metrics(calls: list[dict[str, Any]], result: dict[str, Any]) -> dict[str, An
             )
         ),
         "output_tokens": usage.get("output_tokens") or 0,
-        **link_metrics(calls),
+        **link_metrics(calls, required),
     }
 
 
@@ -209,7 +213,7 @@ def summarize(rows: list[dict[str, Any]]) -> str:
     tasks = list(dict.fromkeys(r["task"] for r in rows))
     out = [
         "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds "
-        "| input tokens | reads | links followed | link-only reads |",
+        "| input tokens | reads | link-only reads | missed links |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for v in variants:
@@ -226,8 +230,8 @@ def summarize(rows: list[dict[str, Any]]) -> str:
             f"| {_avg([r['duration_s'] for r in rs])} "
             f"| {_avg([r['input_tokens'] for r in rs])} "
             f"| {_avg([r['reads'] for r in rs if 'reads' in r])} "
-            f"| {sum(r.get('followed', 0) for r in rs)}/{sum(r.get('offered', 0) for r in rs)} "
-            f"| {sum(r.get('link_only_reads', 0) for r in rs)}/{sum(r.get('reads', 0) for r in rs)} |"
+            f"| {sum(r.get('link_only_reads', 0) for r in rs)}/{sum(r.get('reads', 0) for r in rs)} "
+            f"| {sum(r.get('missed_links', 0) for r in rs)} |"
         )
     # Past a screenful of tasks, a row per task hides the pattern; a row per kind shows it.
     key = "task" if len(tasks) <= 20 else "kind"
