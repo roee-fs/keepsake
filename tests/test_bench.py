@@ -205,3 +205,30 @@ def test_curated_pairs_each_question_with_one_variants_first_trial(
     longmemeval.curated("tune", run)
     paired = json.loads((tmp_path / "tune-curated.json").read_text())
     assert [t["bundle"] for t in paired] == ["b1"]
+
+
+def _read(path: str, links: list, backlinks: list) -> dict:
+    return {"tool": "okf_read", "input": {"path": path}, "error": False,
+            "output": json.dumps({"path": path, "links": links, "backlinks": backlinks})}
+
+
+def test_link_metrics_count_offered_followed_and_link_only_reads() -> None:
+    calls = [
+        {"tool": "okf_search", "input": {"query": "q"}, "error": False,
+         "output": json.dumps({"results": [{"path": "a"}, {"path": "b"}]})},
+        _read("a", ["b", "c"], ["d"]),
+        # b came from search too, so it is followed but not link-only.
+        _read("b", [], []),
+        # c came only from a's links.
+        _read("c", [{"path": "e", "title": "E"}], []),
+    ]
+    m = grade.link_metrics(calls)
+    assert m == {"reads": 3, "offered": 4, "followed": 2, "link_only_reads": 1}
+
+
+def test_summary_tolerates_rows_without_link_metrics() -> None:
+    row = {"variant": "v", "task": "t", "trial": 1, "passed": True, "checks": {},
+           **grade.metrics([], {})}
+    for key in ("reads", "offered", "followed", "link_only_reads"):
+        row.pop(key, None)
+    assert "| v | 1/1 |" in grade.summarize([row])
