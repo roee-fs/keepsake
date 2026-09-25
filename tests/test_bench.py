@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bench"))
 import beir
 import grade
+import run
 
 
 def test_ndcg_and_recall_match_hand_computed_values() -> None:
@@ -205,3 +209,97 @@ def test_curated_pairs_each_question_with_one_variants_first_trial(
     longmemeval.curated("tune", run)
     paired = json.loads((tmp_path / "tune-curated.json").read_text())
     assert [t["bundle"] for t in paired] == ["b1"]
+
+
+def test_evidence_counts_missed_links_but_is_not_a_pass_check() -> None:
+    calls = [_read("a", ["b"], [])]
+    assert grade.grade({"evidence": ["a", "b"]}, calls, "x", {}, {}) == {"used keepsake": True}
+    assert grade.metrics(calls, {}, {"evidence": ["a", "b"]})["missed_links"] == 1
+    assert grade.metrics(calls, {}, {"reads": ["a", "b"]})["missed_links"] == 1
+
+
+def test_normalize_drops_case_punctuation_and_articles() -> None:
+    assert grade.normalize("  The   U.S. Army, an Army! ") == "us army army"
+
+
+def test_answer_any_matches_any_alias_after_normalizing() -> None:
+    expect = {"answer_any": ["Swiss Confederation", "Switzerland"]}
+    assert grade.grade(expect, [], "It was in SWITZERLAND.", {}, {}, require_tools=False) == {
+        "answer ~ any alias": True
+    }
+    assert grade.grade(expect, [], "In France.", {}, {}, require_tools=False) == {
+        "answer ~ any alias": False
+    }
+
+
+def test_answer_any_matches_whole_words_only() -> None:
+    for alias, answer in (("Hu", "It was the church."), ("US", "I trust it"), ("45", "In 1945.")):
+        checks = grade.grade({"answer_any": [alias]}, [], answer, {}, {}, require_tools=False)
+        assert checks == {"answer ~ any alias": False}, (alias, answer)
+    checks = grade.grade({"answer_any": ["Hu"]}, [], "It was Hu Jintao.", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": True}
+
+
+def test_hyphens_and_slashes_separate_words() -> None:
+    checks = grade.grade({"answer_any": ["Jean-Paul Sartre"]}, [], "Jean Paul Sartre.", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": True}
+
+
+def test_an_alias_that_normalizes_to_nothing_never_matches() -> None:
+    checks = grade.grade({"answer_any": ["The", "..."]}, [], "anything", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": False}
+
+
+def test_fetch_refuses_a_file_with_the_wrong_hash(tmp_path: Path) -> None:
+    src = tmp_path / "src.txt"
+    src.write_text("data")
+    dest = tmp_path / "dest.txt"
+    with pytest.raises(ValueError):
+        grade.fetch(src.as_uri(), dest, "0" * 64)
+    assert not dest.exists()
+    good = "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7"
+    assert grade.fetch(src.as_uri(), dest, good).read_text() == "data"
+
+
+def test_resolve_ref_returns_the_commit_sha() -> None:
+    sha = run.resolve_ref("HEAD")
+    assert len(sha) == 40 and all(ch in "0123456789abcdef" for ch in sha)
+
+
+def test_resolve_ref_refuses_an_unknown_ref() -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        run.resolve_ref("no-such-ref-anywhere")
+
+
+def _read(path: str, links: list, backlinks: list) -> dict:
+    return {"tool": "okf_read", "input": {"path": path}, "error": False,
+            "output": json.dumps({"path": path, "links": links, "backlinks": backlinks})}
+
+
+def test_link_metrics_count_link_only_reads_and_missed_links() -> None:
+    calls = [
+        {"tool": "okf_search", "input": {"query": "q"}, "error": False,
+         "output": json.dumps({"results": [{"path": "a"}, {"path": "b"}]})},
+        _read("a", ["b", "c"], ["d"]),
+        # b came from search too, so reading it is not link-only.
+        _read("b", [], []),
+        # c came only from a's links.
+        _read("c", [{"path": "e", "title": "E"}], []),
+    ]
+    # d and e were offered and never read; only d was required.
+    m = grade.link_metrics(calls, required=["c", "d", "z"])
+    assert m == {"reads": 3, "offered": 4, "link_only_reads": 1, "missed_links": 1}
+
+
+def test_a_failed_read_is_neither_a_read_nor_a_follow() -> None:
+    failed = {**_read("b", [], []), "error": True, "output": "no such concept"}
+    m = grade.link_metrics([_read("a", ["b"], []), failed], required=["b"])
+    assert m == {"reads": 1, "offered": 1, "link_only_reads": 0, "missed_links": 1}
+
+
+def test_summary_tolerates_rows_without_link_metrics() -> None:
+    row = {"variant": "v", "task": "t", "trial": 1, "passed": True, "checks": {},
+           **grade.metrics([], {})}
+    for key in ("reads", "offered", "followed", "link_only_reads", "missed_links"):
+        row.pop(key, None)
+    assert "| v | 1/1 |" in grade.summarize([row])

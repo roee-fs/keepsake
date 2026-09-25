@@ -5,6 +5,7 @@ that rewrites `tools/list` to the variant's descriptions. `claude -p` runs with 
 user settings, no built-in tools and no other MCP servers.
 
     python3 bench/run.py --trials 3 --jobs 4
+    python3 bench/run.py --variants main baseline --trials 5   # main's server against this tree's
     python3 bench/run.py --report bench/results/<run>
 """
 
@@ -61,6 +62,26 @@ def sh(*cmd: str, **kw: Any) -> str:
     ).stdout
 
 
+def resolve_ref(ref: str) -> str:
+    return sh("git", "rev-parse", "--verify", f"{ref}^{{commit}}", cwd=ROOT).strip()
+
+
+def build(sha: str | None, dest: Path) -> Path:
+    """Builds keepsake at sha, or the working tree for None, without touching the working tree."""
+    if sha is None:
+        sh("go", "build", "-o", str(dest), "./cmd/keepsake", cwd=ROOT)
+        return dest
+    with tempfile.TemporaryDirectory() as src:
+        archive = subprocess.Popen(
+            ["git", "archive", sha], cwd=ROOT, stdout=subprocess.PIPE
+        )
+        subprocess.run(["tar", "-x", "-C", src], stdin=archive.stdout, check=True)
+        if archive.wait() != 0:
+            raise RuntimeError(f"git archive {sha} failed")
+        sh("go", "build", "-o", str(dest), "./cmd/keepsake", cwd=src)
+    return dest
+
+
 class Postgres:
     """A throwaway postgres:17 with the owner and app roles the chart creates."""
 
@@ -104,8 +125,14 @@ class Postgres:
             self.close()
             raise
 
-    def dsn(self, user: str, password: str) -> str:
-        return f"postgresql://{user}:{password}@127.0.0.1:{self.port}/bench?sslmode=disable"
+    def dsn(self, user: str, password: str, db: str = "bench") -> str:
+        return f"postgresql://{user}:{password}@127.0.0.1:{self.port}/{db}?sslmode=disable"
+
+    def database(self, name: str) -> None:
+        sh(
+            "docker", "exec", self.name, "psql", "-U", "postgres", "-c",
+            f"CREATE DATABASE {name} OWNER okf_owner",
+        )
 
     def close(self) -> None:
         subprocess.run(["docker", "stop", self.name], capture_output=True, check=False)
@@ -241,13 +268,14 @@ def judge(model: str, prompt: str, cwd: Path) -> str:
 def trial(
     args: argparse.Namespace,
     pg: Postgres,
-    binary: Path,
+    build_: tuple[Path, str],
     task: dict[str, Any],
     variant: dict[str, Any],
     n: int,
     out: Path,
 ) -> dict[str, Any]:
-    app = pg.dsn("okf_app", "app")
+    binary, db = build_
+    app = pg.dsn("okf_app", "app", db)
     tenant = str(uuid.uuid4())
     row: dict[str, Any] = {
         "variant": variant["name"],
@@ -365,7 +393,7 @@ def trial(
             require_tools=not variant.get("bundle_in_prompt"),
         )
         row["passed"] = "error" not in row and all(row["checks"].values())
-        row.update(grade.metrics(calls, result))
+        row.update(grade.metrics(calls, result, task["expect"]))
         row["answer"] = answer
     return row
 
@@ -469,12 +497,24 @@ def main() -> None:
             indent=2,
         )
     )
-    binary = out / "keepsake"
-    sh("go", "build", "-o", str(binary), "./cmd/keepsake", cwd=ROOT)
+    shas = {v["name"]: resolve_ref(v["ref"]) if v.get("ref") else None for v in variants}
+    run_json = json.loads((out / "run.json").read_text())
+    run_json["builds"] = {n: s or "working tree" for n, s in shas.items()}
+    (out / "run.json").write_text(json.dumps(run_json, indent=2))
+    binaries = {
+        s: build(s, out / f"keepsake-{(s or 'tree')[:12]}") for s in set(shas.values())
+    }
 
     pg = Postgres()
     try:
-        sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner"))
+        # One database per build, so two refs may carry different migrations.
+        builds: dict[str | None, tuple[Path, str]] = {}
+        for i, (s, binary) in enumerate(binaries.items()):
+            db = "bench" if i == 0 else f"bench_{i}"
+            if i:
+                pg.database(db)
+            sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner", db))
+            builds[s] = (binary, db)
         jobs = [
             (t, v, n)
             for v in variants
@@ -487,7 +527,7 @@ def main() -> None:
         def one(job: tuple[dict[str, Any], dict[str, Any], int]) -> None:
             t, v, n = job
             try:
-                row = trial(args, pg, binary, t, v, n, out)
+                row = trial(args, pg, builds[shas[v["name"]]], t, v, n, out)
             except Exception as e:  # noqa: BLE001 - a harness fault fails the trial, not the run.
                 row = {
                     "variant": v["name"],

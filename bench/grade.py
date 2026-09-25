@@ -1,12 +1,16 @@
 """Grade one `claude -p` stream-json transcript against a task, and summarize runs.
 
-Pure functions over parsed data, so the tests need neither Claude nor Postgres.
+Pure functions over parsed data, so the tests need neither Claude nor Postgres. `fetch` is the
+one exception: the dataset converters share it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import string
+import urllib.request
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
@@ -19,6 +23,30 @@ RESPONSE = "<<RESPONSE>>"
 WRITES = {"okf_create", "okf_update", "okf_relate"}
 # Export generates these at the bundle root; they are not concepts.
 GENERATED = {"index", "log"}
+
+
+def normalize(text: str) -> str:
+    """SQuAD's answer normalization: lowercase, no punctuation, no articles, single spaces.
+    Unlike SQuAD, hyphens and slashes separate words, so "Jean-Paul" matches "Jean Paul"."""
+    text = re.sub(r"[-/]", " ", text.lower())
+    text = "".join(ch for ch in text if ch not in string.punctuation)
+    return " ".join(w for w in text.split() if w not in {"a", "an", "the"})
+
+
+def fetch(url: str, dest: Path, sha256: str) -> Path:
+    """Downloads url to dest once, refusing a file whose SHA-256 is not the pinned one."""
+    if dest.exists() and hashlib.sha256(dest.read_bytes()).hexdigest() == sha256:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with urllib.request.urlopen(url) as r, part.open("wb") as f:
+        while chunk := r.read(1 << 20):
+            f.write(chunk)
+    got = hashlib.sha256(part.read_bytes()).hexdigest()
+    if got != sha256:
+        part.unlink()
+        raise ValueError(f"{url}: sha256 {got}, want {sha256}")
+    return part.replace(dest)
 
 
 def concept_path(path: str) -> str:
@@ -53,6 +81,7 @@ def parse(lines: Iterable[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
                         "tool": block["name"].removeprefix(TOOL_PREFIX),
                         "input": block.get("input") or {},
                         "error": False,
+                        "output": "",
                     }
                     calls.append(call)
                     by_id[block["id"]] = call
@@ -62,7 +91,16 @@ def parse(lines: Iterable[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
                     block.get("type") == "tool_result"
                     and block.get("tool_use_id") in by_id
                 ):
-                    by_id[block["tool_use_id"]]["error"] = bool(block.get("is_error"))
+                    call = by_id[block["tool_use_id"]]
+                    call["error"] = bool(block.get("is_error"))
+                    body = block.get("content")
+                    call["output"] = (
+                        body
+                        if isinstance(body, str)
+                        else "".join(
+                            b.get("text", "") for b in body or [] if isinstance(b, dict)
+                        )
+                    )
         elif m.get("type") == "result":
             result = m
     return calls, result
@@ -88,6 +126,11 @@ def grade(
         checks[f"read {path}"] = path in read
     for rx in expect.get("answer", []):
         checks[f"answer ~ /{rx}/"] = re.search(rx, answer, re.IGNORECASE) is not None
+    if "answer_any" in expect:
+        aliases = [a for a in map(normalize, expect["answer_any"]) if a]
+        # Padded, so an alias matches whole words: "hu" must not pass "church".
+        said = f" {normalize(answer)} "
+        checks["answer ~ any alias"] = any(f" {a} " in said for a in aliases)
     if "judge" in expect or "judge_template" in expect:
         checks["judge"] = bool(judged)
     if expect.get("search_before_write"):
@@ -120,7 +163,58 @@ def grade(
     return checks
 
 
-def metrics(calls: list[dict[str, Any]], result: dict[str, Any]) -> dict[str, Any]:
+def _paths(items: Any) -> list[str]:
+    """Paths from a list of path strings or of cards, as okf_read and search return them."""
+    return [
+        concept_path(i if isinstance(i, str) else i.get("path", ""))
+        for i in items or []
+        if isinstance(i, (str, dict))
+    ]
+
+
+def link_metrics(
+    calls: list[dict[str, Any]], required: Iterable[str] = ()
+) -> dict[str, int]:
+    """How agents use okf_read's links. A link-only read opens a path no search, grep or list
+    had shown; a missed link is a required path the agent was linked to and never read."""
+    searched: set[str] = set()
+    read: set[str] = set()
+    offered: set[str] = set()
+    link_only = reads = 0
+    for c in calls:
+        try:
+            out = json.loads(c.get("output") or "null")
+        except ValueError:
+            out = None
+        if c["tool"] == "okf_read":
+            if c.get("error"):
+                continue
+            path = concept_path(c["input"].get("path", ""))
+            reads += 1
+            if path in offered and path not in read:
+                link_only += path not in searched
+            read.add(path)
+            if isinstance(out, dict):
+                offered |= {
+                    p
+                    for p in _paths(out.get("links")) + _paths(out.get("backlinks"))
+                    if p not in read
+                }
+        elif isinstance(out, dict):
+            searched |= set(_paths(out.get("results")) + _paths(out.get("paths")))
+    return {
+        "reads": reads,
+        "offered": len(offered),
+        "link_only_reads": link_only,
+        "missed_links": len({concept_path(p) for p in required} & (offered - read)),
+    }
+
+
+def metrics(
+    calls: list[dict[str, Any]], result: dict[str, Any], expect: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    # `reads` are also pass checks; `evidence` only feeds missed links.
+    required = [*(expect or {}).get("reads", []), *(expect or {}).get("evidence", [])]
     usage = result.get("usage") or {}
     return {
         "calls": len(calls),
@@ -142,6 +236,7 @@ def metrics(calls: list[dict[str, Any]], result: dict[str, Any]) -> dict[str, An
             )
         ),
         "output_tokens": usage.get("output_tokens") or 0,
+        **link_metrics(calls, required),
     }
 
 
@@ -154,8 +249,11 @@ def summarize(rows: list[dict[str, Any]]) -> str:
     variants = sorted({r["variant"] for r in rows})
     tasks = list(dict.fromkeys(r["task"] for r in rows))
     out = [
-        "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds |",
-        "|---|---|---|---|---|---|---|---|---|",
+        (
+            "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds "
+            "| input tokens | reads | link-only reads | missed links |"
+        ),
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for v in variants:
         rs = [r for r in rows if r["variant"] == v]
@@ -168,7 +266,11 @@ def summarize(rows: list[dict[str, Any]]) -> str:
             f"| {_avg([len(q.split()) for q in queries])} "
             f"| {_avg([r['cost_usd'] for r in rs])} "
             f"| {_avg([r['turns'] for r in rs])} "
-            f"| {_avg([r['duration_s'] for r in rs])} |"
+            f"| {_avg([r['duration_s'] for r in rs])} "
+            f"| {_avg([r['input_tokens'] for r in rs])} "
+            f"| {_avg([r['reads'] for r in rs if 'reads' in r])} "
+            f"| {sum(r.get('link_only_reads', 0) for r in rs)}/{sum(r.get('reads', 0) for r in rs)} "
+            f"| {sum(r.get('missed_links', 0) for r in rs)} |"
         )
     # Past a screenful of tasks, a row per task hides the pattern; a row per kind shows it.
     key = "task" if len(tasks) <= 20 else "kind"

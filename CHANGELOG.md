@@ -7,6 +7,18 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Added
+
+- `bench/run.py` builds a variant's server from a git ref (`"ref": "origin/main"`), each with its
+  own database, so a run compares server builds. `run.json` records each build's commit.
+- The report adds input tokens, reads, link-only reads (a concept opened only through a link) and
+  missed links (a required concept shown as a link and never read).
+- `bench/musique.py` and `bench/iirc.py` turn MuSiQue and IIRC (both CC BY 4.0) into agent
+  tasks, with bundles that differ only in their links. Tasks grade on `answer_any`, the answer
+  or an alias as whole words.
+
 ## 0.3.0 — 2026-09-24
 
 ### Added
