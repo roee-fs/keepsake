@@ -80,7 +80,7 @@ def test_none_bundle_has_no_links() -> None:
 def test_task_reads_the_supporting_paragraphs_in_step_order() -> None:
     t = musique.task(RECORD, "mention")
     assert t["id"] == "2hop__1_2" and t["kind"] == "2hop" and t["bundle"] == "mention/2hop__1_2"
-    assert t["expect"] == {"reads": ["p/0-grant-green", "p/1-grant-s-first-stand"],
+    assert t["expect"] == {"evidence": ["p/0-grant-green", "p/1-grant-s-first-stand"],
                            "answer_any": ["Blue Note", "Blue Note Records"]}
     assert t["prompt"] == RECORD["question"] and t["system_prompt"] == musique.HOST
 
@@ -147,7 +147,7 @@ def test_iirc_task_reads_main_then_gold_passages_in_context_order() -> None:
     _, paths = iirc.bundle(PASSAGE, ARTICLES, "linked")
     t = iirc.task(PASSAGE, _question("q1", ["University of Geneva", "London"]), "linked", paths)
     assert t["kind"] == "2link+" and t["bundle"] == "linked/q1"
-    assert t["expect"] == {"reads": ["main/thomas-bain", "a/university-of-geneva", "a/london"],
+    assert t["expect"] == {"evidence": ["main/thomas-bain", "a/university-of-geneva", "a/london"],
                            "answer_any": ["Switzerland", "Swiss"]}
     assert iirc.task(PASSAGE, _question("q2", ["Nowhere"]), "linked", paths) is None
 

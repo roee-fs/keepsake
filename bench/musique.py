@@ -108,7 +108,7 @@ def task(record: dict, kind: str) -> dict:
         "prompt": record["question"],
         "system_prompt": HOST,
         "expect": {
-            "reads": list(dict.fromkeys(reads)),
+            "evidence": list(dict.fromkeys(reads)),
             "answer_any": [record["answer"], *record.get("answer_aliases", [])],
         },
     }

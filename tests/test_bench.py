@@ -211,6 +211,13 @@ def test_curated_pairs_each_question_with_one_variants_first_trial(
     assert [t["bundle"] for t in paired] == ["b1"]
 
 
+def test_evidence_counts_missed_links_but_is_not_a_pass_check() -> None:
+    calls = [_read("a", ["b"], [])]
+    assert grade.grade({"evidence": ["a", "b"]}, calls, "x", {}, {}) == {"used keepsake": True}
+    assert grade.metrics(calls, {}, {"evidence": ["a", "b"]})["missed_links"] == 1
+    assert grade.metrics(calls, {}, {"reads": ["a", "b"]})["missed_links"] == 1
+
+
 def test_normalize_drops_case_punctuation_and_articles() -> None:
     assert grade.normalize("  The   U.S. Army, an Army! ") == "us army army"
 

@@ -102,7 +102,7 @@ def task(passage: dict, q: dict, kind: str, paths: dict[str, str]) -> dict | Non
         "prompt": q["question"],
         "system_prompt": HOST,
         "expect": {
-            "reads": [f"main/{slug(passage['title'])}", *(paths[g] for g in gold)],
+            "evidence": [f"main/{slug(passage['title'])}", *(paths[g] for g in gold)],
             "answer_any": [s["text"] for s in q["answer"]["answer_spans"]],
         },
     }

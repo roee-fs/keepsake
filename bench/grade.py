@@ -209,8 +209,10 @@ def link_metrics(
 
 
 def metrics(
-    calls: list[dict[str, Any]], result: dict[str, Any], required: Iterable[str] = ()
+    calls: list[dict[str, Any]], result: dict[str, Any], expect: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    # `reads` are also pass checks; `evidence` only feeds missed links.
+    required = [*(expect or {}).get("reads", []), *(expect or {}).get("evidence", [])]
     usage = result.get("usage") or {}
     return {
         "calls": len(calls),
