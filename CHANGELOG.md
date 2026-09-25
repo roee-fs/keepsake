@@ -18,6 +18,9 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - `bench/musique.py` and `bench/iirc.py` turn MuSiQue and IIRC (both CC BY 4.0) into agent
   tasks, with bundles that differ only in their links. Tasks grade on `answer_any`, the answer
   or an alias as whole words.
+- Prometheus metrics at `/metrics` on `KEEPSAKE_METRICS_PORT`, 9090 by default:
+  tool calls by tool and outcome, tool latency, and pool connections. The port is
+  not on the Service. The chart annotates pods for scraping.
 
 ## 0.3.0 — 2026-09-24
 

@@ -269,6 +269,16 @@ def test_readiness_asks_the_server_and_nothing_restarts_it() -> None:
     assert _env(deployment)["KEEPSAKE_PORT"]["value"] == str(port["containerPort"])
 
 
+def test_metrics_are_scraped_from_the_pod_and_not_the_service() -> None:
+    docs = _render(MANAGED)
+    deployment = _only(docs, "Deployment")
+    ports = {p["name"]: p["containerPort"] for p in _container(deployment)["ports"]}
+    assert _env(deployment)["KEEPSAKE_METRICS_PORT"]["value"] == str(ports["metrics"])
+    annotations = deployment["spec"]["template"]["metadata"]["annotations"]
+    assert annotations["prometheus.io/port"] == str(ports["metrics"])
+    assert [p["targetPort"] for p in _only(docs, "Service")["spec"]["ports"]] == ["http"]
+
+
 def test_no_workload_takes_the_service_link_variables() -> None:
     """Every workload the chart ships must opt out of the injected link variables."""
     docs = _render(MANAGED)

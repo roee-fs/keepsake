@@ -25,38 +25,50 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-const defaultPort = 8000
+const (
+	defaultPort        = 8000
+	defaultMetricsPort = 9090
+)
 
 const choices = "{import,export,validate,migrate,serve,token}"
 
 // EnvPort is $KEEPSAKE_PORT, or 8000 for anything else, such as the service link kubelet injects.
-func EnvPort() int {
-	value := os.Getenv("KEEPSAKE_PORT")
+func EnvPort() int { return envPort("KEEPSAKE_PORT", defaultPort) }
+
+func envPort(name string, def int) int {
+	value := os.Getenv(name)
 	if !okf.IsDecimal(value) {
-		return defaultPort
+		return def
 	}
 	// `0` and `70000` are decimal and are not ports.
 	port, err := strconv.Atoi(value)
 	if err != nil || port < 1 || port > 65535 {
-		return defaultPort
+		return def
 	}
 	return port
 }
 
-// listen serves h until SIGINT or SIGTERM, then shuts down gracefully. Tests replace it.
-var listen = func(addr string, h http.Handler) error {
-	// IdleTimeout is uvicorn's keep-alive timeout; zero would keep an idle connection forever.
-	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 5 * time.Second}
+// listen serves each address's handler until SIGINT, SIGTERM or one server fails, then shuts all down. Tests replace it.
+var listen = func(apps map[string]http.Handler) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServe() }()
-	select {
-	case err := <-errc:
-		return err
-	case <-ctx.Done():
-		return srv.Shutdown(context.Background())
+	errc := make(chan error, len(apps))
+	var servers []*http.Server
+	for addr, h := range apps {
+		// IdleTimeout is uvicorn's keep-alive timeout; zero would keep an idle connection forever.
+		srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 5 * time.Second}
+		servers = append(servers, srv)
+		go func() { errc <- srv.ListenAndServe() }()
 	}
+	var err error
+	select {
+	case err = <-errc:
+	case <-ctx.Done():
+	}
+	for _, srv := range servers {
+		err = errors.Join(err, srv.Shutdown(context.Background()))
+	}
+	return err
 }
 
 type options struct {
@@ -305,14 +317,20 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if o.port != nil {
 		port = *o.port
 	}
-	h, closeApp, err := server.BuildApp(ctx, server.Config{DSN: dsn, Auth: auth, Schema: name})
+	h, metrics, closeApp, err := server.BuildApp(ctx, server.Config{DSN: dsn, Auth: auth, Schema: name})
 	if err != nil {
 		return 0, err
 	}
 	defer closeApp()
 	addr := net.JoinHostPort(o.host, strconv.Itoa(port))
-	slog.Info("listening", "addr", addr)
-	return 0, listen(addr, h)
+	metricsAddr := net.JoinHostPort(o.host, strconv.Itoa(envPort("KEEPSAKE_METRICS_PORT", defaultMetricsPort)))
+	if metricsAddr == addr {
+		return 0, fmt.Errorf("KEEPSAKE_METRICS_PORT must differ from the serve port %d", port)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics)
+	slog.Info("listening", "addr", addr, "metrics", metricsAddr)
+	return 0, listen(map[string]http.Handler{addr: h, metricsAddr: mux})
 }
 
 // authFromEnv picks how /mcp finds its tenant from KEEPSAKE_AUTH_MODE, none when unset.
@@ -438,6 +456,7 @@ options:
 
 Serve the MCP tools over HTTP. $KEEPSAKE_AUTH_MODE is none (one tenant, set by
 --tenant) or jwt (the tenant comes from each request's bearer token).
+Prometheus metrics are at /metrics on $KEEPSAKE_METRICS_PORT, then 9090.
 
 options:
   -h, --help       show this help message and exit

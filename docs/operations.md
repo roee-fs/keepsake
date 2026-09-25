@@ -75,6 +75,23 @@ The chart configures no backups. You MUST set up one of these:
   `<release>-admin`. A GitOps install MUST set `admin.existingSecret`, or the
   password changes on every sync.
 
+## Metrics
+
+`keepsake serve` serves Prometheus metrics at `/metrics` on
+`KEEPSAKE_METRICS_PORT`, 9090 by default. They are unauthenticated and on their
+own port, so the Service and any Ingress in front of it never expose them. The
+chart annotates each pod with `prometheus.io/scrape`, and Prometheus MUST scrape
+the pods, not the Service.
+
+| Metric | Labels |
+| --- | --- |
+| `keepsake_tool_calls_total` | `tool`, `outcome`: `ok`, `conflict`, `tool_error`, `unavailable`, `error` |
+| `keepsake_tool_call_duration_seconds` | `tool` |
+| `keepsake_db_pool_{acquired,idle,total,max}_connections` | none |
+
+`conflict` counts writes refused by `expected_version`. No metric carries a
+tenant. The Go runtime and process metrics are included as well.
+
 ## Health
 
 `/readyz` answers once the startup check has passed and the pool can hand out a
