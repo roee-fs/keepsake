@@ -7,6 +7,7 @@ legally unusable however permissive the README says it is.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,9 @@ def test_the_version_is_the_same_in_every_place_that_states_it() -> None:
             assert service["image"].endswith(f":{chart['appVersion']}"), (
                 f"compose.yaml {name} pulls {service['image']!r}, not {chart['appVersion']!r}"
             )
+    for doc in ("README.md", "docs/operations.md"):
+        for pinned in re.findall(r"--version ([0-9.]+)|cmd/keepsake@v([0-9.]+)", (ROOT / doc).read_text()):
+            assert chart["appVersion"] in pinned, f"{doc} pins {pinned}, not {chart['appVersion']!r}"
 
 
 def test_the_licence_file_grants_the_licence() -> None:

@@ -133,21 +133,20 @@ two pull requests.
 
 ## Cutting a release
 
-For maintainers. Everything is driven by the tag, so there is nothing to click.
+For maintainers.
 
-1. Set the version in `Chart.yaml`'s `version` and `appVersion`, which MUST agree.
-   `tests/test_release_metadata.py` enforces this and the release refuses
-   otherwise — `appVersion` is the image tag the chart pulls by default, so a
-   drift there is an install that fails on a tag nobody built.
-2. Rename `## Unreleased` in `CHANGELOG.md` to `## X.Y.Z`. The release checks for
-   that heading and stops without it.
-3. Merge, then `git tag vX.Y.Z && git push --tags`.
+1. Run `scripts/release.sh X.Y.Z`. It sets the version in `Chart.yaml`,
+   `compose.yaml`, the README and `docs/operations.md`, renames `## Unreleased` in
+   `CHANGELOG.md` to `## X.Y.Z`, and opens the release PR.
+2. Merge it.
 
-The tag publishes, in order: the image to `ghcr.io/roee-fs/keepsake`
-for `linux/amd64` and `linux/arm64` with SLSA provenance, the chart to
-`oci://ghcr.io/roee-fs/charts`, and a GitHub Release carrying a
-CycloneDX SBOM. The release is created last, so it can never name an artefact
-that was not pushed.
+Any push to main whose `Chart.yaml` `appVersion` has no tag yet publishes, in
+order: the image to `ghcr.io/roee-fs/keepsake` for `linux/amd64` and
+`linux/arm64` with SLSA provenance, the chart to `oci://ghcr.io/roee-fs/charts`,
+and a GitHub Release carrying a CycloneDX SBOM. The release, and with it the
+`vX.Y.Z` tag, is created last, so it can never name an artefact that was not
+pushed. The release refuses a version that disagrees with itself, a missing
+`## X.Y.Z` heading, or a leftover `## Unreleased` section.
 
 There is no rollback. To withdraw a release, publish a new patch version —
 deleting a tag leaves anyone who already pulled the image holding it.

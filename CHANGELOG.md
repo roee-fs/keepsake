@@ -4,9 +4,8 @@ Notable changes, newest first. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); until 1.0 the minor
 version is where breaking changes land.
 
-Releases are cut by tagging `vX.Y.Z`, which publishes the image, the chart and an
-SBOM. `Chart.yaml`'s `version` and its `appVersion` MUST agree with the tag — a
-test enforces it and the release workflow refuses otherwise.
+`scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
+chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## 0.3.0 — 2026-09-24
 
