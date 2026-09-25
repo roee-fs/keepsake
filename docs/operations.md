@@ -75,6 +75,27 @@ The chart configures no backups. You MUST set up one of these:
   `<release>-admin`. A GitOps install MUST set `admin.existingSecret`, or the
   password changes on every sync.
 
+## Uploading a bundle
+
+`PUT /bundle?prefix=P` replaces the caller's concepts under `P/` with a gzipped
+tar of OKF files. It takes the same auth as `/mcp`. The file `x/y.md` becomes
+the concept `P/x/y`. Concepts outside `P/` are untouched. A file that fails
+`keepsake validate`'s per-file checks refuses the whole upload with a 422 that
+lists every such file.
+
+```bash
+COPYFILE_DISABLE=1 tar -czf bundle.tgz -C ./bundle .
+curl -X PUT --data-binary @bundle.tgz \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://keepsake.example/bundle?prefix=docs/runbooks"
+```
+
+- A concept the upload deletes loses its revision history.
+- An upload MUST hold at least one concept. The limits are 32 MiB compressed,
+  64 MiB unpacked, 20,000 files, and 1 MiB per file.
+- Links to concepts outside the bundle are not checked. Run `keepsake validate`
+  on the directory first to catch them.
+
 ## Metrics
 
 `keepsake serve` serves Prometheus metrics at `/metrics` on

@@ -45,6 +45,8 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	mux := http.NewServeMux()
 	// Outside the MCP handler, so a request is refused before its body is read.
 	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))
+	// The same auth as /mcp, so a token can replace only its own tenant's concepts.
+	mux.Handle("PUT /bundle", cfg.Auth(replaceBundle(cs)))
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -83,10 +85,10 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	return refuseBrowsers(mux), metricsHandler(s.Stat), func() { closeRoot(); s.Close() }, nil
 }
 
-// refuseBrowsers answers Starlette's bare 403 to a /mcp request with an Origin, which only a browser sends.
+// refuseBrowsers answers Starlette's bare 403 to a /mcp or /bundle request with an Origin, which only a browser sends.
 func refuseBrowsers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := r.Header["Origin"]; ok && r.URL.Path == "/mcp" {
+		if _, ok := r.Header["Origin"]; ok && (r.URL.Path == "/mcp" || r.URL.Path == "/bundle") {
 			w.Header()["Content-Type"] = nil
 			w.WriteHeader(http.StatusForbidden)
 			return

@@ -4,13 +4,22 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/okf"
 )
 
 type entry struct {
@@ -205,4 +214,103 @@ func rawTarHeader(name string, typ byte, size int64) []byte {
 func octalField(field []byte, n int64) {
 	copy(field, fmt.Sprintf("%0*o", len(field)-1, n))
 	field[len(field)-1] = 0
+}
+
+func put(t *testing.T, h http.Handler, prefix string, body io.Reader, tenant uuid.UUID) (int, string) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix="+prefix, body)
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "platform-ingest", time.Minute))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code, rec.Body.String()
+}
+
+func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string {
+	t.Helper()
+	got, err := cs.List(ctx, tenant, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, p := range got {
+		out = append(out, p.Path)
+	}
+	return out
+}
+
+func TestAnUploadReplacesOnlyTheCallersPrefix(t *testing.T) {
+	cs := conceptStore(t)
+	h := issuer.Middleware(replaceBundle(cs))
+	mine, theirs := uuid.New(), uuid.New()
+	for _, tenant := range []uuid.UUID{mine, theirs} {
+		if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}, {Path: "notes/n", Type: "Note"}}, "agent"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, body := put(t, h, "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), mine)
+	var got map[string]int
+	if code != http.StatusOK || json.Unmarshal([]byte(body), &got) != nil || got["written"] != 1 || got["deleted"] != 1 {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	if p := listPaths(t, cs, mine); !reflect.DeepEqual(p, []string{"docs/a", "notes/n"}) {
+		t.Fatalf("mine = %v", p)
+	}
+	if p := listPaths(t, cs, theirs); !reflect.DeepEqual(p, []string{"docs/old", "notes/n"}) {
+		t.Fatalf("theirs = %v", p)
+	}
+	revs, err := cs.Revisions(ctx, mine, 10)
+	if err != nil || revs[len(revs)-1].UpdatedBy != "platform-ingest" {
+		t.Fatalf("revisions = %+v, %v, want the token's subject as actor", revs, err)
+	}
+}
+
+func TestAnUploadWithAProblemWritesNothing(t *testing.T) {
+	cs := conceptStore(t)
+	tenant := uuid.New()
+	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	code, body := put(t, issuer.Middleware(replaceBundle(cs)), "docs",
+		tarball(t, entry{name: "a.md", body: md("Doc", "a")}, entry{name: "b.md", body: "no type"}), tenant)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "b.md: type is required") {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	if p := listPaths(t, cs, tenant); !reflect.DeepEqual(p, []string{"docs/old"}) {
+		t.Fatalf("paths = %v", p)
+	}
+}
+
+func TestAnEmptyUploadIsRefused(t *testing.T) {
+	cs := conceptStore(t)
+	tenant := uuid.New()
+	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	code, body := put(t, issuer.Middleware(replaceBundle(cs)), "docs", tarball(t, entry{name: "README.txt", body: "x"}), tenant)
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "bundle holds no concepts") {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	if p := listPaths(t, cs, tenant); !reflect.DeepEqual(p, []string{"docs/old"}) {
+		t.Fatalf("paths = %v", p)
+	}
+}
+
+func TestAnUploadNeedsAValidPrefix(t *testing.T) {
+	h := issuer.Middleware(replaceBundle(conceptStore(t)))
+	for _, prefix := range []string{"", ".", "/docs", "docs/", "../x", "a//b", "a%00b"} {
+		if code, _ := put(t, h, prefix, tarball(t, entry{name: "a.md", body: md("Doc", "")}), uuid.New()); code != http.StatusUnprocessableEntity {
+			t.Errorf("prefix %q = %d, want 422", prefix, code)
+		}
+	}
+}
+
+func TestAnOversizedUploadIsRefused(t *testing.T) {
+	defer func(n int64) { maxUpload = n }(maxUpload)
+	// Under any gzipped tar, however well it compresses.
+	maxUpload = 16
+	code, _ := put(t, issuer.Middleware(replaceBundle(conceptStore(t))), "docs",
+		tarball(t, entry{name: "a.md", body: md("Doc", strings.Repeat("unique words ", 200))}), uuid.New())
+	if code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("PUT = %d, want 413", code)
+	}
 }

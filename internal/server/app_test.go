@@ -294,3 +294,28 @@ func TestMCPRefusesABrowserOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestTheAppServesBundleUploadsButNotToBrowsers(t *testing.T) {
+	url := served(t) + "/bundle?prefix=docs"
+	send := func(origin string) int {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, tarball(t, entry{name: "a.md", body: md("Doc", "")}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := send(""); code != http.StatusOK {
+		t.Fatalf("PUT = %d, want 200", code)
+	}
+	if code := send("https://evil.example"); code != http.StatusForbidden {
+		t.Fatalf("PUT with Origin = %d, want 403", code)
+	}
+}

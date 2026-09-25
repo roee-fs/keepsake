@@ -8,9 +8,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
+	"net/http"
 	"path"
 	"strings"
+	"unicode"
 
+	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -93,5 +97,46 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 			continue
 		}
 		concepts = append(concepts, c)
+	}
+}
+
+// replaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
+func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c, ok := r.Context().Value(callerKey{}).(caller)
+		if !ok {
+			internalError(w, r, errors.New("no caller bound to /bundle"))
+			return
+		}
+		prefix := r.URL.Query().Get("prefix")
+		if !fs.ValidPath(prefix) || prefix == "." || strings.ContainsFunc(prefix, unicode.IsControl) {
+			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
+			return
+		}
+		concepts, problems, err := readBundle(http.MaxBytesReader(w, r.Body, maxUpload), prefix)
+		var tooBig *http.MaxBytesError
+		switch {
+		case errors.As(err, &tooBig) || errors.Is(err, errTooLarge):
+			writeJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
+			return
+		case err != nil:
+			writeJSON(w, r, http.StatusBadRequest, detail{err.Error()})
+			return
+		case len(problems) > 0:
+			writeJSON(w, r, http.StatusUnprocessableEntity, detail{problems})
+			return
+		case len(concepts) == 0:
+			// An empty upload is far likelier a packaging mistake than a corpus that emptied.
+			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"bundle holds no concepts"})
+			return
+		}
+		deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, c.actor)
+		if err != nil {
+			internalError(w, r, err)
+			return
+		}
+		// The prefix is not logged, since a path names a concept.
+		slog.Info("bundle replaced", "tenant", c.tenant.String(), "actor", c.actor, "written", len(concepts), "deleted", deleted)
+		writeJSON(w, r, http.StatusOK, map[string]int{"written": len(concepts), "deleted": deleted})
 	}
 }
