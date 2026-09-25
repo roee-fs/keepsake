@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -67,12 +68,17 @@ var listen = func(apps map[string]http.Handler) error {
 	}
 	deadline, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	for _, srv := range servers {
-		if serr := srv.Shutdown(deadline); serr != nil {
-			err = errors.Join(err, serr, srv.Close())
-		}
+	errs := make([]error, len(servers))
+	var wg sync.WaitGroup
+	for i, srv := range servers {
+		wg.Go(func() {
+			if serr := srv.Shutdown(deadline); serr != nil {
+				errs[i] = errors.Join(serr, srv.Close())
+			}
+		})
 	}
-	return err
+	wg.Wait()
+	return errors.Join(append([]error{err}, errs...)...)
 }
 
 // shutdownTimeout is under the pod's default 30s grace period, so a hung request never earns a SIGKILL.
