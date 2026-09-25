@@ -55,7 +55,7 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 		if !ready {
 			status = http.StatusServiceUnavailable
 		}
-		writeJSON(w, status, map[string]bool{"ready": ready})
+		writeJSON(w, r, status, map[string]bool{"ready": ready})
 	})
 	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not Found", http.StatusNotFound)

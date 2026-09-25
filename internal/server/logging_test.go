@@ -91,3 +91,10 @@ func TestAnAPIFailureNamesItsRoute(t *testing.T) {
 	internalError(httptest.NewRecorder(), r, errors.New("boom"))
 	logLine(t, logs, "api", map[string]any{"level": "ERROR", "method": "GET", "route": "GET /concepts/{path...}", "err": "boom"})
 }
+
+func TestAnUnencodableResponseNamesItsRoute(t *testing.T) {
+	logs := captureLogs(t)
+	// The 422 echoes NaN, which JSON cannot hold.
+	newConsole(t).request(http.MethodPost, "/session", `{"password": NaN}`)
+	logLine(t, logs, "api", map[string]any{"level": "ERROR", "method": "POST", "route": "POST /session"})
+}

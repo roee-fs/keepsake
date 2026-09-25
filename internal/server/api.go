@@ -95,7 +95,7 @@ func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
 			}
 			// Checked first, so a request refused with a 401 never queues for the slot.
 			if !a.session(r) {
-				writeJSON(w, http.StatusUnauthorized, detail{"Unauthorized"})
+				writeJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
 				return
 			}
 			release, ok := acquire(r.Context(), slot)
@@ -139,12 +139,12 @@ type detail struct {
 	Detail any `json:"detail"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		internalError(w, nil, err)
+		internalError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -152,13 +152,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Write(bytes.TrimSuffix(b.Bytes(), []byte("\n")))
 }
 
-// internalError logs the route pattern, not the path, since a path names a concept. r MAY be nil.
+// internalError logs the route pattern, not the path, since a path names a concept.
 func internalError(w http.ResponseWriter, r *http.Request, err error) {
-	var method, route string
-	if r != nil {
-		method, route = r.Method, r.Pattern
-	}
-	slog.Error("api", "method", method, "route", route, "err", err)
+	slog.Error("api", "method", r.Method, "route", r.Pattern, "err", err)
 	// Starlette's PlainTextResponse: no trailing newline, unlike http.Error.
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusInternalServerError)
@@ -170,21 +166,22 @@ func reply(w http.ResponseWriter, r *http.Request, v any, err error) {
 	var ge *store.GrepError
 	switch {
 	case errors.As(err, &ge):
-		writeJSON(w, http.StatusBadRequest, detail{ge.Msg})
+		writeJSON(w, r, http.StatusBadRequest, detail{ge.Msg})
 	case err != nil:
 		internalError(w, r, err)
 	default:
-		writeJSON(w, http.StatusOK, v)
+		writeJSON(w, r, http.StatusOK, v)
 	}
 }
 
 // params reads query parameters as FastAPI does, collecting a 422 entry per bad one.
 type params struct {
+	r    *http.Request
 	q    url.Values
 	errs []any
 }
 
-func query(r *http.Request) *params { return &params{q: r.URL.Query()} }
+func query(r *http.Request) *params { return &params{r: r, q: r.URL.Query()} }
 
 // fieldError is one pydantic error in FastAPI's key order; ctx only where pydantic sets it.
 type fieldError struct {
@@ -297,7 +294,7 @@ func (p *params) invalid(w http.ResponseWriter) bool {
 	if len(p.errs) == 0 {
 		return false
 	}
-	writeJSON(w, http.StatusUnprocessableEntity, detail{p.errs})
+	writeJSON(w, p.r, http.StatusUnprocessableEntity, detail{p.errs})
 	return true
 }
 
@@ -404,7 +401,7 @@ func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	invalid := func(typ string, loc []any, msg string, input any, ctx map[string]any) (string, bool) {
-		writeJSON(w, http.StatusUnprocessableEntity, detail{[]fieldError{{typ, loc, msg, input, ctx}}})
+		writeJSON(w, r, http.StatusUnprocessableEntity, detail{[]fieldError{{typ, loc, msg, input, ctx}}})
 		return "", false
 	}
 	if len(raw) == 0 {
@@ -416,7 +413,7 @@ func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if main, sub, _ := strings.Cut(ct, "/"); main == "application" && !strings.Contains(sub, "/") && (sub == "json" || strings.HasSuffix(sub, "+json")) {
 		raw = bytes.TrimPrefix(raw, []byte("\uFEFF"))
 		if !utf8.Valid(raw) {
-			writeJSON(w, http.StatusBadRequest, detail{"There was an error parsing the body"})
+			writeJSON(w, r, http.StatusBadRequest, detail{"There was an error parsing the body"})
 			return "", false
 		}
 		v, msg, pos := pyJSON([]rune(string(raw)))
@@ -452,7 +449,7 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	// The peer, not X-Forwarded-For, which any client can set.
 	if !a.auth.CheckPassword(password) {
 		slog.Warn("console login refused", "remote_addr", r.RemoteAddr)
-		writeJSON(w, http.StatusUnauthorized, detail{"Unauthorized"})
+		writeJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
 		return
 	}
 	slog.Info("console login", "remote_addr", r.RemoteAddr)
@@ -606,7 +603,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c == nil {
-		writeJSON(w, http.StatusNotFound, detail{"Not Found"})
+		writeJSON(w, r, http.StatusNotFound, detail{"Not Found"})
 		return
 	}
 	reply(w, r, conceptDetail{
