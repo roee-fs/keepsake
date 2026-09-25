@@ -13,6 +13,7 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 - `PUT /bundle?prefix=P` replaces the concepts under `P/` with an uploaded
   gzipped tar of OKF files, in one transaction. It takes the same auth as `/mcp`.
+  It deletes the concepts the bundle omits, and their revision history.
 - `bench/run.py` builds a variant's server from a git ref (`"ref": "origin/main"`), each with its
   own database, so a run compares server builds. `run.json` records each build's commit.
 - The report adds input tokens, reads, link-only reads (a concept opened only through a link) and
@@ -30,6 +31,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 ### Changed
 
 - `serve` logs JSON lines, not `key=value` text.
+
+### Upgrading
+
+- In `existing` mode, a server role other than `okf_app` MUST be granted
+  `DELETE` on `concept` and `concept_revision` before it serves `/bundle`.
 
 ## 0.3.0 — 2026-09-24
 

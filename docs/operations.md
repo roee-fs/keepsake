@@ -80,7 +80,7 @@ The chart configures no backups. You MUST set up one of these:
 `PUT /bundle?prefix=P` replaces the caller's concepts under `P/` with a gzipped
 tar of OKF files. It takes the same auth as `/mcp`. The file `x/y.md` becomes
 the concept `P/x/y`. Concepts outside `P/` are untouched. A file that fails
-`keepsake validate`'s per-file checks refuses the whole upload with a 422 that
+`keepsake import`'s per-file checks refuses the whole upload with a 422 that
 lists every such file.
 
 ```bash
@@ -90,9 +90,14 @@ curl -X PUT --data-binary @bundle.tgz \
   "https://keepsake.example/bundle?prefix=docs/runbooks"
 ```
 
-- A concept the upload deletes loses its revision history.
+- Any token for a tenant can call `/bundle`, and a replace deletes concepts and
+  their revision history. Operators MUST NOT give an upload-capable token to
+  anything an LLM drives.
 - An upload MUST hold at least one concept. The limits are 32 MiB compressed,
-  64 MiB unpacked, 20,000 files, and 1 MiB per file.
+  64 MiB unpacked, 20,000 files, 1 MiB per file, and 256 KiB per concept body,
+  as for any write.
+- The server runs one upload at a time. Another upload meanwhile gets a 503 with
+  `Retry-After: 5`.
 - Links to concepts outside the bundle are not checked. Run `keepsake validate`
   on the directory first to catch them.
 
