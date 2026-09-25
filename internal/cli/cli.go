@@ -57,7 +57,8 @@ var listen = func(apps map[string]http.Handler) error {
 	var servers []*http.Server
 	for addr, h := range apps {
 		// IdleTimeout is uvicorn's keep-alive timeout; zero would keep an idle connection forever.
-		srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 5 * time.Second}
+		srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 5 * time.Second,
+			ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelError)}
 		servers = append(servers, srv)
 		go func() { errc <- srv.ListenAndServe() }()
 	}
@@ -65,6 +66,7 @@ var listen = func(apps map[string]http.Handler) error {
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
+		slog.Info("shutting down")
 	}
 	deadline, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
@@ -320,7 +322,13 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 }
 
 func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
-	slog.SetDefault(slog.New(slog.NewTextHandler(stderr, nil)))
+	var level slog.Level
+	if v := os.Getenv("KEEPSAKE_LOG_LEVEL"); v != "" {
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			return 0, fmt.Errorf("KEEPSAKE_LOG_LEVEL must be debug, info, warn or error, not %s", okf.PyReprString(v))
+		}
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(stderr, &slog.HandlerOptions{Level: level})))
 	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
 	if err != nil {
 		return 0, err
@@ -349,7 +357,13 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	}
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", metrics)
-	slog.Info("listening", "addr", addr, "metrics", metricsAddr)
+	mode := os.Getenv("KEEPSAKE_AUTH_MODE")
+	if mode == "" {
+		mode = "none"
+	}
+	poolSize, _ := store.PoolSize()
+	slog.Info("listening", "addr", addr, "metrics", metricsAddr, "auth_mode", mode, "schema", name,
+		"pool_size", poolSize, "ui", server.UIEnabled())
 	return 0, listen(map[string]http.Handler{addr: h, metricsAddr: mux})
 }
 
@@ -477,6 +491,7 @@ options:
 Serve the MCP tools over HTTP. $KEEPSAKE_AUTH_MODE is none (one tenant, set by
 --tenant) or jwt (the tenant comes from each request's bearer token).
 Prometheus metrics are at /metrics on $KEEPSAKE_METRICS_PORT, then 9090.
+Logs are JSON lines on stderr at $KEEPSAKE_LOG_LEVEL, then info.
 
 options:
   -h, --help       show this help message and exit

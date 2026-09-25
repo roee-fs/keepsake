@@ -170,10 +170,20 @@ func acquire(ctx context.Context, slot chan struct{}) (release func(), ok bool) 
 
 func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		tools := t
+		if c, ok := ctx.Value(callerKey{}).(caller); ok {
+			scoped := *t
+			scoped.t, scoped.actor = c.tenant, c.actor
+			tools = &scoped
+		}
 		start, outcome := time.Now(), "error"
 		defer func() {
+			elapsed := time.Since(start)
 			toolCalls.WithLabelValues(name, outcome).Inc()
-			toolDuration.WithLabelValues(name).Observe(time.Since(start).Seconds())
+			toolDuration.WithLabelValues(name).Observe(elapsed.Seconds())
+			// The arguments MUST NOT be logged: they carry concept bodies.
+			slog.Info("tool call", "tool", name, "outcome", outcome, "duration_ms", elapsed.Milliseconds(),
+				"tenant", tools.t, "actor", tools.actor)
 		}()
 		raw := req.Params.Arguments
 		if len(raw) == 0 || string(raw) == "null" {
@@ -193,12 +203,6 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		for _, k := range m.Keys() {
 			args[k], _ = m.Get(k)
 		}
-		tools := t
-		if c, ok := ctx.Value(callerKey{}).(caller); ok {
-			scoped := *t
-			scoped.t, scoped.actor = c.tenant, c.actor
-			tools = &scoped
-		}
 		// Fail closed: the nil tenant is never a caller's, and writing as it would pool every stray write.
 		if tools.t == uuid.Nil {
 			return nil, errors.New("no tenant bound to this request")
@@ -216,6 +220,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 			return failed(te.Msg), nil
 		case store.IsUnavailable(err):
 			outcome = "unavailable"
+			slog.Warn("database unavailable", "tool", name, "err", err)
 			return failed(unavailable), nil
 		case err != nil:
 			// A defect here, not the agent's mistake: it stays a protocol error.

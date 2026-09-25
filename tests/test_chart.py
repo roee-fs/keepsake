@@ -156,6 +156,7 @@ def test_the_server_reads_the_variables_the_cli_reads() -> None:
     assert server["KEEPSAKE_AUTH_MODE"]["value"] == "none"
     assert server["KEEPSAKE_TENANT_ID"]["value"] == tenant
     assert server["KEEPSAKE_SCHEMA"]["value"] == "okf_other"
+    assert server["KEEPSAKE_LOG_LEVEL"]["value"] == "info"
     assert _env(_only(docs, "Job"))["KEEPSAKE_SCHEMA"]["value"] == "okf_other"
     assert _container(_only(docs, "Deployment"))["command"] == ["keepsake", "serve"]
     assert _container(_only(docs, "Job"))["command"] == ["keepsake", "migrate"]
@@ -358,6 +359,7 @@ def test_the_replicas_are_spread_across_nodes_where_there_are_any() -> None:
         ("postgres.schema", "okf; DROP TABLE concept"),
         ("postgres.poolSize", "0"),
         ("replicaCount", "0"),
+        ("logLevel", "loud"),
     ],
 )
 def test_an_unusable_value_is_refused_at_template_time(key: str, value: str) -> None:

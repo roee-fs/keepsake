@@ -504,7 +504,8 @@ func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 	var logs bytes.Buffer
 	orig := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	// Warn, since every call also logs an Info line.
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	t.Cleanup(func() { slog.SetDefault(orig) })
 	session := connect(t, newTools(t))
 
