@@ -100,7 +100,7 @@ spec:
           ports:
             - name: http
               containerPort: {{ $port }}
-            # Scraped from the pod, never added to the Service, so an Ingress cannot expose it.
+            # Not on the Service, so no Ingress can expose it.
             - name: metrics
               containerPort: {{ $metricsPort }}
           # /readyz answers only once the startup check has passed and the pool can

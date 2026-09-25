@@ -39,7 +39,6 @@ func init() {
 	}
 }
 
-// metricsHandler serves the tool metrics and stat's pool gauges.
 func metricsHandler(stat func() *pgxpool.Stat) http.Handler {
 	pool := prometheus.NewRegistry()
 	for name, f := range map[string]func(*pgxpool.Stat) int32{

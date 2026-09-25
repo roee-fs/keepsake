@@ -52,7 +52,6 @@ func TestMetricsAreServedOnlyByTheMetricsHandler(t *testing.T) {
 		}
 	}
 
-	// The MCP port MUST NOT serve them, since it may sit behind a public Ingress.
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
