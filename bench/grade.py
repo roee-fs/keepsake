@@ -1,12 +1,16 @@
 """Grade one `claude -p` stream-json transcript against a task, and summarize runs.
 
-Pure functions over parsed data, so the tests need neither Claude nor Postgres.
+Pure functions over parsed data, so the tests need neither Claude nor Postgres. `fetch` is the
+one exception: the dataset converters share it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import string
+import urllib.request
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
@@ -19,6 +23,28 @@ RESPONSE = "<<RESPONSE>>"
 WRITES = {"okf_create", "okf_update", "okf_relate"}
 # Export generates these at the bundle root; they are not concepts.
 GENERATED = {"index", "log"}
+
+
+def normalize(text: str) -> str:
+    """SQuAD's answer normalization: lowercase, no punctuation, no articles, single spaces."""
+    text = "".join(ch for ch in text.lower() if ch not in string.punctuation)
+    return " ".join(w for w in text.split() if w not in {"a", "an", "the"})
+
+
+def fetch(url: str, dest: Path, sha256: str) -> Path:
+    """Downloads url to dest once, refusing a file whose SHA-256 is not the pinned one."""
+    if dest.exists() and hashlib.sha256(dest.read_bytes()).hexdigest() == sha256:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    with urllib.request.urlopen(url) as r, part.open("wb") as f:
+        while chunk := r.read(1 << 20):
+            f.write(chunk)
+    got = hashlib.sha256(part.read_bytes()).hexdigest()
+    if got != sha256:
+        part.unlink()
+        raise ValueError(f"{url}: sha256 {got}, want {sha256}")
+    return part.replace(dest)
 
 
 def concept_path(path: str) -> str:
@@ -98,6 +124,9 @@ def grade(
         checks[f"read {path}"] = path in read
     for rx in expect.get("answer", []):
         checks[f"answer ~ /{rx}/"] = re.search(rx, answer, re.IGNORECASE) is not None
+    if "answer_any" in expect:
+        aliases = [a for a in map(normalize, expect["answer_any"]) if a]
+        checks["answer ~ any alias"] = any(a in normalize(answer) for a in aliases)
     if "judge" in expect or "judge_template" in expect:
         checks["judge"] = bool(judged)
     if expect.get("search_before_write"):

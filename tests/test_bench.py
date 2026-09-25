@@ -211,6 +211,36 @@ def test_curated_pairs_each_question_with_one_variants_first_trial(
     assert [t["bundle"] for t in paired] == ["b1"]
 
 
+def test_normalize_drops_case_punctuation_and_articles() -> None:
+    assert grade.normalize("  The   U.S. Army, an Army! ") == "us army army"
+
+
+def test_answer_any_matches_any_alias_after_normalizing() -> None:
+    expect = {"answer_any": ["Swiss Confederation", "Switzerland"]}
+    assert grade.grade(expect, [], "It was in SWITZERLAND.", {}, {}, require_tools=False) == {
+        "answer ~ any alias": True
+    }
+    assert grade.grade(expect, [], "In France.", {}, {}, require_tools=False) == {
+        "answer ~ any alias": False
+    }
+
+
+def test_an_alias_that_normalizes_to_nothing_never_matches() -> None:
+    checks = grade.grade({"answer_any": ["The", "..."]}, [], "anything", {}, {}, require_tools=False)
+    assert checks == {"answer ~ any alias": False}
+
+
+def test_fetch_refuses_a_file_with_the_wrong_hash(tmp_path: Path) -> None:
+    src = tmp_path / "src.txt"
+    src.write_text("data")
+    dest = tmp_path / "dest.txt"
+    with pytest.raises(ValueError):
+        grade.fetch(src.as_uri(), dest, "0" * 64)
+    assert not dest.exists()
+    good = "3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7"
+    assert grade.fetch(src.as_uri(), dest, good).read_text() == "data"
+
+
 def test_resolve_ref_returns_the_commit_sha() -> None:
     sha = run.resolve_ref("HEAD")
     assert len(sha) == 40 and all(ch in "0123456789abcdef" for ch in sha)
