@@ -65,10 +65,24 @@ var listen = func(apps map[string]http.Handler) error {
 	case err = <-errc:
 	case <-ctx.Done():
 	}
+	deadline, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
 	for _, srv := range servers {
-		err = errors.Join(err, srv.Shutdown(context.Background()))
+		if serr := srv.Shutdown(deadline); serr != nil {
+			err = errors.Join(err, serr, srv.Close())
+		}
 	}
 	return err
+}
+
+// shutdownTimeout is under the pod's default 30s grace period, so a hung request never earns a SIGKILL.
+var shutdownTimeout = 20 * time.Second
+
+// setShutdownTimeout overrides shutdownTimeout for a test and returns a restorer.
+func setShutdownTimeout(d time.Duration) func() {
+	orig := shutdownTimeout
+	shutdownTimeout = d
+	return func() { shutdownTimeout = orig }
 }
 
 type options struct {
