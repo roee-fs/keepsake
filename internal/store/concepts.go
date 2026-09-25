@@ -94,40 +94,82 @@ func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Conc
 
 // ImportMany stores a bundle in one transaction, last write winning per path; err is a *NotFoundError if a path vanishes.
 func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (int, error) {
+	writes, err := newWrites(bundle)
+	if err != nil {
+		return 0, err
+	}
+	if err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error { return importWrites(ctx, tx, tenant, writes, actor) }); err != nil {
+		return 0, err
+	}
+	return len(bundle), nil
+}
+
+// replaceSQL deletes the concepts under $1 that $2 omits, with their history, and counts them.
+const replaceSQL = "WITH gone AS (DELETE FROM concept WHERE starts_with(path, $1) AND path <> ALL($2::text[]) RETURNING path), " +
+	"history AS (DELETE FROM concept_revision WHERE path IN (SELECT path FROM gone)) " +
+	"SELECT count(*) FROM gone"
+
+// ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
+func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (deleted int, err error) {
+	under := prefix + "/"
+	keep := make([]string, len(bundle))
+	for i, c := range bundle {
+		if !strings.HasPrefix(c.Path, under) {
+			return 0, fmt.Errorf("%s is not under %s", c.Path, under)
+		}
+		keep[i] = c.Path
+	}
+	writes, err := newWrites(bundle)
+	if err != nil {
+		return 0, err
+	}
+	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		// Two replaces of one prefix would otherwise each keep the path the other inserted.
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant.String()+"/"+prefix); err != nil {
+			return err
+		}
+		if err := tx.QueryRow(ctx, replaceSQL, under, keep).Scan(&deleted); err != nil {
+			return err
+		}
+		return importWrites(ctx, tx, tenant, writes, actor)
+	})
+	return deleted, err
+}
+
+func newWrites(bundle []okf.Concept) ([]write, error) {
 	writes := make([]write, len(bundle))
 	for i, c := range bundle {
 		var err error
 		if writes[i], err = newWrite(c); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		var inserts, updates pgx.Batch
-		for _, w := range writes {
-			inserts.Queue(insertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
-				_, created, err := scanInsert(row)
-				if err == nil && !created {
-					// The bundle is the operator's authority: there is no version to compare.
-					updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
-						// No expected version, so no row means the path is gone; the open batch holds the connection.
-						if err := row.Scan(new(int)); !errors.Is(err, pgx.ErrNoRows) {
-							return err
-						}
-						return &NotFoundError{w.c.Path}
-					})
-				}
-				return err
-			})
-		}
-		if err := tx.SendBatch(ctx, &inserts).Close(); err != nil {
+	return writes, nil
+}
+
+// importWrites inserts each write, or overwrites its path with no version check.
+func importWrites(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, writes []write, actor string) error {
+	var inserts, updates pgx.Batch
+	for _, w := range writes {
+		inserts.Queue(insertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
+			_, created, err := scanInsert(row)
+			if err == nil && !created {
+				// The bundle is the operator's authority: there is no version to compare.
+				updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
+					// No expected version, so no row means the path is gone; the open batch holds the connection.
+					if err := row.Scan(new(int)); !errors.Is(err, pgx.ErrNoRows) {
+						return err
+					}
+					return &NotFoundError{w.c.Path}
+				})
+			}
 			return err
-		}
-		return tx.SendBatch(ctx, &updates).Close()
-	})
-	if err != nil {
-		return 0, err
+		})
 	}
-	return len(bundle), nil
+	if err := tx.SendBatch(ctx, &inserts).Close(); err != nil {
+		return err
+	}
+	return tx.SendBatch(ctx, &updates).Close()
 }
 
 // write is a concept with its jsonb parameters marshalled once.

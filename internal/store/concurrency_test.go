@@ -369,3 +369,95 @@ func TestImportManyOverwritesTakenPathsInBundleOrder(t *testing.T) {
 		t.Fatalf("revisions = %q, %v, want %q", log, err, want)
 	}
 }
+
+// listPaths returns cs's paths, reusing reads_test.go's generic paths helper.
+func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string {
+	t.Helper()
+	got, err := cs.List(ctx, tenant, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return paths(got)
+}
+
+func TestReplacePrefixMakesThePrefixExactlyTheBundle(t *testing.T) {
+	cs := store.NewConceptStore(openApp(t))
+	tenant := uuid.New()
+	seed := []okf.Concept{
+		{Path: "docs", Type: "Doc"},
+		{Path: "docs/keep", Type: "Doc", Body: "old"},
+		{Path: "docs/gone", Type: "Doc"},
+		{Path: "docsx/other", Type: "Doc"},
+		{Path: "notes/agent", Type: "Note"},
+	}
+	if _, err := cs.ImportMany(ctx, tenant, seed, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	bundle := []okf.Concept{{Path: "docs/keep", Type: "Doc", Body: "new"}, {Path: "docs/sub/added", Type: "Doc"}}
+	if deleted, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform"); err != nil || deleted != 1 {
+		t.Fatalf("ReplacePrefix = %d, %v, want 1, nil", deleted, err)
+	}
+	want := []string{"docs", "docs/keep", "docs/sub/added", "docsx/other", "notes/agent"}
+	if got := listPaths(t, cs, tenant); !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths = %v, want %v", got, want)
+	}
+	if c, err := cs.Read(ctx, tenant, "docs/keep"); err != nil || c.Body != "new" || c.Version != 2 {
+		t.Fatalf("Read(docs/keep) = %+v, %v", c, err)
+	}
+}
+
+// Revisions are unique on (tenant, path, version), so a deleted path's history MUST go with it.
+func TestReplacePrefixLetsADeletedPathReturn(t *testing.T) {
+	cs := store.NewConceptStore(openApp(t))
+	tenant := uuid.New()
+	for _, p := range []string{"docs/a", "docs/b", "docs/a"} {
+		if _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: p, Type: "Doc"}}, "platform"); err != nil {
+			t.Fatalf("ReplacePrefix(%s): %v", p, err)
+		}
+	}
+	if c, err := cs.Read(ctx, tenant, "docs/a"); err != nil || c.Version != 1 {
+		t.Fatalf("Read(docs/a) = %+v, %v, want version 1", c, err)
+	}
+}
+
+func TestReplacePrefixIsOneTransaction(t *testing.T) {
+	cs := store.NewConceptStore(openApp(t))
+	tenant := uuid.New()
+	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	bundle := []okf.Concept{{Path: "docs/new", Type: "Doc", Body: "bad\x00body"}}
+	if _, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform"); err == nil {
+		t.Fatal("ReplacePrefix = nil error, want one from the NUL byte")
+	}
+	if got := listPaths(t, cs, tenant); !reflect.DeepEqual(got, []string{"docs/old"}) {
+		t.Fatalf("paths = %v, want the delete rolled back", got)
+	}
+}
+
+func TestReplacePrefixRefusesAPathOutsideIt(t *testing.T) {
+	cs := store.NewConceptStore(openApp(t))
+	if _, err := cs.ReplacePrefix(ctx, uuid.New(), "docs", []okf.Concept{{Path: "docsx/a", Type: "Doc"}}, "platform"); err == nil {
+		t.Fatal("ReplacePrefix = nil error")
+	}
+}
+
+// Without the lock, each transaction keeps the path the other inserted, leaving the union.
+func TestConcurrentReplacesOfOnePrefixLeaveOneBundle(t *testing.T) {
+	cs := store.NewConceptStore(openApp(t))
+	for range 10 {
+		tenant := uuid.New()
+		var wg sync.WaitGroup
+		for _, p := range []string{"docs/a", "docs/b"} {
+			wg.Go(func() {
+				if _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: p, Type: "Doc"}}, "platform"); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		wg.Wait()
+		if got := listPaths(t, cs, tenant); len(got) != 1 {
+			t.Fatalf("paths = %v, want exactly one bundle", got)
+		}
+	}
+}
