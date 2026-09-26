@@ -47,6 +47,14 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 			return nil, nil, errTooLarge
 		}
 		if errors.Is(err, io.EOF) {
+			// gzip checks its CRC only at its own end, and refuses trailing bytes as a bad next member.
+			_, err := io.Copy(io.Discard, unpacked)
+			if unpacked.N <= 0 {
+				return nil, nil, errTooLarge
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("not gzip: %w", err)
+			}
 			return concepts, problems, nil
 		}
 		if err != nil {

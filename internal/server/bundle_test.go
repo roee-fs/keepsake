@@ -132,6 +132,22 @@ func TestABodyThatIsNotGzipIsRefused(t *testing.T) {
 	}
 }
 
+func TestBytesAfterTheArchiveAreRefused(t *testing.T) {
+	body := append(tarball(t, entry{name: "a.md", body: md("Doc", "")}).Bytes(), "not a second gzip member"...)
+	if _, _, err := readBundle(bytes.NewReader(body), "docs"); err == nil || errors.Is(err, errTooLarge) {
+		t.Fatalf("err = %v, want a format error", err)
+	}
+}
+
+func TestACorruptChecksumIsRefused(t *testing.T) {
+	body := tarball(t, entry{name: "a.md", body: md("Doc", "")}).Bytes()
+	// The gzip trailer is the CRC-32 then the length, so this flips a CRC byte.
+	body[len(body)-8] ^= 0xff
+	if _, _, err := readBundle(bytes.NewReader(body), "docs"); err == nil || errors.Is(err, errTooLarge) {
+		t.Fatalf("err = %v, want a checksum error", err)
+	}
+}
+
 func TestASparseEntryCannotInflatePastTheUnpackedLimit(t *testing.T) {
 	defer func(n int64) { maxUnpacked = n }(maxUnpacked)
 	maxUnpacked = 2048
