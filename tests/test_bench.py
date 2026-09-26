@@ -190,6 +190,28 @@ def test_a_longmemeval_task_carries_the_official_judge_prompt() -> None:
     assert "unanswerable" in abstained["expect"]["judge_template"]
 
 
+def test_a_split_outside_the_agent_directory_resolves_its_bundles(
+    tmp_path: Path,
+) -> None:
+    import longmemeval
+
+    instance = {
+        "question_id": "q",
+        "question_type": "single-session-user",
+        "question": "Where?",
+        "answer": "Oslo",
+        "question_date": "2023/05/30 (Tue) 23:40",
+        "haystack_session_ids": ["s1"],
+        "haystack_dates": ["2023/05/01"],
+        "haystack_sessions": [[{"role": "user", "content": "I moved to Oslo."}]],
+    }
+    full = tmp_path / "full"
+    longmemeval.write(full, {"all": [instance]})
+    [task] = json.loads((full / "all.json").read_text())
+    # run.py resolves a bundle against its tasks file's directory.
+    assert list((full / task["bundle"] / "session").glob("*.md"))
+
+
 def test_curated_pairs_each_question_with_one_variants_first_trial(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -7,6 +7,12 @@ tune.json and report them on holdout.json, which a tuning loop MUST NOT read.
     python3 bench/longmemeval.py --per-bucket 8
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune.json --trials 1
 
+To report a score comparable with published ones, run all 500 questions. The full set
+includes the holdout questions, so it MUST NOT feed a tuning loop either:
+
+    python3 bench/longmemeval.py --full
+    python3 bench/run.py --tasks-file bench/data/longmemeval/full/all.json --variants baseline --trials 1
+
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
     python3 bench/longmemeval.py --curate single-session-preference multi-session
@@ -35,6 +41,7 @@ DATA = HERE / "data" / "longmemeval"
 SOURCE = DATA / "longmemeval_s_cleaned.json"
 URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
 OUT = DATA / "agent"
+FULL = DATA / "full"
 RESPONSE = grade.RESPONSE
 
 # Verbatim from LongMemEval's src/evaluation/evaluate_qa.py (MIT), response slot marked.
@@ -124,7 +131,8 @@ def task(instance: dict, bundle: Path) -> dict:
     return {
         "id": instance["question_id"],
         "kind": k,
-        "bundle": str(bundle.relative_to(OUT)),
+        # Relative to the tasks file's directory, which is how run.py resolves it.
+        "bundle": str(bundle.relative_to(bundle.parents[1])),
         "prompt": f"Today is {instance['question_date']}. {instance['question']}",
         "system_prompt": HOST,
         "expect": {"judge_template": template},
@@ -231,7 +239,15 @@ def main() -> None:
         help="Questions per kind in each split. Default: 8.",
     )
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="Write all 500 questions to full/all.json, leave tune and holdout alone, and exit.",
+    )
     args = p.parse_args()
+    if args.full:
+        write(FULL, {"all": load()})
+        return
     if args.curate:
         curate(args.split, args.curate)
         return
@@ -249,20 +265,24 @@ def main() -> None:
         half = len(chosen) // 2
         splits["tune"] += chosen[:half]
         splits["holdout"] += chosen[half:]
+    write(OUT, splits)
 
-    shutil.rmtree(OUT, ignore_errors=True)
+
+def write(out: Path, splits: dict[str, list[dict]]) -> None:
+    """Replaces out with one tasks file per split, each question's bundle under out/bundles."""
+    shutil.rmtree(out, ignore_errors=True)
     for name, instances in splits.items():
         tasks = []
         for instance in instances:
-            bundle = OUT / "bundles" / instance["question_id"]
+            bundle = out / "bundles" / instance["question_id"]
             bundle_session(instance, bundle)
             tasks.append(task(instance, bundle))
-        (OUT / f"{name}.json").write_text(json.dumps(tasks, indent=2) + "\n")
+        (out / f"{name}.json").write_text(json.dumps(tasks, indent=2) + "\n")
         counts = defaultdict(int)
         for t in tasks:
             counts[t["kind"]] += 1
         print(
-            f"{name}: {len(tasks)} tasks {dict(sorted(counts.items()))} -> {OUT / (name + '.json')}"
+            f"{name}: {len(tasks)} tasks {dict(sorted(counts.items()))} -> {out / (name + '.json')}"
         )
 
 
