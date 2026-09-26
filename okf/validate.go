@@ -1,6 +1,7 @@
 package okf
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -98,4 +99,35 @@ func hasNUL(v any) bool {
 		}
 	}
 	return false
+}
+
+func nonFinite(v any) bool {
+	switch v := v.(type) {
+	case NonFinite:
+		return true
+	case []any:
+		return slices.ContainsFunc(v, nonFinite)
+	case *Map:
+		if v == nil {
+			return false
+		}
+		for _, k := range v.Keys() {
+			if x, _ := v.Get(k); nonFinite(x) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Storable returns why a parsed concept cannot be stored, or nil.
+func Storable(c Concept) error {
+	// Python lets json.dumps write NaN, which Postgres then refuses mid-import.
+	if nonFinite(c.Frontmatter) {
+		return errors.New("frontmatter holds NaN or Infinity, which JSON cannot store")
+	}
+	if errs := Validate(c); len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
 }

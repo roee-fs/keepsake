@@ -143,7 +143,8 @@ kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub alice --ttl
 - [x] Link extraction and per-write validation
 - [x] Schema migration: concepts, revisions, RLS policies, tenant purge
 - [x] Tenant-scoped connection handling
-- [x] Writes with optional compare-and-swap and an append-only revision log
+- [x] Writes with optional compare-and-swap and an append-only revision log,
+      except that a bundle upload removes the history of the concepts it deletes
 - [x] Read paths: read, list, search, grep, backlinks
 - [x] Startup verification that refuses a privileged database role
 - [x] MCP server over streamable HTTP
