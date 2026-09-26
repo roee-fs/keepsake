@@ -304,7 +304,12 @@ def trial(
                 str(port),
             ],
             stderr=log,
-            env={**os.environ, "KEEPSAKE_UI": "false"},
+            # Parallel servers would otherwise all bind the default metrics port.
+            env={
+                **os.environ,
+                "KEEPSAKE_UI": "false",
+                "KEEPSAKE_METRICS_PORT": str(free_port()),
+            },
         )
         proxy = None
         try:

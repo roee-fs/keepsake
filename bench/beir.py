@@ -154,7 +154,12 @@ def evaluate(name: str, binary: Path, pg: run.Postgres) -> dict:
             str(port),
         ],
         stderr=subprocess.DEVNULL,
-        env={**os.environ, "KEEPSAKE_UI": "false"},
+        # A default metrics port already in use would fail the server.
+        env={
+            **os.environ,
+            "KEEPSAKE_UI": "false",
+            "KEEPSAKE_METRICS_PORT": str(run.free_port()),
+        },
     )
     try:
         run.wait_ready(f"http://127.0.0.1:{port}/readyz", server)
