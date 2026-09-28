@@ -13,6 +13,11 @@ includes the holdout questions, so it MUST NOT feed a tuning loop either:
     python3 bench/longmemeval.py --full
     python3 bench/run.py --tasks-file bench/data/longmemeval/full/all.json --variants baseline --trials 1
 
+LongMemEval_M asks the same questions over ~500 sessions each. Its bundles are ~5 MB, so sample it:
+
+    python3 bench/longmemeval.py --m-sample 100
+    python3 bench/run.py --tasks-file bench/data/longmemeval/m/sample.json --variants baseline --trials 1
+
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
     python3 bench/longmemeval.py --curate single-session-preference multi-session
@@ -275,9 +280,23 @@ def main() -> None:
         action="store_true",
         help="Write all 500 questions to full/all.json, leave tune and holdout alone, and exit.",
     )
+    p.add_argument(
+        "--m-sample",
+        type=int,
+        metavar="N",
+        help="Write N random LongMemEval_M questions to m/sample.json, seeded by --seed, and exit.",
+    )
     args = p.parse_args()
     if args.full:
         write(FULL, {"all": load()})
+        return
+    if args.m_sample:
+        # Sampled from _S's ids, which _M shares, so each answer compares with its _S run.
+        ids = [d["question_id"] for d in load()]
+        chosen = set(random.Random(args.seed).sample(ids, args.m_sample))
+        write(
+            DATA / "m", {"sample": [d for d in load_m() if d["question_id"] in chosen]}
+        )
         return
     if args.curate:
         curate(args.split, args.curate)
