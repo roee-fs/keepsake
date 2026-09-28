@@ -32,6 +32,7 @@ import random
 import shutil
 import subprocess
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import grade
@@ -40,6 +41,8 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE / "data" / "longmemeval"
 SOURCE = DATA / "longmemeval_s_cleaned.json"
 URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+SOURCE_M = DATA / "longmemeval_m_cleaned.json"
+URL_M = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_m_cleaned.json"
 OUT = DATA / "agent"
 FULL = DATA / "full"
 RESPONSE = grade.RESPONSE
@@ -90,6 +93,34 @@ def load() -> list[dict]:
         DATA.mkdir(parents=True, exist_ok=True)
         subprocess.run(["curl", "-sfL", "-o", str(SOURCE), URL], check=True)
     return json.loads(SOURCE.read_text())
+
+
+def load_m() -> Iterator[dict]:
+    """Yields LongMemEval_M one question at a time, since the 2.7 GB file would take ~20 GB parsed whole."""
+    if not SOURCE_M.exists():
+        subprocess.run(["curl", "-sfL", "-o", str(SOURCE_M), URL_M], check=True)
+    return stream(SOURCE_M)
+
+
+def stream(path: Path, chunk: int = 1 << 24) -> Iterator[dict]:
+    """Yields each element of a JSON array file, decoding one element at a time."""
+    decoder = json.JSONDecoder()
+    with path.open() as f:
+        buf = f.read(chunk).lstrip().removeprefix("[")
+        while True:
+            buf = buf.lstrip().removeprefix(",").lstrip()
+            if buf.startswith("]"):
+                return
+            try:
+                item, end = decoder.raw_decode(buf)
+            except ValueError:
+                more = f.read(chunk)
+                if not more:
+                    raise
+                buf += more
+                continue
+            yield item
+            buf = buf[end:]
 
 
 def kind(instance: dict) -> str:
