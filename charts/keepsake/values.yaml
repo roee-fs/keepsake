@@ -87,8 +87,8 @@ postgres:
   # Recovering means ALTER ... OWNER surgery or recreating the database.
   ownerDsn: "" # required when mode = existing
 
-  # managed mode. CloudNativePG bootstraps the database owned by okf_owner and
-  # creates okf_app, the unprivileged role the server connects as.
+  # managed mode. CloudNativePG bootstraps the database owned by keepsake_owner and
+  # creates keepsake_app, the unprivileged role the server connects as.
   cluster:
     instances: 1
     storage: 1Gi

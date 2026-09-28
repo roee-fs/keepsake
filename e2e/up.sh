@@ -45,8 +45,8 @@ upgrading=false; helm status keepsake >/dev/null 2>&1 && upgrading=true
 helm upgrade --install keepsake charts/keepsake \
   --set image.repository=keepsake --set image.tag="$IMAGE_TAG" \
   --set postgres.mode=existing \
-  --set postgres.dsn="postgres://okf_app:app@postgres:5432/keepsake" \
-  --set postgres.ownerDsn="postgres://okf_owner:owner@postgres:5432/keepsake" \
+  --set postgres.dsn="postgres://keepsake_app:app@postgres:5432/keepsake" \
+  --set postgres.ownerDsn="postgres://keepsake_owner:owner@postgres:5432/keepsake" \
   --set service.type=NodePort --set service.nodePort="$NODE_PORT" \
   --wait --timeout 180s
 # A reused tag leaves the pod on the old image, since the Deployment spec did not change.

@@ -9,6 +9,23 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## Unreleased
 
+### Changed
+
+- The database roles are now `keepsake_owner` and `keepsake_app`, not
+  `okf_owner` and `okf_app`. The schema is still `okf`.
+
+### Upgrading
+
+- You MUST rename the roles before you upgrade, as a superuser or a role with
+  `CREATEROLE`. A rename keeps every grant and ownership:
+  `ALTER ROLE okf_owner RENAME TO keepsake_owner; ALTER ROLE okf_app RENAME TO keepsake_app;`
+  In `managed` mode, run it with `kubectl exec <release>-db-1 -- psql -d keepsake -c '...'`.
+- A rename clears an MD5 password. SCRAM passwords, the default since Postgres
+  14, survive it. Reset any MD5 password after the rename.
+- Pods still running the old release cannot open new connections after the
+  rename. Upgrade right after it. In `existing` mode, update `postgres.dsn` and
+  `postgres.ownerDsn` in the same upgrade.
+
 ### Added
 
 - `bench/run.py` builds a variant's server from a git ref (`"ref": "origin/main"`), each with its

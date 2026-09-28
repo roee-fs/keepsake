@@ -60,9 +60,9 @@ func start(ctx context.Context) (*DB, func(), error) {
 	err = pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('keepsake-pgtest'));
 			DO $$ BEGIN
-			  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'okf_owner') THEN
-			    CREATE ROLE okf_owner LOGIN PASSWORD 'owner';
-			    CREATE ROLE okf_app LOGIN PASSWORD 'app';
+			  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'keepsake_owner') THEN
+			    CREATE ROLE keepsake_owner LOGIN PASSWORD 'owner';
+			    CREATE ROLE keepsake_app LOGIN PASSWORD 'app';
 			  END IF;
 			END $$`)
 		return err
@@ -72,7 +72,7 @@ func start(ctx context.Context) (*DB, func(), error) {
 	}
 	for _, s := range []string{
 		"CREATE DATABASE " + name + " TEMPLATE template1",
-		"GRANT CREATE ON DATABASE " + name + " TO okf_owner",
+		"GRANT CREATE ON DATABASE " + name + " TO keepsake_owner",
 	} {
 		if _, err := conn.Exec(ctx, s); err != nil {
 			return nil, nil, err
@@ -91,7 +91,7 @@ func start(ctx context.Context) (*DB, func(), error) {
 			conn.Close(ctx)
 		}
 	}
-	return &DB{AdminDSN: dsn("postgres", "postgres"), OwnerDSN: dsn("okf_owner", "owner"), AppDSN: dsn("okf_app", "app")}, drop, nil
+	return &DB{AdminDSN: dsn("postgres", "postgres"), OwnerDSN: dsn("keepsake_owner", "owner"), AppDSN: dsn("keepsake_app", "app")}, drop, nil
 }
 
 // Exec runs each statement on its own, autocommitted, as dsn's role.
@@ -126,7 +126,7 @@ func (db *DB) LockOut(t testing.TB) (restore func()) {
 func (db *DB) TerminateApp(t testing.TB) {
 	t.Helper()
 	Exec(t, db.AdminDSN, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "+
-		"WHERE usename = 'okf_app' AND datname = current_database()")
+		"WHERE usename = 'keepsake_app' AND datname = current_database()")
 }
 
 // ConceptStore opens a store on dsn's okf schema, closed when t ends.

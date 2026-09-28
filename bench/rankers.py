@@ -304,7 +304,7 @@ def scale(db: DB) -> dict:
     rls = db.psql(
         f"SELECT set_config('okf.current_tenant', {lit(big)}, false);\n"
         f"EXPLAIN (ANALYZE, TIMING OFF, SUMMARY ON) SELECT * FROM okf.rank_shipped('w40 | w2500 | w4800', NULL, 10, {lit(big)}::uuid);",
-        role="okf_app",
+        role="keepsake_app",
     )
     return {
         "write_s_per_1k_without_trigger": round(1000 * without / n, 3),
@@ -352,7 +352,7 @@ def report(quality_rows: list[dict], scale_row: dict | None) -> str:
                 f"Storage: concept {scale_row['concept_bytes'] / 1e6:.0f} MB, posting {scale_row['posting_bytes'] / 1e6:.0f} MB "
                 f"({scale_row['postings']:,} postings for {scale_row['concepts']:,} concepts)."
             ),
-            f"bm25 postings as okf_app under FORCE RLS, 100k tenant, 3 terms: {scale_row['bm25_postings_as_app_role_ms']} ms.",
+            f"bm25 postings as keepsake_app under FORCE RLS, 100k tenant, 3 terms: {scale_row['bm25_postings_as_app_role_ms']} ms.",
         ]
     return "\n".join(out)
 
@@ -396,11 +396,11 @@ def main() -> None:
     pg = run.Postgres()
     try:
         db = DB(pg)
-        run.sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner"))
+        run.sh(str(binary), "migrate", "--dsn", pg.dsn("keepsake_owner", "owner"))
         db.psql((run.BENCH / "rankers.sql").read_text() + shipped_ranker())
         # scale() first, so its sizes count only the concepts it writes.
         scale_row = None if args.skip_scale else scale(db)
-        rows = quality(args, db, binary, pg.dsn("okf_app", "app"))
+        rows = quality(args, db, binary, pg.dsn("keepsake_app", "app"))
     finally:
         pg.close()
     (out / "results.json").write_text(

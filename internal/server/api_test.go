@@ -227,7 +227,7 @@ func TestTheConsoleHoldsOneSlotOnThePool(t *testing.T) {
 	for range 100 {
 		var waiting bool
 		if err := lock.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "+
-			"WHERE usename = 'okf_app' AND wait_event_type = 'Lock')").Scan(&waiting); err != nil {
+			"WHERE usename = 'keepsake_app' AND wait_event_type = 'Lock')").Scan(&waiting); err != nil {
 			t.Fatal(err)
 		}
 		if waiting {

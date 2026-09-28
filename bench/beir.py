@@ -131,7 +131,7 @@ def evaluate(name: str, binary: Path, pg: run.Postgres) -> dict:
     corpus = jsonl(directory / "corpus.jsonl")
     queries = {q["_id"]: q["text"] for q in jsonl(directory / "queries.jsonl")}
     judged = qrels(directory)
-    app, tenant = pg.dsn("okf_app", "app"), str(uuid.uuid4())
+    app, tenant = pg.dsn("keepsake_app", "app"), str(uuid.uuid4())
     with tempfile.TemporaryDirectory() as tmp:
         ids = write_bundle(corpus, Path(tmp))
         started = time.monotonic()
@@ -185,7 +185,7 @@ def main() -> None:
     run.sh("go", "build", "-o", str(binary), "./cmd/keepsake", cwd=run.ROOT)
     pg = run.Postgres()
     try:
-        run.sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner"))
+        run.sh(str(binary), "migrate", "--dsn", pg.dsn("keepsake_owner", "owner"))
         rows = [evaluate(name, binary, pg) for name in args.datasets]
     finally:
         pg.close()

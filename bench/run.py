@@ -116,9 +116,9 @@ class Postgres:
                     raise TimeoutError("postgres did not start")
                 time.sleep(0.5)
             for sql in (
-                "CREATE ROLE okf_owner LOGIN PASSWORD 'owner'",
-                "CREATE ROLE okf_app LOGIN PASSWORD 'app'",
-                "CREATE DATABASE bench OWNER okf_owner",
+                "CREATE ROLE keepsake_owner LOGIN PASSWORD 'owner'",
+                "CREATE ROLE keepsake_app LOGIN PASSWORD 'app'",
+                "CREATE DATABASE bench OWNER keepsake_owner",
             ):
                 sh("docker", "exec", self.name, "psql", "-U", "postgres", "-c", sql)
         except BaseException:
@@ -131,7 +131,7 @@ class Postgres:
     def database(self, name: str) -> None:
         sh(
             "docker", "exec", self.name, "psql", "-U", "postgres", "-c",
-            f"CREATE DATABASE {name} OWNER okf_owner",
+            f"CREATE DATABASE {name} OWNER keepsake_owner",
         )
 
     def close(self) -> None:
@@ -306,7 +306,7 @@ def trial(
     out: Path,
 ) -> dict[str, Any]:
     binary, db = build_
-    app = pg.dsn("okf_app", "app", db)
+    app = pg.dsn("keepsake_app", "app", db)
     tenant = str(uuid.uuid4())
     row: dict[str, Any] = {
         "variant": variant["name"],
@@ -531,7 +531,7 @@ def main() -> None:
             db = "bench" if i == 0 else f"bench_{i}"
             if i:
                 pg.database(db)
-            sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner", db))
+            sh(str(binary), "migrate", "--dsn", pg.dsn("keepsake_owner", "owner", db))
             builds[s] = (binary, db)
         jobs = [
             (t, v, n)

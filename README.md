@@ -58,22 +58,22 @@ Keepsake needs two roles. The names are fixed.
 
 | Role | Used by | Needs |
 | --- | --- | --- |
-| `okf_owner` | the migration Job | `CREATE` on the database. It will own the `okf` schema. |
-| `okf_app` | the server | nothing yet. The migration grants what it needs. |
+| `keepsake_owner` | the migration Job | `CREATE` on the database. It will own the `okf` schema. |
+| `keepsake_app` | the server | nothing yet. The migration grants what it needs. |
 
 Run this as a role that can create roles, before the first install:
 
 ```sql
-CREATE ROLE okf_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
-CREATE ROLE okf_app   LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
-GRANT CREATE ON DATABASE <database> TO okf_owner;
+CREATE ROLE keepsake_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
+CREATE ROLE keepsake_app   LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
+GRANT CREATE ON DATABASE <database> TO keepsake_owner;
 ```
 
-- `okf_app` MUST exist before the first migration. The migration grants it
+- `keepsake_app` MUST exist before the first migration. The migration grants it
   access only if it exists, and it never runs again for revisions already applied.
 - The two roles MUST be different. The server refuses to start as a superuser,
   as a `BYPASSRLS` role, or as the owner of the schema or its tables.
-- `okf_owner` SHOULD NOT be your application's migration role or a superuser. The
+- `keepsake_owner` SHOULD NOT be your application's migration role or a superuser. The
   chart stores its DSN in a Secret, and keepsake's migrations run with its rights.
 
 ### 2. Create the secrets
@@ -100,8 +100,8 @@ admin:
   existingSecret: keepsake-admin
 postgres:
   mode: existing
-  dsn: postgres://okf_app:<password>@<host>:5432/<database>?sslmode=require
-  ownerDsn: postgres://okf_owner:<password>@<host>:5432/<database>?sslmode=require
+  dsn: postgres://keepsake_app:<password>@<host>:5432/<database>?sslmode=require
+  ownerDsn: postgres://keepsake_owner:<password>@<host>:5432/<database>?sslmode=require
 ```
 
 ```bash
@@ -109,8 +109,8 @@ helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.3.0 \
   -f values.yaml --wait
 ```
 
-A pre-install hook runs the `keepsake-migrate` Job as `okf_owner`. The server
-then starts as `okf_app` and checks row-level security before it serves. If a
+A pre-install hook runs the `keepsake-migrate` Job as `keepsake_owner`. The server
+then starts as `keepsake_app` and checks row-level security before it serves. If a
 pod crash-loops, `kubectl logs` names the misconfiguration.
 
 ### 4. Check tenant isolation
