@@ -33,9 +33,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import shutil
 import subprocess
+import tempfile
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
@@ -94,12 +96,18 @@ TEMPLATES = {
 
 
 def fetch(url: str, dest: Path) -> Path:
-    """Downloads url to dest once. A failed transfer leaves only a .part file, never dest."""
+    """Downloads url to dest once. Each call writes its own temporary file, so a failed or
+    concurrent transfer never leaves a partial dest."""
     if not dest.exists():
         dest.parent.mkdir(parents=True, exist_ok=True)
-        part = dest.with_name(dest.name + ".part")
-        subprocess.run(["curl", "-sfL", "-o", str(part), url], check=True)
-        part.replace(dest)
+        fd, name = tempfile.mkstemp(dir=dest.parent, prefix=dest.name, suffix=".part")
+        os.close(fd)
+        part = Path(name)
+        try:
+            subprocess.run(["curl", "-sfL", "-o", str(part), url], check=True)
+            part.replace(dest)
+        finally:
+            part.unlink(missing_ok=True)
     return dest
 
 
@@ -128,6 +136,8 @@ def stream(path: Path, chunk: int = 1 << 24) -> Iterator[dict]:
         while True:
             buf = buf.lstrip().removeprefix(",").lstrip()
             if buf.startswith("]"):
+                if (buf[1:] + f.read()).strip():
+                    raise ValueError(f"{path} has data after its closing ]")
                 return
             try:
                 item, end = decoder.raw_decode(buf)

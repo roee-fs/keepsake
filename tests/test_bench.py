@@ -211,15 +211,30 @@ def test_a_failed_download_leaves_no_dataset(
 ) -> None:
     import longmemeval
 
+    parts = []
+
     def interrupted(cmd: list[str], check: bool) -> None:
-        Path(cmd[cmd.index("-o") + 1]).write_text("[{")
+        parts.append(cmd[cmd.index("-o") + 1])
+        Path(parts[-1]).write_text("[{")
         raise subprocess.CalledProcessError(18, cmd)
 
     monkeypatch.setattr(longmemeval.subprocess, "run", interrupted)
     dest = tmp_path / "fresh" / "m.json"
-    with pytest.raises(subprocess.CalledProcessError):
-        longmemeval.fetch("https://example.com/m.json", dest)
-    assert not dest.exists()
+    for _ in range(2):
+        with pytest.raises(subprocess.CalledProcessError):
+            longmemeval.fetch("https://example.com/m.json", dest)
+    # Two runs that overlap MUST NOT share a temporary file, and neither leaves one behind.
+    assert len(set(parts)) == 2
+    assert list(dest.parent.iterdir()) == []
+
+
+def test_stream_refuses_data_after_the_array(tmp_path: Path) -> None:
+    import longmemeval
+
+    path = tmp_path / "m.json"
+    path.write_text('[{"a": 1}] {"b": 2}')
+    with pytest.raises(ValueError, match="after its closing"):
+        list(longmemeval.stream(path, chunk=4))
 
 
 def test_m_sample_zero_is_refused_before_any_split_is_written(
