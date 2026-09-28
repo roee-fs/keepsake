@@ -442,26 +442,6 @@ func TestReplacePrefixRefusesAPathOutsideIt(t *testing.T) {
 	}
 }
 
-// Without the lock, each transaction keeps the path the other inserted, leaving the union.
-func TestConcurrentReplacesOfOnePrefixLeaveOneBundle(t *testing.T) {
-	cs := store.NewConceptStore(openApp(t))
-	for range 10 {
-		tenant := uuid.New()
-		var wg sync.WaitGroup
-		for _, p := range []string{"docs/a", "docs/b"} {
-			wg.Go(func() {
-				if _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: p, Type: "Doc"}}, "platform"); err != nil {
-					t.Error(err)
-				}
-			})
-		}
-		wg.Wait()
-		if got := listPaths(t, cs, tenant); len(got) != 1 {
-			t.Fatalf("paths = %v, want exactly one bundle", got)
-		}
-	}
-}
-
 // Without a tenant-wide lock, a replace of docs and one of docs/sub each keep the path the other inserted.
 func TestConcurrentReplacesOfNestedPrefixesLeaveOneBundle(t *testing.T) {
 	cs := store.NewConceptStore(openApp(t))

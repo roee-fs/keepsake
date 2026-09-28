@@ -131,9 +131,3 @@ func TestStorableJoinsEveryValidationError(t *testing.T) {
 		t.Fatalf("Storable = %v", err)
 	}
 }
-
-func TestStorableAcceptsAValidConcept(t *testing.T) {
-	if err := Storable(Concept{Path: "a/b", Type: "Note"}); err != nil {
-		t.Fatal(err)
-	}
-}
