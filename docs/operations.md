@@ -127,10 +127,11 @@ tenant. The Go runtime and process metrics are included as well.
 | Message | Level | Fields |
 | --- | --- | --- |
 | `tool call` | info | `tool`, `outcome`, `duration_ms`, `tenant`, `actor` |
-| `database unavailable` | warn | `tool`, `err` |
+| `database unavailable` | warn | `tool` or `route`, `err` |
 | `console login` / `console login refused` | info / warn | `remote_addr` |
 | `api` | error | `method`, `route`, `err` |
 | `tool call failed` | error | `tool`, `err` |
+| `bundle replaced` | info | `tenant`, `actor`, `written`, `deleted` |
 | `refused /mcp request` | warn | `reason` |
 
 No line carries a tool's arguments, a concept body, a token or a password.

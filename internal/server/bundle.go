@@ -14,6 +14,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/google/uuid"
+
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -114,13 +116,19 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := r.Context().Value(callerKey{}).(caller)
-		if !ok {
+		// Fail closed as /mcp does: the nil tenant is never a caller's.
+		if !ok || c.tenant == uuid.Nil {
 			internalError(w, r, errors.New("no caller bound to /bundle"))
 			return
 		}
 		prefix := r.URL.Query().Get("prefix")
 		if !fs.ValidPath(prefix) || prefix == "." || strings.ContainsFunc(prefix, unicode.IsControl) {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
+			return
+		}
+		// Checked before the slot, so a declared oversized body never holds it.
+		if r.ContentLength > maxUpload {
+			writeJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
 			return
 		}
 		select {
@@ -149,7 +157,13 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			return
 		}
 		deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, c.actor)
-		if err != nil {
+		switch {
+		case store.IsUnavailable(err):
+			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
+			w.Header().Set("Retry-After", "5")
+			writeJSON(w, r, http.StatusServiceUnavailable, detail{unavailable})
+			return
+		case err != nil:
 			internalError(w, r, err)
 			return
 		}

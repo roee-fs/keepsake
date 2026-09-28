@@ -25,7 +25,7 @@ const defaultStaticDir = "/app/static"
 type Config struct {
 	DSN    string
 	Schema string
-	// Auth binds each /mcp request to its tenant: FixedTenant or JWT.Middleware.
+	// Auth binds each /mcp and /bundle request to its tenant: FixedTenant or JWT.Middleware.
 	Auth func(http.Handler) http.Handler
 }
 

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -324,6 +325,44 @@ func TestAnOversizedUploadIsRefused(t *testing.T) {
 		tarball(t, entry{name: "a.md", body: md("Doc", strings.Repeat("unique words ", 200))}), uuid.New())
 	if code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("PUT = %d, want 413", code)
+	}
+}
+
+func TestADeclaredOversizedUploadIsRefusedWithoutTakingTheSlot(t *testing.T) {
+	defer func(n int64) { maxUpload = n }(maxUpload)
+	maxUpload = 16
+	// The slot is taken, so a 503 here would mean the size check came after it.
+	uploads <- struct{}{}
+	defer func() { <-uploads }()
+	code, _ := put(t, issuer.Middleware(replaceBundle(conceptStore(t))), "docs",
+		strings.NewReader(strings.Repeat("x", 17)), uuid.New())
+	if code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("PUT = %d, want 413", code)
+	}
+}
+
+func TestTheNilTenantCannotUpload(t *testing.T) {
+	cs := conceptStore(t)
+	bindNil := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller{tenant: uuid.Nil, actor: "x"})))
+		})
+	}
+	code, _ := put(t, bindNil(replaceBundle(cs)), "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), uuid.New())
+	if code != http.StatusInternalServerError || len(listPaths(t, cs, uuid.Nil)) != 0 {
+		t.Fatalf("PUT = %d, want 500 and nothing written", code)
+	}
+}
+
+func TestAnUnavailableDatabaseAsksTheUploaderToRetry(t *testing.T) {
+	h := issuer.Middleware(replaceBundle(conceptStore(t)))
+	db.LockOut(t)
+	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {
+		t.Fatalf("PUT = %d, Retry-After %q, want 503, 5", rec.Code, rec.Header().Get("Retry-After"))
 	}
 }
 

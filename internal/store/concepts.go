@@ -136,8 +136,10 @@ func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, pre
 		}
 		deleted = len(gone)
 		// A separate statement takes a fresh snapshot, so it also sees a revision committed while the delete waited on a row lock.
-		if _, err := tx.Exec(ctx, "DELETE FROM concept_revision WHERE path = ANY($1)", gone); err != nil {
-			return err
+		if deleted > 0 {
+			if _, err := tx.Exec(ctx, "DELETE FROM concept_revision WHERE path = ANY($1)", gone); err != nil {
+				return err
+			}
 		}
 		return importWrites(ctx, tx, tenant, writes, actor)
 	})
