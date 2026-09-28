@@ -93,25 +93,38 @@ TEMPLATES = {
 }
 
 
+def fetch(url: str, dest: Path) -> Path:
+    """Downloads url to dest once. A failed transfer leaves only a .part file, never dest."""
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        part = dest.with_name(dest.name + ".part")
+        subprocess.run(["curl", "-sfL", "-o", str(part), url], check=True)
+        part.replace(dest)
+    return dest
+
+
 def load() -> list[dict]:
-    if not SOURCE.exists():
-        DATA.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["curl", "-sfL", "-o", str(SOURCE), URL], check=True)
-    return json.loads(SOURCE.read_text())
+    return json.loads(fetch(URL, SOURCE).read_text(encoding="utf-8"))
 
 
 def load_m() -> Iterator[dict]:
     """Yields LongMemEval_M one question at a time, since the 2.7 GB file would take ~20 GB parsed whole."""
-    if not SOURCE_M.exists():
-        subprocess.run(["curl", "-sfL", "-o", str(SOURCE_M), URL_M], check=True)
-    return stream(SOURCE_M)
+    return stream(fetch(URL_M, SOURCE_M))
 
 
 def stream(path: Path, chunk: int = 1 << 24) -> Iterator[dict]:
     """Yields each element of a JSON array file, decoding one element at a time."""
     decoder = json.JSONDecoder()
-    with path.open() as f:
-        buf = f.read(chunk).lstrip().removeprefix("[")
+    with path.open(encoding="utf-8") as f:
+        buf = f.read(chunk).lstrip()
+        while not buf:
+            more = f.read(chunk)
+            if not more:
+                raise ValueError(f"{path} is empty, not a JSON array")
+            buf = more.lstrip()
+        if not buf.startswith("["):
+            raise ValueError(f"{path} is not a JSON array")
+        buf = buf[1:]
         while True:
             buf = buf.lstrip().removeprefix(",").lstrip()
             if buf.startswith("]"):
@@ -287,10 +300,12 @@ def main() -> None:
         help="Write N random LongMemEval_M questions to m/sample.json, seeded by --seed, and exit.",
     )
     args = p.parse_args()
+    if args.m_sample is not None and args.m_sample < 1:
+        p.error("--m-sample MUST be at least 1")
     if args.full:
         write(FULL, {"all": load()})
         return
-    if args.m_sample:
+    if args.m_sample is not None:
         # Sampled from _S's ids, which _M shares, so each answer compares with its _S run.
         ids = [d["question_id"] for d in load()]
         chosen = set(random.Random(args.seed).sample(ids, args.m_sample))

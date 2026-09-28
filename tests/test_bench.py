@@ -201,6 +201,36 @@ def test_stream_yields_each_instance_across_chunk_boundaries(tmp_path: Path) -> 
     path = tmp_path / "m.json"
     path.write_text(json.dumps(instances, indent=1))
     assert list(longmemeval.stream(path, chunk=7)) == instances
+    # The opening bracket can arrive after a whole chunk of whitespace.
+    path.write_text(" " * 20 + json.dumps(instances))
+    assert list(longmemeval.stream(path, chunk=7)) == instances
+
+
+def test_a_failed_download_leaves_no_dataset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import longmemeval
+
+    def interrupted(cmd: list[str], check: bool) -> None:
+        Path(cmd[cmd.index("-o") + 1]).write_text("[{")
+        raise subprocess.CalledProcessError(18, cmd)
+
+    monkeypatch.setattr(longmemeval.subprocess, "run", interrupted)
+    dest = tmp_path / "fresh" / "m.json"
+    with pytest.raises(subprocess.CalledProcessError):
+        longmemeval.fetch("https://example.com/m.json", dest)
+    assert not dest.exists()
+
+
+def test_m_sample_zero_is_refused_before_any_split_is_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import longmemeval
+
+    monkeypatch.setattr(sys, "argv", ["longmemeval.py", "--m-sample", "0"])
+    monkeypatch.setattr(longmemeval, "write", lambda *a: pytest.fail("wrote a split"))
+    with pytest.raises(SystemExit):
+        longmemeval.main()
 
 
 def test_a_split_outside_the_agent_directory_resolves_its_bundles(
