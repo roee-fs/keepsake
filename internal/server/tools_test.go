@@ -119,7 +119,8 @@ func TestCreateRejectsAPathReservedForAGeneratedBundleFile(t *testing.T) {
 	tools := newTools(t)
 	_, err := tools.Create(ctx, "index", map[string]any{"type": "Concept"})
 	wantToolError(t, err, "reserved")
-	seed(t, tools, "architecture/index", map[string]any{})
+	_, err = tools.Create(ctx, "architecture/index", map[string]any{"type": "Concept"})
+	wantToolError(t, err, "reserved")
 }
 
 func TestCreateRejectsAPathThatIsTaken(t *testing.T) {

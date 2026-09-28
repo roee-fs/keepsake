@@ -164,7 +164,7 @@ func TestExportGeneratesIndexAndLog(t *testing.T) {
 
 	index := readFile(t, filepath.Join(out, "index.md"))
 	// A concept at the root has no first segment to be grouped under.
-	for _, want := range []string{"## architecture", "[architecture/layers](architecture/layers.md)", "## (top level)", "[glossary](glossary.md)"} {
+	for _, want := range []string{"## architecture", "[architecture/layers](architecture/layers.md) - How the layers stack.", "## (top level)", "[glossary](glossary.md)"} {
 		if !strings.Contains(index, want) {
 			t.Errorf("index lacks %q:\n%s", want, index)
 		}
@@ -192,8 +192,8 @@ func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
 	if strings.Contains(full, "omitted") {
 		t.Fatal(full)
 	}
-	// Oldest first: a log that reads backwards is not a log.
-	if strings.Index(full, "`architecture/layers` v1") > strings.Index(full, "`architecture/layers` v2") {
+	// OKF §9 lists a log newest first.
+	if strings.Index(full, "`architecture/layers` v2") > strings.Index(full, "`architecture/layers` v1") {
 		t.Fatal(full)
 	}
 	revisions, err := cs.Revisions(ctx, tenant, 10)
@@ -221,13 +221,13 @@ func TestGeneratedFilesAreNotStoredAsConcepts(t *testing.T) {
 	}
 }
 
-func TestOnlyTheBundleRootReservesTheGeneratedNames(t *testing.T) {
+func TestImportSkipsAnIndexInASubdirectory(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
-	if n := mustImport(t, cs, tenant, bundle(t, t.TempDir(), doc, "index.md")); n != 1 {
+	src := bundle(t, t.TempDir(), doc, "layers.md")
+	// An OKF index has no frontmatter, so parsing it as a concept fails the whole import.
+	writeFile(t, src, "architecture/index.md", "# Architecture\n")
+	if n := mustImport(t, cs, tenant, src); n != 1 {
 		t.Fatal(n)
-	}
-	if read(t, cs, tenant, "architecture/index") == nil {
-		t.Fatal("architecture/index was dropped")
 	}
 }
 
@@ -269,7 +269,7 @@ func TestExportRefusesAConceptThatCollidesWithAGeneratedFile(t *testing.T) {
 	create(t, cs, tenant, "index")
 	out := filepath.Join(tmp, "out")
 	_, err := ExportBundle(ctx, cs, tenant, out)
-	want := "the concept 'index' collides with a generated file: the bundle root reserves index.md and log.md"
+	want := "the concept 'index' collides with a generated file: OKF reserves index.md and log.md in every directory"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v", err)
 	}

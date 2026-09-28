@@ -6,8 +6,11 @@ import (
 	"strings"
 )
 
-// ReservedPaths are the files a bundle export writes at its root, so no concept may hold one.
-var ReservedPaths = map[string]bool{"index": true, "log": true}
+// Reserved reports whether path names index.md or log.md, which OKF reserves in every directory.
+func Reserved(path string) bool {
+	base := path[strings.LastIndex(path, "/")+1:]
+	return base == "index" || base == "log"
+}
 
 // Postgres limits in bytes, refused in advance so the agent gets a sentence instead of a driver error.
 const (
@@ -41,7 +44,7 @@ func Validate(c Concept) []string {
 	if pathStripped == "" {
 		errors = append(errors, "path is required")
 	}
-	if ReservedPaths[c.Path] {
+	if Reserved(c.Path) {
 		errors = append(errors, fmt.Sprintf("path '%s' is reserved for a generated bundle file", c.Path))
 	} else if pathStripped != "" && slices.Contains(strings.Split(strings.TrimPrefix(c.Path, "/"), "/"), "") {
 		// A trailing or doubled slash names a concept the export cannot write as a file.

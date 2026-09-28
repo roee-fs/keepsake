@@ -875,15 +875,15 @@ func TestTenantsListsEveryTenantWithItsConceptCount(t *testing.T) {
 	}
 }
 
-func TestRevisionsReturnsOldestFirstAndEmptyForANegativeLimit(t *testing.T) {
+func TestRevisionsReturnsNewestFirstAndEmptyForANegativeLimit(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
 	revs, err := cs.Revisions(ctx, tenant, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// seed writes dormant, then flow, then cursor: oldest-first keeps that order.
-	want := []string{"detect/dormant", "auth/flow", "splunk/cursor"}
+	// seed writes dormant, then flow, then cursor.
+	want := []string{"splunk/cursor", "auth/flow", "detect/dormant"}
 	if !slices.Equal(paths(revs), want) {
 		t.Fatalf("Revisions paths = %v, want %v", paths(revs), want)
 	}
