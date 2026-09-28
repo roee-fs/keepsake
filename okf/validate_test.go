@@ -35,6 +35,14 @@ func TestEveryBrokenRuleIsReported(t *testing.T) {
 	}
 }
 
+func TestFrontmatterMustNotShadowAPromotedField(t *testing.T) {
+	fm := NewMap()
+	fm.Set("type", "")
+	if errs := Validate(Concept{Path: "a", Type: "Concept", Frontmatter: fm}); len(errs) != 1 || !strings.Contains(errs[0], "'type'") {
+		t.Fatalf("got %q", errs)
+	}
+}
+
 func TestValidConceptHasNoErrors(t *testing.T) {
 	if got := Validate(Concept{Path: "a/b", Type: "Concept"}); len(got) != 0 {
 		t.Fatalf("got %q", got)

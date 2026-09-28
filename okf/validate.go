@@ -77,6 +77,13 @@ func Validate(c Concept) []string {
 			errors = append(errors, fmt.Sprintf("%s is too long: %d bytes, at most %d", f.name, size, f.limit))
 		}
 	}
+	if c.Frontmatter != nil {
+		for _, k := range c.Frontmatter.keys {
+			if promoted[k] {
+				errors = append(errors, fmt.Sprintf("frontmatter must not hold '%s': set it as its own field", k))
+			}
+		}
+	}
 	if hasNUL(c.Frontmatter) {
 		errors = append(errors, "frontmatter must not contain a NUL byte")
 	}

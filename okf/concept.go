@@ -31,6 +31,9 @@ func Parse(text, path string) (Concept, error) {
 	}, nil
 }
 
+// promoted are the frontmatter keys Concept holds as fields.
+var promoted = map[string]bool{"type": true, "title": true, "description": true}
+
 // promote pops a known field. A key with no value is blank, not the word None.
 func promote(fm *Map, key string) string {
 	v, _ := fm.Get(key)
@@ -53,7 +56,9 @@ func Serialize(c Concept) (string, error) {
 	}
 	if c.Frontmatter != nil {
 		for _, k := range c.Frontmatter.keys {
-			meta.Set(k, c.Frontmatter.vals[k])
+			if !promoted[k] {
+				meta.Set(k, c.Frontmatter.vals[k])
+			}
 		}
 	}
 	fm, err := emitRoot(meta)
