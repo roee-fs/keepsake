@@ -13,7 +13,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 import re
 import subprocess
 import tempfile
@@ -139,30 +138,8 @@ def evaluate(name: str, binary: Path, pg: run.Postgres) -> dict:
         run.sh(str(binary), "import", "--dsn", app, "--tenant", tenant, tmp)
         import_s = time.monotonic() - started
 
-    port = run.free_port()
-    server = subprocess.Popen(
-        [
-            str(binary),
-            "serve",
-            "--dsn",
-            app,
-            "--tenant",
-            tenant,
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-        ],
-        stderr=subprocess.DEVNULL,
-        # A default metrics port already in use would fail the server.
-        env={
-            **os.environ,
-            "KEEPSAKE_UI": "false",
-            "KEEPSAKE_METRICS_PORT": str(run.free_port()),
-        },
-    )
+    server, port = run.serve(binary, app, tenant, subprocess.DEVNULL)
     try:
-        run.wait_ready(f"http://127.0.0.1:{port}/readyz", server)
         scores = {"ndcg@10": [], "recall@10": [], f"recall@{K}": []}
         latencies = []
         for qid, relevant in judged.items():

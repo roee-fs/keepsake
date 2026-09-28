@@ -216,6 +216,37 @@ class _Forward(BaseHTTPRequestHandler):
         pass
 
 
+def serve(
+    binary: Path, app: str, tenant: str, stderr: Any
+) -> tuple[subprocess.Popen[bytes], int]:
+    """Starts `keepsake serve` on free ports, waits until it is ready, and returns it and its port."""
+    for attempt in range(1, 4):
+        port = free_port()
+        server = subprocess.Popen(
+            [str(binary), "serve", "--dsn", app, "--tenant", tenant]
+            + ["--host", "127.0.0.1", "--port", str(port)],
+            stderr=stderr,
+            # Parallel servers would otherwise all bind the default metrics port.
+            env={
+                **os.environ,
+                "KEEPSAKE_UI": "false",
+                "KEEPSAKE_METRICS_PORT": str(free_port()),
+            },
+        )
+        try:
+            wait_ready(f"http://127.0.0.1:{port}/readyz", server)
+            return server, port
+        except RuntimeError:
+            # A probed port is free only until closed, so another process may have taken it.
+            if attempt == 3:
+                raise
+        except BaseException:
+            server.kill()
+            server.wait()
+            raise
+    raise AssertionError("unreachable")
+
+
 def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -288,32 +319,14 @@ def trial(
         work = Path(tmp)
         bundle = Path(task.get("bundle_path", BUNDLE))
         sh(str(binary), "import", "--dsn", app, "--tenant", tenant, str(bundle))
-        port = free_port()
         log = (out / f"{variant['name']}.{task['id']}.{n}.server.log").open("wb")
-        server = subprocess.Popen(
-            [
-                str(binary),
-                "serve",
-                "--dsn",
-                app,
-                "--tenant",
-                tenant,
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
-            stderr=log,
-            # Parallel servers would otherwise all bind the default metrics port.
-            env={
-                **os.environ,
-                "KEEPSAKE_UI": "false",
-                "KEEPSAKE_METRICS_PORT": str(free_port()),
-            },
-        )
+        try:
+            server, port = serve(binary, app, tenant, log)
+        except BaseException:
+            log.close()
+            raise
         proxy = None
         try:
-            wait_ready(f"http://127.0.0.1:{port}/readyz", server)
             proxy = Proxy(f"http://127.0.0.1:{port}/mcp", variant)
             config = work / "mcp.json"
             config.write_text(

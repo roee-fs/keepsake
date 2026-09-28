@@ -293,6 +293,37 @@ def test_resolve_ref_refuses_an_unknown_ref() -> None:
         run.resolve_ref("no-such-ref-anywhere")
 
 
+def test_serve_retries_a_server_that_exits_while_starting(tmp_path: Path) -> None:
+    (tmp_path / "www").mkdir()
+    (tmp_path / "www" / "readyz").write_text("ok")
+    # Exits on its first start, as on a port taken since it was probed; serves /readyz on its second.
+    fake = tmp_path / "keepsake"
+    fake.write_text(
+        "#!/bin/sh\n"
+        f'echo x >> "{tmp_path}/starts"\n'
+        f'[ "$(wc -l < "{tmp_path}/starts")" -gt 1 ] || exit 1\n'
+        'while [ "$1" != --port ]; do shift; done\n'
+        f'exec "{sys.executable}" -m http.server "$2" --bind 127.0.0.1 --directory "{tmp_path}/www"\n'
+    )
+    fake.chmod(0o755)
+    server, port = run.serve(fake, "dsn", "tenant", subprocess.DEVNULL)
+    try:
+        assert port > 0
+        assert (tmp_path / "starts").read_text().count("x") == 2
+    finally:
+        server.terminate()
+        server.wait()
+
+
+def test_serve_gives_up_after_three_starts(tmp_path: Path) -> None:
+    fake = tmp_path / "keepsake"
+    fake.write_text(f'#!/bin/sh\necho x >> "{tmp_path}/starts"\nexit 1\n')
+    fake.chmod(0o755)
+    with pytest.raises(RuntimeError):
+        run.serve(fake, "dsn", "tenant", subprocess.DEVNULL)
+    assert (tmp_path / "starts").read_text().count("x") == 3
+
+
 def _read(path: str, links: list, backlinks: list) -> dict:
     return {"tool": "okf_read", "input": {"path": path}, "error": False,
             "output": json.dumps({"path": path, "links": links, "backlinks": backlinks})}
