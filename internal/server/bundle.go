@@ -121,6 +121,11 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			internalError(w, r, errors.New("no caller bound to /bundle"))
 			return
 		}
+		if !c.upload {
+			slog.Warn("refused /bundle request", "reason", "token lacks the "+uploadScope+" scope", "actor", c.actor)
+			writeJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: it needs the " + uploadScope + " scope"})
+			return
+		}
 		prefix := r.URL.Query().Get("prefix")
 		if !fs.ValidPath(prefix) || prefix == "." || strings.ContainsFunc(prefix, unicode.IsControl) {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})

@@ -28,7 +28,12 @@ const leeway = 30
 type caller struct {
 	tenant uuid.UUID
 	actor  string
+	// upload lets the caller replace a prefix through /bundle, which deletes concepts and their history.
+	upload bool
 }
+
+// uploadScope is the token scope /bundle requires, so a token handed to an agent cannot erase history.
+const uploadScope = "bundle"
 
 type callerKey struct{}
 
@@ -40,7 +45,8 @@ func withCaller(next http.Handler, c caller) http.Handler {
 
 // FixedTenant serves every request as tenant, for auth mode none.
 func FixedTenant(tenant uuid.UUID) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler { return withCaller(next, caller{tenant, actor}) }
+	// Mode none already trusts every client that reaches it, so it keeps /bundle.
+	return func(next http.Handler) http.Handler { return withCaller(next, caller{tenant, actor, true}) }
 }
 
 // JWT verifies HS256 tokens from one trusted issuer. Secrets[0] signs; every secret verifies, for rotation.
@@ -76,11 +82,15 @@ func JWTFromEnv() (*JWT, error) {
 
 var b64 = base64.RawURLEncoding
 
-// Mint signs a token for tenant, acting as sub, that expires after ttl.
-func (j *JWT) Mint(tenant uuid.UUID, sub string, ttl time.Duration) string {
+// Mint signs a token for tenant, acting as sub, that expires after ttl and carries scopes.
+func (j *JWT) Mint(tenant uuid.UUID, sub string, ttl time.Duration, scopes ...string) string {
 	now := time.Now().Unix()
-	payload, err := json.Marshal(map[string]any{"iss": j.Issuer, "aud": j.Audience, "sub": sub, "iat": now,
-		"exp": now + int64(ttl/time.Second), "tctx": map[string]string{"tenant": tenant.String()}})
+	claims := map[string]any{"iss": j.Issuer, "aud": j.Audience, "sub": sub, "iat": now,
+		"exp": now + int64(ttl/time.Second), "tctx": map[string]string{"tenant": tenant.String()}}
+	if len(scopes) > 0 {
+		claims["scope"] = strings.Join(scopes, " ")
+	}
+	payload, err := json.Marshal(claims)
 	if err != nil {
 		panic(err)
 	}
@@ -107,6 +117,8 @@ type claimSet struct {
 	Exp  *float64        `json:"exp"`
 	Nbf  *float64        `json:"nbf"`
 	Tctx json.RawMessage `json:"tctx"`
+	// Scope is space-separated, as OAuth writes it (RFC 8693 §4.2).
+	Scope string `json:"scope"`
 }
 
 var errForbidden = errors.New("no tenant in the token")
@@ -157,7 +169,7 @@ func (j *JWT) verify(token string) (caller, error) {
 	if err != nil || tenant == uuid.Nil {
 		return caller{}, errForbidden
 	}
-	return caller{tenant, c.Sub}, nil
+	return caller{tenant, c.Sub, slices.Contains(strings.Fields(c.Scope), uploadScope)}, nil
 }
 
 // Middleware binds the verified caller, or answers 401 for a bad token and 403 for a token naming no tenant.

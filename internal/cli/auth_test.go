@@ -56,6 +56,35 @@ func TestServeInJWTModeAcceptsOnlyATokenFromKeepsakeToken(t *testing.T) {
 	}
 }
 
+func TestOnlyATokenMintedWithTheBundleScopeCanUpload(t *testing.T) {
+	jwtEnv(t)
+	served := fakeListen(t)
+	if code, _, stderr := run(t, "serve", "--dsn", db.AppDSN); code != 0 {
+		t.Fatalf("serve exit %d: %s", code, stderr)
+	}
+	tenant := uuid.NewString()
+	for _, c := range []struct {
+		args []string
+		want int
+	}{
+		{nil, http.StatusForbidden},
+		{[]string{"--scope", "bundle"}, http.StatusBadRequest},
+	} {
+		code, token, stderr := run(t, append([]string{"token", "--tenant", tenant, "--sub", "ingest"}, c.args...)...)
+		if code != 0 {
+			t.Fatalf("token exit %d: %s", code, stderr)
+		}
+		// An empty body gets past auth and fails the bundle's own checks.
+		req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", strings.NewReader(""))
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
+		rec := httptest.NewRecorder()
+		served.h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Fatalf("%v: PUT = %d %s, want %d", c.args, rec.Code, rec.Body, c.want)
+		}
+	}
+}
+
 func TestServeRefusesATenantInJWTMode(t *testing.T) {
 	jwtEnv(t)
 	fakeListen(t)

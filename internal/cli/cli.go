@@ -94,8 +94,8 @@ func setShutdownTimeout(d time.Duration) func() {
 }
 
 type options struct {
-	dsn, tenant, host, directory, sub, ttl string
-	port                                   *int
+	dsn, tenant, host, directory, sub, ttl, scope string
+	port                                          *int
 }
 
 type command struct {
@@ -166,6 +166,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		o.ttl = "1h"
 		flags["--sub"] = &o.sub
 		flags["--ttl"] = &o.ttl
+		flags["--scope"] = &o.scope
 	}
 
 	// argparse's order: flags anywhere, -h at once, and leftovers reported together at the end.
@@ -418,7 +419,7 @@ func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	fmt.Fprintln(stdout, j.Mint(id, o.sub, ttl))
+	fmt.Fprintln(stdout, j.Mint(id, o.sub, ttl, strings.Fields(o.scope)...))
 	return 0, nil
 }
 
@@ -502,7 +503,7 @@ options:
                    interface.
   --port PORT      The port to bind. Defaults to $KEEPSAKE_PORT, then 8000.
 `,
-	"token": `usage: keepsake token [-h] [--tenant TENANT] [--sub SUB] [--ttl TTL]
+	"token": `usage: keepsake token [-h] [--tenant TENANT] [--sub SUB] [--ttl TTL] [--scope SCOPE]
 
 Print a jwt-mode token for one tenant, signed with the first secret in
 $KEEPSAKE_JWT_SECRET_FILE. Hand it to a client that must not hold the secret.
@@ -514,5 +515,7 @@ options:
   --sub SUB        Who the token acts as, recorded as updated_by.
   --ttl TTL        How long the token lives, such as 30m or 720h. Defaults
                    to 1h.
+  --scope SCOPE    Space-separated scopes. "bundle" lets the token replace
+                   a prefix through PUT /bundle. MUST NOT be given to an agent.
 `,
 }

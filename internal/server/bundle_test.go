@@ -232,7 +232,7 @@ func octalField(field []byte, n int64) {
 func put(t *testing.T, h http.Handler, prefix string, body io.Reader, tenant uuid.UUID) (int, string) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix="+prefix, body)
-	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "platform-ingest", time.Minute))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "platform-ingest", time.Minute, uploadScope))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.String()
@@ -328,6 +328,25 @@ func TestAnOversizedUploadIsRefused(t *testing.T) {
 	}
 }
 
+func TestAnAgentTokenCannotUpload(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range [][]string{nil, {"read", "write"}, {"bundles"}} {
+		req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
+		req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "run:1", time.Minute, scope...))
+		rec := httptest.NewRecorder()
+		issuer.Middleware(replaceBundle(cs)).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "bundle scope") {
+			t.Fatalf("%v: PUT = %d %s, want 403", scope, rec.Code, rec.Body)
+		}
+	}
+	if p := listPaths(t, cs, tenant); !reflect.DeepEqual(p, []string{"docs/old"}) {
+		t.Fatalf("paths = %v", p)
+	}
+}
+
 func TestADeclaredOversizedUploadIsRefusedWithoutTakingTheSlot(t *testing.T) {
 	defer func(n int64) { maxUpload = n }(maxUpload)
 	maxUpload = 16
@@ -358,7 +377,7 @@ func TestAnUnavailableDatabaseAsksTheUploaderToRetry(t *testing.T) {
 	h := issuer.Middleware(replaceBundle(conceptStore(t)))
 	db.LockOut(t)
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
-	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute, uploadScope))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {
@@ -370,7 +389,7 @@ func TestAnUploadDuringAnotherIsRefused(t *testing.T) {
 	uploads <- struct{}{}
 	defer func() { <-uploads }()
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
-	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute, uploadScope))
 	rec := httptest.NewRecorder()
 	issuer.Middleware(replaceBundle(conceptStore(t))).ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {

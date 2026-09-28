@@ -78,7 +78,8 @@ The chart configures no backups. You MUST set up one of these:
 ## Uploading a bundle
 
 `PUT /bundle?prefix=P` replaces the caller's concepts under `P/` with a gzipped
-tar of OKF files. It takes the same auth as `/mcp`. The file `x/y.md` becomes
+tar of OKF files. In jwt mode the token MUST carry `"scope": "bundle"`, which
+`keepsake token --scope bundle` mints. A token without it gets a 403. The file `x/y.md` becomes
 the concept `P/x/y`. Concepts outside `P/` are untouched. A file that fails
 `keepsake import`'s per-file checks refuses the whole upload with a 422 that
 lists every such file.
@@ -90,9 +91,9 @@ curl -X PUT --data-binary @bundle.tgz \
   "https://keepsake.example/bundle?prefix=docs/runbooks"
 ```
 
-- Any token for a tenant can call `/bundle`, and a replace deletes concepts and
-  their revision history. Operators MUST NOT give an upload-capable token to
-  anything an LLM drives.
+- A replace deletes concepts and their revision history. Operators MUST NOT give
+  a `bundle`-scoped token to anything an LLM drives. Auth mode none has no
+  tokens, so any client that reaches it can upload.
 - An upload MUST hold at least one concept. The limits are 32 MiB compressed,
   64 MiB unpacked, 20,000 files, 1 MiB per file, and 256 KiB per concept body,
   as for any write.
@@ -133,6 +134,7 @@ tenant. The Go runtime and process metrics are included as well.
 | `tool call failed` | error | `tool`, `err` |
 | `bundle replaced` | info | `tenant`, `actor`, `written`, `deleted` |
 | `refused /mcp request` | warn | `reason` |
+| `refused /bundle request` | warn | `reason`, `actor` |
 
 No line carries a tool's arguments, a concept body, a token or a password.
 `remote_addr` is the TCP peer, so behind a proxy it names the proxy. At `warn`,
