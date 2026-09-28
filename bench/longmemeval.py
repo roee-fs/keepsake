@@ -13,6 +13,11 @@ includes the holdout questions, so it MUST NOT feed a tuning loop either:
     python3 bench/longmemeval.py --full
     python3 bench/run.py --tasks-file bench/data/longmemeval/full/all.json --variants baseline --trials 1
 
+LongMemEval_M asks the same questions over ~500 sessions each. Its bundles are ~5 MB, so sample it:
+
+    python3 bench/longmemeval.py --m-sample 100
+    python3 bench/run.py --tasks-file bench/data/longmemeval/m/sample.json --variants baseline --trials 1
+
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
     python3 bench/longmemeval.py --curate single-session-preference multi-session
@@ -32,6 +37,7 @@ import random
 import shutil
 import subprocess
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import grade
@@ -40,6 +46,8 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE / "data" / "longmemeval"
 SOURCE = DATA / "longmemeval_s_cleaned.json"
 URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+SOURCE_M = DATA / "longmemeval_m_cleaned.json"
+URL_M = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_m_cleaned.json"
 OUT = DATA / "agent"
 FULL = DATA / "full"
 RESPONSE = grade.RESPONSE
@@ -90,6 +98,34 @@ def load() -> list[dict]:
         DATA.mkdir(parents=True, exist_ok=True)
         subprocess.run(["curl", "-sfL", "-o", str(SOURCE), URL], check=True)
     return json.loads(SOURCE.read_text())
+
+
+def load_m() -> Iterator[dict]:
+    """Yields LongMemEval_M one question at a time, since the 2.7 GB file would take ~20 GB parsed whole."""
+    if not SOURCE_M.exists():
+        subprocess.run(["curl", "-sfL", "-o", str(SOURCE_M), URL_M], check=True)
+    return stream(SOURCE_M)
+
+
+def stream(path: Path, chunk: int = 1 << 24) -> Iterator[dict]:
+    """Yields each element of a JSON array file, decoding one element at a time."""
+    decoder = json.JSONDecoder()
+    with path.open() as f:
+        buf = f.read(chunk).lstrip().removeprefix("[")
+        while True:
+            buf = buf.lstrip().removeprefix(",").lstrip()
+            if buf.startswith("]"):
+                return
+            try:
+                item, end = decoder.raw_decode(buf)
+            except ValueError:
+                more = f.read(chunk)
+                if not more:
+                    raise
+                buf += more
+                continue
+            yield item
+            buf = buf[end:]
 
 
 def kind(instance: dict) -> str:
@@ -244,9 +280,23 @@ def main() -> None:
         action="store_true",
         help="Write all 500 questions to full/all.json, leave tune and holdout alone, and exit.",
     )
+    p.add_argument(
+        "--m-sample",
+        type=int,
+        metavar="N",
+        help="Write N random LongMemEval_M questions to m/sample.json, seeded by --seed, and exit.",
+    )
     args = p.parse_args()
     if args.full:
         write(FULL, {"all": load()})
+        return
+    if args.m_sample:
+        # Sampled from _S's ids, which _M shares, so each answer compares with its _S run.
+        ids = [d["question_id"] for d in load()]
+        chosen = set(random.Random(args.seed).sample(ids, args.m_sample))
+        write(
+            DATA / "m", {"sample": [d for d in load_m() if d["question_id"] in chosen]}
+        )
         return
     if args.curate:
         curate(args.split, args.curate)

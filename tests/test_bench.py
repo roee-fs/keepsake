@@ -190,6 +190,19 @@ def test_a_longmemeval_task_carries_the_official_judge_prompt() -> None:
     assert "unanswerable" in abstained["expect"]["judge_template"]
 
 
+def test_stream_yields_each_instance_across_chunk_boundaries(tmp_path: Path) -> None:
+    import longmemeval
+
+    instances = [
+        {"question_id": "a", "text": "brackets ] and [ commas, inside"},
+        {"question_id": "b", "text": 'an escaped \\" quote and a } brace'},
+        {"question_id": "c", "nested": [{"x": 1}, {"y": [2, 3]}]},
+    ]
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps(instances, indent=1))
+    assert list(longmemeval.stream(path, chunk=7)) == instances
+
+
 def test_a_split_outside_the_agent_directory_resolves_its_bundles(
     tmp_path: Path,
 ) -> None:
