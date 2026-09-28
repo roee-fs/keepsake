@@ -58,8 +58,10 @@ func TestTheGeneratedBundleNamesAreReservedInEveryDirectory(t *testing.T) {
 	if errs := Validate(Concept{Path: "log", Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
 		t.Fatalf("got %q", errs)
 	}
-	if errs := Validate(Concept{Path: "architecture/index", Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
-		t.Fatalf("got %q", errs)
+	for _, p := range []string{"architecture/index", `architecture\log`} {
+		if errs := Validate(Concept{Path: p, Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
+			t.Fatalf("%s: got %q", p, errs)
+		}
 	}
 	if got := Validate(Concept{Path: "architecture/indexes", Type: "Concept"}); len(got) != 0 {
 		t.Fatalf("got %q", got)

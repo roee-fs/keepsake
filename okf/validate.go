@@ -7,8 +7,9 @@ import (
 )
 
 // Reserved reports whether path names index.md or log.md, which OKF reserves in every directory.
+// A backslash counts as a separator, since a Windows export writes `a\index` as a/index.md.
 func Reserved(path string) bool {
-	base := path[strings.LastIndex(path, "/")+1:]
+	base := path[strings.LastIndexAny(path, `/\`)+1:]
 	return base == "index" || base == "log"
 }
 
