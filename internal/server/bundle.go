@@ -18,7 +18,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// Upload limits, vars so tests can lower them. ponytail: the whole bundle sits in memory, so uploads run one at a time; stream them if bundles outgrow these.
+// Upload limits, vars so tests can lower them.
+// ponytail: a bundle sits whole in memory, so uploads run one at a time; stream it if bundles outgrow these.
 var (
 	uploads           = make(chan struct{}, 1)
 	maxUpload   int64 = 32 << 20

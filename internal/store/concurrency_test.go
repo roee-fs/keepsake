@@ -371,7 +371,6 @@ func TestImportManyOverwritesTakenPathsInBundleOrder(t *testing.T) {
 	}
 }
 
-// listPaths returns cs's paths, reusing reads_test.go's generic paths helper.
 func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string {
 	t.Helper()
 	got, err := cs.List(ctx, tenant, "")

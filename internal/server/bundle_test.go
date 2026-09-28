@@ -157,10 +157,8 @@ func TestASparseEntryCannotInflatePastTheUnpackedLimit(t *testing.T) {
 	}
 }
 
-// sparseBundle hand-crafts a gzipped tar holding one PAX GNU-sparse entry: a header
-// declaring logicalSize bytes of content backed by zero physical bytes (an empty
-// sparse map, i.e. the whole file is one hole). archive/tar's Writer refuses to write
-// GNU.sparse.* PAX records itself, so the header bytes are built by hand.
+// sparseBundle gzips one PAX GNU-sparse entry of logicalSize bytes that is all hole.
+// archive/tar's Writer refuses GNU.sparse.* records, so the bytes are built by hand.
 func sparseBundle(t *testing.T, name string, logicalSize int64) *bytes.Buffer {
 	t.Helper()
 	pax := paxRecord("GNU.sparse.major", "0") +
@@ -188,8 +186,7 @@ func sparseBundle(t *testing.T, name string, logicalSize int64) *bytes.Buffer {
 
 func blockPadding(n int64) int64 { return -n & 511 }
 
-// paxRecord formats one PAX extended-header record: "<length> <key>=<value>\n",
-// where length counts itself, as required by the POSIX pax format.
+// paxRecord formats one PAX record, "<length> <key>=<value>\n", whose length counts itself.
 func paxRecord(k, v string) string {
 	size := len(k) + len(v) + 3 // "=", "\n", and a first guess at the length digits
 	size += len(strconv.Itoa(size))
@@ -201,8 +198,7 @@ func paxRecord(k, v string) string {
 	return rec
 }
 
-// rawTarHeader builds one 512-byte USTAR header block. Only the fields readBundle's
-// path needs are set; archive/tar fills the rest with sensible zero values.
+// rawTarHeader builds one 512-byte USTAR header with only the fields readBundle reads.
 func rawTarHeader(name string, typ byte, size int64) []byte {
 	var b [512]byte
 	copy(b[0:100], name)
