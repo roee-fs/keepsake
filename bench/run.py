@@ -219,7 +219,7 @@ class _Forward(BaseHTTPRequestHandler):
 def serve(
     binary: Path, app: str, tenant: str, stderr: Any
 ) -> tuple[subprocess.Popen[bytes], int]:
-    """Starts `keepsake serve` on free ports, waits until it is ready, and returns it and its port."""
+    """Starts `keepsake serve` on free ports and waits until it is ready."""
     for attempt in range(1, 4):
         port = free_port()
         server = subprocess.Popen(
