@@ -61,3 +61,32 @@ func TestExtractLinksSkipsImagesButNotALaterLink(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestExtractLinksFollowsCommonMark(t *testing.T) {
+	for _, c := range []struct {
+		body string
+		want []string
+	}{
+		{"[a][r] and [b][] and [c]\n\n[r]: /x.md\n[B]: <y.md>\n[c]: z.md", []string{"x", "p/y", "p/z"}},
+		{"[undefined][nope] [plain]", nil},
+		{"```\n[a](/in-fence.md)\n```\n[b](/after.md)", []string{"after"}},
+		{"~~~~\n```\n[a](/still-in.md)\n~~~~\n", nil},
+		{"`[a](/in-span.md)` and ``[b](/x.md) ` y`` [c](/out.md)", []string{"out"}},
+		{"[a](</with space.md>)", []string{"with space"}},
+		{"[py](/references/a.py) [dir](sub/) [img](a.PNG) [n](/tables/orders) [m](o.MD)", []string{"tables/orders", "p/o.MD"}},
+	} {
+		if got := ExtractLinks(c.body, "p/q"); !slices.Equal(got, c.want) {
+			t.Errorf("ExtractLinks(%q) = %q, want %q", c.body, got, c.want)
+		}
+	}
+}
+
+func TestMaskingCodeIsLinearInTheBody(t *testing.T) {
+	for _, body := range []string{strings.Repeat("`a", 1<<20), strings.Repeat("```\n", 1<<18), strings.Repeat("[a]: b\n", 1<<17)} {
+		start := time.Now()
+		ExtractLinks(body, "a/b")
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("ExtractLinks on %d bytes took %v", len(body), d)
+		}
+	}
+}

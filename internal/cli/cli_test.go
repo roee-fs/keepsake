@@ -69,10 +69,19 @@ func TestHelpExitsZero(t *testing.T) {
 	}
 }
 
-func TestValidatePrintsEveryErrorAndExitsOne(t *testing.T) {
+func TestValidateWarnsOfABrokenLinkAndExitsZero(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [gone](./gone.md)", 1), "layers.md")
 	code, _, stderr := run(t, "validate", src)
-	if code != 1 || stderr != "architecture/layers: link to unknown concept architecture/gone\n" {
+	if code != 0 || stderr != "warning: architecture/layers: link to unknown concept architecture/gone\n" {
+		t.Fatalf("exit %d: %q", code, stderr)
+	}
+}
+
+func TestValidatePrintsEveryErrorAndExitsOne(t *testing.T) {
+	src := bundle(t, t.TempDir(), doc, "layers.md")
+	writeFile(t, src, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
+	code, _, stderr := run(t, "validate", src)
+	if code != 1 || stderr != "architecture/typeless: type is required\n" {
 		t.Fatalf("exit %d: %q", code, stderr)
 	}
 }

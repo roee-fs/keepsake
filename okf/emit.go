@@ -56,6 +56,10 @@ func (e *emitter) node(v any, seqCtx, mapCtx, simpleKey bool) error {
 	if err != nil {
 		return err
 	}
+	// A timestamp the parser read is written plain, so a typed YAML reader sees a timestamp again.
+	if _, ok := v.(string); ok && isTimestamp(text) {
+		isStr = false
+	}
 	e.scalar(text, isStr, seqCtx, simpleKey)
 	return nil
 }
@@ -65,6 +69,8 @@ func scalarText(v any) (string, bool, error) {
 	switch v := v.(type) {
 	case string:
 		return v, true, nil
+	case field:
+		return string(v), true, nil
 	case nil:
 		return "", false, nil
 	case bool:
@@ -230,6 +236,15 @@ func (e *emitter) scalar(text string, isStr, seqCtx, simpleKey bool) {
 		e.writePlain(a.scalar, split)
 	}
 	e.popIndent()
+}
+
+// isTimestamp reports whether a plain scalar loads back as this same timestamp text.
+func isTimestamp(s string) bool {
+	if implicitTag(s) != "!!timestamp" {
+		return false
+	}
+	v, err := constructTimestamp(s)
+	return err == nil && v == s
 }
 
 // resolvesToStr reports whether a plain scalar would load back as a string under ruamel's YAML 1.2 resolver.

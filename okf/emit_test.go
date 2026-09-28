@@ -3,6 +3,7 @@ package okf
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,8 @@ func loadExportGoldens(t *testing.T) []exportGolden {
 	return gs
 }
 
+var plainTimestamp = map[string]bool{"V_DATE": true, "V_DATETIME_OFFSET": true, "V_DATETIME_Z": true, "V_SINGLE_QUOTED_DATE": true}
+
 func TestSerializeMatchesPythonExport(t *testing.T) {
 	for _, g := range loadExportGoldens(t) {
 		t.Run(g.Name, func(t *testing.T) {
@@ -45,8 +48,13 @@ func TestSerializeMatchesPythonExport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got != g.Exported {
-				t.Errorf("go:\n%s\npython:\n%s", got, g.Exported)
+			want := g.Exported
+			if plainTimestamp[g.Name] {
+				// Python quotes a timestamp, so typed readers see a string. OKF §5 values are timestamps.
+				want = strings.Replace(strings.Replace(want, "v: '", "v: ", 1), "'\n---", "\n---", 1)
+			}
+			if got != want {
+				t.Errorf("go:\n%s\nwant:\n%s", got, want)
 			}
 		})
 	}
@@ -60,6 +68,28 @@ func TestSerializeWritesThePromotedFieldsOverAFrontmatterCopy(t *testing.T) {
 	fm.Set("title", "Other")
 	got, _ := Serialize(Concept{Type: "Concept", Title: "T", Frontmatter: fm})
 	if got != "---\ntype: Concept\ntitle: T\nx: '1'\n---\n" {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestATimestampRoundTripsUnquoted(t *testing.T) {
+	doc := "---\ntype: '2026-01-01'\ngenerated: {by: human:a, at: 2026-06-20T22:53:05Z}\nstale_after: 2026-09-23\n---\n"
+	c, err := Parse(doc, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := Serialize(c)
+	want := "---\ntype: '2026-01-01'\ngenerated: {by: human:a, at: 2026-06-20T22:53:05+00:00}\nstale_after: 2026-09-23\n---\n"
+	if got != want {
+		t.Fatalf("%q", got)
+	}
+	if again, _ := Parse(got, "p"); !reflect.DeepEqual(again, c) {
+		t.Fatalf("%+v", again)
+	}
+	// An impossible date stays quoted, or the export would not import.
+	fm := NewMap()
+	fm.Set("v", "2026-02-30")
+	if got, _ := Serialize(Concept{Type: "C", Frontmatter: fm}); !strings.Contains(got, "v: '2026-02-30'") {
 		t.Fatalf("%q", got)
 	}
 }

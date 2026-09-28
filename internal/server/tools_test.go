@@ -123,6 +123,45 @@ func TestCreateRejectsAPathReservedForAGeneratedBundleFile(t *testing.T) {
 	wantToolError(t, err, "reserved")
 }
 
+func TestAnAgentCannotWriteAnAttestedComputation(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	tools := NewTools(cs, tenant, "mcp")
+	_, err := tools.Create(ctx, "computations/revenue", map[string]any{"type": "Attested Computation"})
+	wantToolError(t, err, "Attested Computation")
+
+	// One imported through a bundle is read-only here, including a change of type.
+	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "computations/revenue", Type: "Attested Computation", Body: "SELECT 1"}, "import"); err != nil {
+		t.Fatal(err)
+	}
+	for _, kw := range []map[string]any{{"body": "SELECT 2"}, {"type": "Concept"}} {
+		_, err = tools.Update(ctx, "computations/revenue", nil, kw)
+		wantToolError(t, err, "Attested Computation")
+	}
+	_, err = tools.Relate(ctx, "computations/revenue", "a/b")
+	wantToolError(t, err, "Attested Computation")
+}
+
+func TestAnAgentCannotSetOrChangeVerified(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	tools := NewTools(cs, tenant, "mcp")
+	claim := okf.NewMap()
+	claim.Set("by", "human:ahormati")
+	fm := okf.NewMap()
+	fm.Set("verified", claim)
+	_, err := tools.Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": fm})
+	wantToolError(t, err, "verified")
+
+	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: fm}, "import"); err != nil {
+		t.Fatal(err)
+	}
+	// Other edits keep verified as stored; dropping or replacing it is refused.
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "new"}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": okf.NewMap()})
+	wantToolError(t, err, "verified")
+}
+
 func TestCreateRejectsAPathThatIsTaken(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/b", map[string]any{"body": "first"})

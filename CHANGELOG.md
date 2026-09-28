@@ -37,6 +37,15 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   concept's own fields over any such key already stored, so it never exports an empty `type`.
 - Import accepts a closing `---` at the end of the file, a byte-order mark, and trailing blanks on
   the opening `---`. It refused these conformant files with "type is required".
+- `keepsake validate` reports a link to a missing concept as a warning and exits 0. OKF §6.1 says a
+  broken link is not malformed.
+- Link extraction skips fenced code and code spans, reads reference links and `<angle-bracket>`
+  destinations, and ignores links to directories and to files other than `.md`. A concept's stored
+  links refresh on its next write or re-import.
+- Export writes a frontmatter timestamp unquoted, so a typed YAML reader sees a timestamp, not a
+  string.
+- MCP writes refuse to create or change an `Attested Computation` (OKF §10.3), and refuse to set or
+  change `verified` (§5.2). A bundle import still writes both.
 
 ## 0.3.0 — 2026-09-24
 

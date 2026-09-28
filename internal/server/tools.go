@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -128,9 +129,39 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	return c, nil
 }
 
+// attested is the OKF §10 type whose computation an agent MUST NOT author or edit.
+const attested = "Attested Computation"
+
+// guard refuses what an agent MUST NOT write: an Attested Computation, or a change to `verified`.
+// Both still arrive through a bundle import.
+func guard(existing *okf.Concept, c okf.Concept) error {
+	if c.Type == attested || existing != nil && existing.Type == attested {
+		return toolErr("an Attested Computation cannot be written here: OKF §10.3 forbids an agent from authoring or editing its computation")
+	}
+	var before any
+	if existing != nil {
+		before = verified(existing.Frontmatter)
+	}
+	if !reflect.DeepEqual(before, verified(c.Frontmatter)) {
+		return toolErr("`verified` records a human or process confirmation, so an agent cannot set or change it (OKF §5.2)")
+	}
+	return nil
+}
+
+func verified(fm *okf.Map) any {
+	if fm == nil {
+		return nil
+	}
+	v, _ := fm.Get("verified")
+	return v
+}
+
 func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (writeResult, error) {
 	c, err := t.concept(path, kw)
 	if err != nil {
+		return writeResult{}, err
+	}
+	if err := guard(nil, c); err != nil {
 		return writeResult{}, err
 	}
 	version, created, err := t.c.Create(ctx, t.t, c, t.actor)
@@ -166,6 +197,9 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	}
 	c, err := t.concept(path, merged)
 	if err != nil {
+		return nil, err
+	}
+	if err := guard(&existing, c); err != nil {
 		return nil, err
 	}
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)

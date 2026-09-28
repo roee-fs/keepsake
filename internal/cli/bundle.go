@@ -181,28 +181,28 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	return len(concepts), nil
 }
 
-// ValidateBundle returns every rule the bundle breaks: per-concept errors plus links to nothing.
-func ValidateBundle(root string) ([]string, error) {
+// ValidateBundle returns every rule the bundle breaks, and a warning per link to nothing.
+// OKF §6.1 makes a broken link not-yet-written knowledge, not an error.
+func ValidateBundle(root string) (errs, warnings []string, err error) {
 	concepts, err := documents(root, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	known := map[string]bool{}
 	for _, c := range concepts {
 		known[c.Path] = true
 	}
-	var errs []string
 	for _, c := range concepts {
 		for _, e := range okf.Validate(c) {
 			errs = append(errs, c.Path+": "+e)
 		}
 		for _, l := range c.Links {
 			if !known[l] {
-				errs = append(errs, c.Path+": link to unknown concept "+l)
+				warnings = append(warnings, c.Path+": link to unknown concept "+l)
 			}
 		}
 	}
-	return errs, nil
+	return errs, warnings, nil
 }
 
 // renderIndex groups the corpus by its first path segment.

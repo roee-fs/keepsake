@@ -31,6 +31,9 @@ func Parse(text, path string) (Concept, error) {
 	}, nil
 }
 
+// field is a promoted value, which OKF types as a string whatever it looks like.
+type field string
+
 // promoted are the frontmatter keys Concept holds as fields.
 var promoted = map[string]bool{"type": true, "title": true, "description": true}
 
@@ -47,12 +50,12 @@ func promote(fm *Map, key string) string {
 // Serialize renders a concept as an OKF document, failing only on a non-finite float.
 func Serialize(c Concept) (string, error) {
 	meta := NewMap()
-	meta.Set("type", c.Type)
+	meta.Set("type", field(c.Type))
 	if c.Title != "" {
-		meta.Set("title", c.Title)
+		meta.Set("title", field(c.Title))
 	}
 	if c.Description != "" {
-		meta.Set("description", c.Description)
+		meta.Set("description", field(c.Description))
 	}
 	if c.Frontmatter != nil {
 		for _, k := range c.Frontmatter.keys {
