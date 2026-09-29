@@ -13,6 +13,13 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 - The database roles are now `keepsake_owner` and `keepsake_app`, not
   `okf_owner` and `okf_app`. The schema is still `okf`.
+- A version comes from one database-wide sequence, so it never repeats. It only
+  grows, skips numbers, and no longer counts a concept's edits. A path deleted and
+  created again gets a new version, so a stale `expected_version` gets a conflict
+  instead of overwriting the new concept. `expected_version` now accepts up to
+  2^53 - 1.
+- `keepsake import` skips a concept whose content is unchanged, so a re-import
+  adds no revisions and bumps no versions.
 
 ### Upgrading
 
@@ -26,15 +33,29 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   rename. Upgrade right after it. In `existing` mode, update `postgres.dsn` and
   `postgres.ownerDsn` in the same upgrade.
 - In `existing` mode, a server role other than `keepsake_app` MUST be granted
-  `DELETE` on `concept` and `concept_revision` before it serves `/bundle`.
+  `USAGE` on the sequence `version_seq` before the upgrade, or every write fails.
+  Run as the owner role: `GRANT USAGE ON SEQUENCE okf.version_seq TO <server role>;`
+  after the migration, or set `ALTER DEFAULT PRIVILEGES FOR ROLE <owner> IN SCHEMA okf
+  GRANT USAGE ON SEQUENCES TO <server role>;` before it. `managed` mode grants it.
+  That role also needs `DELETE` on `concept` before it serves `/bundle`.
+- The migration rewrites `concept` and `concept_revision` to widen `version` to
+  `bigint`. Both tables are locked while it runs, and the time grows with their size.
+- An agent holding a version read before the upgrade still gets a correct answer:
+  the sequence starts above every existing version.
+- A rollback MUST first take the schema back to revision 0005, as the owner role,
+  with `okf` replaced by your `KEEPSAKE_SCHEMA` if you set one:
+  `BEGIN; ALTER TABLE okf.concept ALTER COLUMN version SET DEFAULT 1; DROP SEQUENCE
+  okf.version_seq; UPDATE okf.alembic_version SET version_num = '0005'; COMMIT;`.
+  `version` stays `bigint`, and delete revisions stay in the log. The older release
+  reads both.
 
 ### Added
 
 - `PUT /bundle?prefix=P` replaces the concepts under `P/` with an uploaded
   gzipped tar of OKF files, in one transaction. In jwt mode the token MUST carry
   the `bundle` scope, which `keepsake token --scope bundle` mints, so an agent's
-  token cannot call it. It deletes the concepts the bundle omits, and their
-  revision history.
+  token cannot call it. It deletes the concepts the bundle omits, and logs each
+  delete as a revision.
 - `bench/run.py` builds a variant's server from a git ref (`"ref": "origin/main"`), each with its
   own database, so a run compares server builds. `run.json` records each build's commit.
 - The report adds input tokens, reads, link-only reads (a concept opened only through a link) and

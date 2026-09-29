@@ -49,12 +49,14 @@ func fixture(t *testing.T) (*store.ConceptStore, uuid.UUID) {
 	return cs, testTenant(t)
 }
 
-func create(t *testing.T, c okf.Concept) {
+func create(t *testing.T, c okf.Concept) int {
 	t.Helper()
 	cs, tenant := fixture(t)
-	if _, _, err := cs.Create(ctx, tenant, c, "seed"); err != nil {
+	version, _, err := cs.Create(ctx, tenant, c, "seed")
+	if err != nil {
 		t.Fatal(err)
 	}
+	return version
 }
 
 func read(t *testing.T, path string) okf.Concept {
@@ -106,9 +108,9 @@ func TestReadRoundTripsACreatedConcept(t *testing.T) {
 	c := okf.Concept{
 		Path: "a/b", Type: "Concept", Title: "T", Description: "D",
 		Body: "B [x](../detect/dormant.md)", Frontmatter: fm,
-		Links: []string{"detect/dormant"}, Version: 1,
+		Links: []string{"detect/dormant"},
 	}
-	create(t, c)
+	c.Version = create(t, c)
 	got := read(t, "a/b")
 	if !reflect.DeepEqual(got, c) {
 		t.Fatalf("read = %+v, want %+v", got, c)
@@ -773,12 +775,13 @@ func TestActivityOfEveryTenantBreaksATiedRevisionByTenantId(t *testing.T) {
 // Detail filters its history by path in SQL, so other paths cannot crowd it out.
 func TestDetailHistoryIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
 	cs, tenant := fixture(t)
-	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "detect/dormant", Type: "Concept", Title: "v1"}, "seed"); err != nil {
+	one, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "detect/dormant", Type: "Concept", Title: "v1"}, "seed")
+	if err != nil {
 		t.Fatal(err)
 	}
-	one := 1
-	if _, _, err := cs.Update(ctx, tenant, okf.Concept{Path: "detect/dormant", Type: "Concept", Title: "v2"}, "seed", &one); err != nil {
-		t.Fatal(err)
+	two, conflict, err := cs.Update(ctx, tenant, okf.Concept{Path: "detect/dormant", Type: "Concept", Title: "v2"}, "seed", &one)
+	if err != nil || conflict != nil {
+		t.Fatal(conflict, err)
 	}
 	// More noisy revisions on other paths than the limit passed below: with a
 	// tenant-wide scan, these alone would crowd "detect/dormant" out entirely.
@@ -792,8 +795,8 @@ func TestDetailHistoryIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(revs) != 2 || revs[0].Version != 2 || revs[1].Version != 1 {
-		t.Fatalf("Detail history = %+v, want [2, 1]", revs)
+	if len(revs) != 2 || revs[0].Version != two || revs[1].Version != one {
+		t.Fatalf("Detail history = %+v, want [%d, %d]", revs, two, one)
 	}
 	for _, r := range revs {
 		if r.TenantID != tenant {

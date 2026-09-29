@@ -64,7 +64,7 @@ The chart configures no backups. You MUST set up one of these:
 ## Sizing
 
 - The `posting` table takes about 8 times the space of `concept`.
-- Every write appends a revision. Nothing prunes revisions yet.
+- Every write appends a revision, a delete included. Nothing prunes revisions yet.
 - The database sees `postgres.poolSize` × `replicaCount` connections.
 
 ## Auth and access
@@ -93,8 +93,9 @@ curl -X PUT --data-binary @bundle.tgz \
   "https://keepsake.example/bundle?prefix=docs/runbooks"
 ```
 
-- A replace deletes concepts and their revision history. Operators MUST NOT give
-  a `bundle`-scoped token to anything an LLM drives. Auth mode none has no
+- A replace deletes concepts. Their history stays, ending in a `delete`
+  revision, and a concept whose content is unchanged is not rewritten. Operators
+  MUST NOT give a `bundle`-scoped token to anything an LLM drives. Auth mode none has no
   tokens, so any client that reaches it can upload.
 - An upload MUST hold at least one concept. The limits are 32 MiB compressed,
   64 MiB unpacked, 20,000 files, 1 MiB per file, and 256 KiB per concept body,

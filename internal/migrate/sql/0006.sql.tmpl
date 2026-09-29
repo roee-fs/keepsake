@@ -1,0 +1,38 @@
+-- Versions come from one sequence, so a path never reuses one: a stale read cannot match
+-- a concept that was deleted and re-created, and pruning revisions cannot reset a count.
+CREATE SEQUENCE {{.SCHEMA}}.version_seq AS bigint;
+
+-- The sequence starts above every version, so each path's next version exceeds its last.
+-- FORCE ROW LEVEL SECURITY binds the owner too, so the maximum is read through admin_read.
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM pg_policies WHERE schemaname = '{{.SCHEMA}}'
+      AND tablename IN ('concept', 'concept_revision') AND policyname = '{{.ADMIN_POLICY}}') < 2 THEN
+    RAISE EXCEPTION '{{.SCHEMA}} lacks a {{.ADMIN_POLICY}} policy, so the highest version cannot be read';
+  END IF;
+END $$;
+SELECT set_config('{{.ADMIN_GUC}}', 'on', true),
+       set_config('{{.TENANT_GUC}}', '00000000-0000-0000-0000-000000000000', true);
+SELECT setval('{{.SCHEMA}}.version_seq', greatest(
+  (SELECT max(version) FROM {{.SCHEMA}}.concept),
+  (SELECT max(version) FROM {{.SCHEMA}}.concept_revision),
+  0) + 1, false);
+SELECT set_config('{{.ADMIN_GUC}}', 'off', true);
+
+ALTER TABLE {{.SCHEMA}}.concept
+  ALTER COLUMN version TYPE bigint,
+  ALTER COLUMN version SET DEFAULT nextval('{{.SCHEMA}}.version_seq');
+ALTER TABLE {{.SCHEMA}}.concept_revision ALTER COLUMN version TYPE bigint;
+ALTER SEQUENCE {{.SCHEMA}}.version_seq OWNED BY {{.SCHEMA}}.concept.version;
+
+-- A delete is a revision too, so history stays append-only.
+ALTER TABLE {{.SCHEMA}}.concept_revision
+  DROP CONSTRAINT concept_revision_op_check,
+  ADD CONSTRAINT concept_revision_op_check CHECK (op IN ('create', 'update', 'delete'));
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{.APP_ROLE}}') THEN
+    GRANT USAGE ON SEQUENCE {{.SCHEMA}}.version_seq TO {{.APP_ROLE}};
+  END IF;
+END $$;

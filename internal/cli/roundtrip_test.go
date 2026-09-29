@@ -178,10 +178,10 @@ func TestExportGeneratesIndexAndLog(t *testing.T) {
 func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
 	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
+	mustImport(t, cs, tenant, bundle(t, tmp, strings.ReplaceAll(doc, "beneath", "above"), "layers.md"))
 	mustImport(t, cs, tenant, bundle(t, tmp, doc, "other.md"))
 
-	// Three revisions: the first file, the same file replayed as an update by the
-	// second import, and the second file.
+	// Three revisions: layers, its edit, and other. The third import replays layers unchanged, which writes nothing.
 	full, err := renderLog(ctx, cs, tenant, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -193,7 +193,8 @@ func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
 		t.Fatal(full)
 	}
 	// OKF §9 lists a log newest first.
-	if strings.Index(full, "`architecture/layers` v2") > strings.Index(full, "`architecture/layers` v1") {
+	newest, _, _ := strings.Cut(full[strings.Index(full, "`architecture/layers`"):], "\n")
+	if !strings.Contains(newest, " update by") {
 		t.Fatal(full)
 	}
 	revisions, err := cs.Revisions(ctx, tenant, 10)
@@ -244,9 +245,10 @@ func TestImportCountsTheConceptsItWrote(t *testing.T) {
 func TestReimportingAPathUpdatesIt(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
 	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
+	first := read(t, cs, tenant, "architecture/layers")
 	mustImport(t, cs, tenant, bundle(t, tmp, strings.ReplaceAll(doc, "beneath", "above"), "layers.md"))
 	stored := read(t, cs, tenant, "architecture/layers")
-	if !strings.Contains(stored.Body, "above") || stored.Version != 2 {
+	if !strings.Contains(stored.Body, "above") || stored.Version <= first.Version {
 		t.Fatalf("%+v", stored)
 	}
 }

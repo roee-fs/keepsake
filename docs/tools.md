@@ -39,6 +39,10 @@ markdown links to the target's bundle path: `[failover](/runbooks/db-failover.md
 written since that version, nothing changes. The response carries the current
 version and body to merge against. Writes to different concepts never contend.
 
+A version is an opaque token from one sequence. It only grows, never repeats,
+and skips numbers. A path deleted and created again gets a new version, so a
+stale `expected_version` never matches it.
+
 Every write appends a revision, attributed to the caller: the JWT `sub`, or
 the fixed actor in `none` mode.
 

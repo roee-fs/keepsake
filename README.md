@@ -178,6 +178,24 @@ Agents call the Service over MCP, and operators use the console through the
 same Service. A Helm hook runs the migration Job before every install and
 upgrade.
 
+## Versioning
+
+Every concept carries a `version`. Every write gives it a new one, drawn from a
+single sequence that no write ever reuses. A version is a token, not a count:
+it only ever grows, and gaps between versions are normal.
+
+Every write also appends a revision: who wrote what, and when. Deletes are
+revisions too, so the log is append-only and a deleted concept's history stays
+readable in the console.
+
+To edit safely, an agent reads a concept and passes its `version` back as
+`expected_version`. If anyone wrote the concept since, including by deleting and
+re-creating it, the write changes nothing. The agent gets the current version and
+body to merge against.
+
+An import or upload skips a concept whose content is unchanged, so pushing the
+same bundle twice creates no revisions and bumps no versions.
+
 ## How it differs
 
 **Tenancy is enforced, not filtered.** This is the real gap in the market. Mem0
@@ -238,8 +256,7 @@ kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub alice --ttl
 - [x] Link extraction and per-write validation
 - [x] Schema migration: concepts, revisions, RLS policies, tenant purge
 - [x] Tenant-scoped connection handling
-- [x] Writes with optional compare-and-swap and an append-only revision log,
-      except that a bundle upload removes the history of the concepts it deletes
+- [x] Writes with optional compare-and-swap and an append-only revision log
 - [x] Read paths: read, list, search, grep, backlinks
 - [x] Startup verification that refuses a privileged database role
 - [x] MCP server over streamable HTTP

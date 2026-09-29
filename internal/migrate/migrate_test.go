@@ -14,6 +14,7 @@ import (
 
 	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/okf"
 )
 
 var db *pgtest.DB
@@ -396,7 +397,7 @@ func TestANonDefaultSchemaMigrates(t *testing.T) {
 // A fresh database at each revision an older release left it at. The fixture
 // is built from the same embedded templates as Up itself.
 func TestUpgradesADatabaseAlembicMigrated(t *testing.T) {
-	for _, left := range []string{"0002", "0003", "0004"} {
+	for _, left := range []string{"0002", "0003", "0004", "0005"} {
 		t.Run(left, func(t *testing.T) { upgradeFrom(t, left) })
 	}
 }
@@ -461,8 +462,8 @@ func upgradeFrom(t *testing.T, left string) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "0005" {
-		t.Fatalf("version_num = %s, want 0005", version)
+	if version != "0006" {
+		t.Fatalf("version_num = %s, want 0006", version)
 	}
 
 	// The startup check pins admin_read to 0004's exact expression.
@@ -479,6 +480,12 @@ func upgradeFrom(t *testing.T, left string) {
 		if err != nil || len(hits) != 1 || hits[0].Path != "old" {
 			t.Fatalf("Search after upgrade = %+v, %v, want the pre-0005 concept", hits, err)
 		}
+	}
+	// The sequence starts above every version written before 0006, so no path can reuse one.
+	one := 1
+	v, conflict, err := store.NewConceptStore(s).Update(ctx, tenants[0], okf.Concept{Path: "old", Type: "note"}, "t", &one)
+	if err != nil || conflict != nil || v <= 1 {
+		t.Fatalf("Update after upgrade = %d, %+v, %v, want a version above 1", v, conflict, err)
 	}
 }
 

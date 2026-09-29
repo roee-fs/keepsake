@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -141,15 +142,16 @@ func TestLinksComeFromTheBodyNotFromTheArgument(t *testing.T) {
 func TestUpdateConflictReturnsCurrentContent(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/c", map[string]any{"title": "t", "body": "v1"})
-	one := 1
-	if _, err := tools.Update(ctx, "a/c", &one, map[string]any{"body": "v2"}); err != nil {
+	one := read(t, tools, "a/c").Version
+	two, err := tools.Update(ctx, "a/c", &one, map[string]any{"body": "v2"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	got, err := tools.Update(ctx, "a/c", &one, map[string]any{"body": "v3"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (conflictResult{Conflict: true, CurrentVersion: 2, CurrentBody: "v2"}); got != want {
+	if want := (conflictResult{Conflict: true, CurrentVersion: two.(writeResult).Version, CurrentBody: "v2"}); got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
@@ -611,9 +613,10 @@ func TestAnUnknownToolIsAnErrorResult(t *testing.T) {
 // New: the text content is json.dumps of the structured content, byte for byte.
 func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	session := connect(t, newTools(t))
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
 		"path": "a/b", "type": "Concept", "body": "café \"<&>\"\n", "frontmatter": map[string]any{"n": 1},
-	}}); err != nil {
+	}})
+	if err != nil {
 		t.Fatal(err)
 	}
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "a/b"}})
@@ -621,7 +624,7 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
-		`"frontmatter": {"n": 1}, "version": 1, "links": [], "backlinks": []}`
+		fmt.Sprintf(`"frontmatter": {"n": 1}, "version": %v, "links": [], "backlinks": []}`, field(created.StructuredContent, "version"))
 	if got := text(t, res); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}

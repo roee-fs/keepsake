@@ -187,7 +187,7 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"bundle holds no concepts"})
 			return
 		}
-		deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, c.actor)
+		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, c.actor)
 		switch {
 		case store.IsUnavailable(err):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
@@ -199,7 +199,7 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			return
 		}
 		// The prefix is not logged, since a path names a concept.
-		slog.Info("bundle replaced", "tenant", c.tenant.String(), "actor", c.actor, "written", len(concepts), "deleted", deleted)
-		writeJSON(w, r, http.StatusOK, map[string]int{"written": len(concepts), "deleted": deleted})
+		slog.Info("bundle replaced", "tenant", c.tenant.String(), "actor", c.actor, "written", written, "deleted", deleted)
+		writeJSON(w, r, http.StatusOK, map[string]int{"written": written, "deleted": deleted})
 	}
 }

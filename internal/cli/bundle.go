@@ -88,12 +88,10 @@ func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	if err != nil {
 		return 0, err
 	}
-	n, err := cs.ImportMany(ctx, tenant, concepts, actor)
-	var nf *store.NotFoundError
-	if errors.As(err, &nf) {
-		return 0, fmt.Errorf("%s was removed while the bundle was importing", nf.Path)
+	if _, err := cs.ImportMany(ctx, tenant, concepts, actor); err != nil {
+		return 0, err
 	}
-	return n, err
+	return len(concepts), nil
 }
 
 // target is a concept's file relative to the bundle root, refused if it would leave the bundle.

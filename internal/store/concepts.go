@@ -45,8 +45,8 @@ var updateSQL = func() string {
 	for i, f := range fields {
 		assignments[i] = fmt.Sprintf("%s=$%d", f, i+1)
 	}
-	return fmt.Sprintf("WITH w AS (UPDATE concept SET %s, updated_by=$%d, version=version+1, updated_at=now() "+
-		"WHERE path=$%d AND ($%d::int IS NULL OR version=$%d) RETURNING version) "+revise,
+	return fmt.Sprintf("WITH w AS (UPDATE concept SET %s, updated_by=$%d, version=nextval('version_seq'), updated_at=now() "+
+		"WHERE path=$%d AND ($%d::bigint IS NULL OR version=$%d) RETURNING version) "+revise,
 		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3, n+4, n+2, "update", n+5, n+1)
 }()
 
@@ -92,58 +92,59 @@ func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Conc
 	return version, conflict, err
 }
 
-// ImportMany stores a bundle in one transaction, last write winning per path; err is a *NotFoundError if a path vanishes.
-func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (int, error) {
+// ImportMany stores a bundle in one transaction, last write winning per path. written counts the concepts that changed.
+func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (written int, err error) {
 	writes, err := newWrites(bundle)
 	if err != nil {
 		return 0, err
 	}
-	if err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error { return importWrites(ctx, tx, tenant, writes, actor) }); err != nil {
-		return 0, err
-	}
-	return len(bundle), nil
+	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+		written, err = importWrites(ctx, tx, tenant, writes, actor)
+		return err
+	})
+	return written, err
 }
 
-// replaceSQL deletes the concepts under $1 that $2 omits. NOT EXISTS keeps a generic plan from scanning $2 per row.
-const replaceSQL = "DELETE FROM concept WHERE starts_with(path, $1) AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) k WHERE k = path) RETURNING path"
+// replaceSQL deletes the concepts under $1 that $2 omits and logs each as a delete revision with a new version.
+// NOT EXISTS keeps a generic plan from scanning $2 per row.
+const replaceSQL = `
+WITH d AS (
+  DELETE FROM concept WHERE starts_with(path, $1) AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) k WHERE k = path)
+  RETURNING tenant_id, path, type, title, description, body, frontmatter, links
+)
+INSERT INTO concept_revision (tenant_id, path, version, op, snapshot, updated_by)
+SELECT tenant_id, path, v, 'delete', jsonb_build_object('path', path, 'type', type, 'title', title,
+  'description', description, 'body', body, 'frontmatter', frontmatter, 'links', to_jsonb(links), 'version', v), $3
+FROM d, LATERAL (SELECT nextval('version_seq') AS v) s`
 
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
-func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (deleted int, err error) {
+func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (written, deleted int, err error) {
 	under := prefix + "/"
 	keep := make([]string, len(bundle))
 	for i, c := range bundle {
 		if !strings.HasPrefix(c.Path, under) {
-			return 0, fmt.Errorf("%s is not under %s", c.Path, under)
+			return 0, 0, fmt.Errorf("%s is not under %s", c.Path, under)
 		}
 		keep[i] = c.Path
 	}
 	writes, err := newWrites(bundle)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		// Every replace of a tenant serializes, so replaces of nested prefixes cannot interleave either.
 		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant.String()); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, replaceSQL, under, keep)
+		tag, err := tx.Exec(ctx, replaceSQL, under, keep, actor)
 		if err != nil {
 			return err
 		}
-		gone, err := pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
-			return err
-		}
-		deleted = len(gone)
-		// A separate statement takes a fresh snapshot, so it also sees a revision committed while the delete waited on a row lock.
-		if deleted > 0 {
-			if _, err := tx.Exec(ctx, "DELETE FROM concept_revision WHERE path = ANY($1)", gone); err != nil {
-				return err
-			}
-		}
-		return importWrites(ctx, tx, tenant, writes, actor)
+		deleted = int(tag.RowsAffected())
+		written, err = importWrites(ctx, tx, tenant, writes, actor)
+		return err
 	})
-	return deleted, err
+	return written, deleted, err
 }
 
 func newWrites(bundle []okf.Concept) ([]write, error) {
@@ -157,29 +158,43 @@ func newWrites(bundle []okf.Concept) ([]write, error) {
 	return writes, nil
 }
 
-// importWrites inserts each write, or overwrites its path with no version check.
-func importWrites(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, writes []write, actor string) error {
-	var inserts, updates pgx.Batch
+// upsertSQL creates or overwrites a concept with no version check, since a bundle is the operator's
+// authority. It writes nothing when the concept is unchanged, so a re-import adds no revisions.
+// xmax is zero only on a row this statement inserted.
+var upsertSQL = func() string {
+	n := len(fields)
+	set := make([]string, n)
+	cols := make([]string, n)
+	for i, f := range fields {
+		set[i] = f + "=EXCLUDED." + f
+		cols[i] = "concept." + f
+	}
+	return fmt.Sprintf("WITH w AS (INSERT INTO concept (tenant_id, path, %s, updated_by) VALUES (%s) "+
+		"ON CONFLICT (tenant_id, path) DO UPDATE SET %s, updated_by=EXCLUDED.updated_by, version=EXCLUDED.version, updated_at=now() "+
+		"WHERE (%s) IS DISTINCT FROM (%s) RETURNING version, xmax = 0 AS created) "+
+		"INSERT INTO concept_revision (tenant_id, path, version, op, snapshot, updated_by) "+
+		"SELECT $1, $2, version, CASE WHEN created THEN 'create' ELSE 'update' END, "+
+		"$%d::jsonb || jsonb_build_object('version', version), $%d FROM w RETURNING version",
+		strings.Join(fields, ", "), placeholders(n+3), strings.Join(set, ", "),
+		strings.Join(cols, ", "), "EXCLUDED."+strings.Join(fields, ", EXCLUDED."), n+4, n+3)
+}()
+
+// importWrites creates or overwrites each write, and returns how many changed.
+func importWrites(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, writes []write, actor string) (written int, err error) {
+	var batch pgx.Batch
 	for _, w := range writes {
-		inserts.Queue(insertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
-			_, created, err := scanInsert(row)
-			if err == nil && !created {
-				// The bundle is the operator's authority: there is no version to compare.
-				updates.Queue(updateSQL, w.updateArgs(tenant, actor, nil)...).QueryRow(func(row pgx.Row) error {
-					// No expected version, so no row means the path is gone; the open batch holds the connection.
-					if err := row.Scan(new(int)); !errors.Is(err, pgx.ErrNoRows) {
-						return err
-					}
-					return &NotFoundError{w.c.Path}
-				})
+		batch.Queue(upsertSQL, w.insertArgs(tenant, actor)...).QueryRow(func(row pgx.Row) error {
+			err := row.Scan(new(int))
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			if err == nil {
+				written++
 			}
 			return err
 		})
 	}
-	if err := tx.SendBatch(ctx, &inserts).Close(); err != nil {
-		return err
-	}
-	return tx.SendBatch(ctx, &updates).Close()
+	return written, tx.SendBatch(ctx, &batch).Close()
 }
 
 // write is a concept with its jsonb parameters marshalled once.

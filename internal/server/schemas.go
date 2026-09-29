@@ -10,8 +10,8 @@ import (
 // MaxLimit caps and advertises a call's results, so one call cannot return the whole corpus.
 const MaxLimit = 200
 
-// MaxVersion is int4's maximum, so expected_version never overflows into a database error.
-const MaxVersion = 2147483647
+// MaxVersion is the largest integer a JSON number carries exactly, far below bigint's maximum.
+const MaxVersion = 1<<53 - 1
 
 // obj builds an ordered JSON object from key, value pairs.
 func obj(kv ...any) *okf.Map {
