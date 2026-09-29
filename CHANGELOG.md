@@ -25,6 +25,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - Pods still running the old release cannot open new connections after the
   rename. Upgrade right after it. In `existing` mode, update `postgres.dsn` and
   `postgres.ownerDsn` in the same upgrade.
+- In `existing` mode, a server role other than `keepsake_app` MUST be granted
+  `DELETE` on `concept` and `concept_revision` before it serves `/bundle`.
 
 ### Added
 
@@ -62,11 +64,6 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   concept's own fields over any such key already stored, so it never exports an empty `type`.
 - Import accepts a closing `---` at the end of the file, a byte-order mark, and trailing blanks on
   the opening `---`. It refused these conformant files with "type is required".
-
-### Upgrading
-
-- In `existing` mode, a server role other than `okf_app` MUST be granted
-  `DELETE` on `concept` and `concept_revision` before it serves `/bundle`.
 
 ## 0.3.0 — 2026-09-24
 

@@ -140,6 +140,27 @@ func TestBytesAfterTheArchiveAreRefused(t *testing.T) {
 	}
 }
 
+func TestAnArchiveCutBetweenEntriesIsRefused(t *testing.T) {
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	for _, name := range []string{"a.md", "b.md"} {
+		body := md("Doc", name)
+		if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body))}); err != nil {
+			t.Fatal(err)
+		}
+		io.WriteString(tw, body)
+	}
+	tw.Flush()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	// a.md's header and data block, then nothing: b.md and the end-of-archive marker are cut.
+	gz.Write(raw.Bytes()[:1024])
+	gz.Close()
+	if _, _, err := readBundle(&buf, "docs"); err == nil || errors.Is(err, errTooLarge) {
+		t.Fatalf("err = %v, want a format error", err)
+	}
+}
+
 func TestACorruptChecksumIsRefused(t *testing.T) {
 	body := tarball(t, entry{name: "a.md", body: md("Doc", "")}).Bytes()
 	// The gzip trailer is the CRC-32 then the length, so this flips a CRC byte.
@@ -189,7 +210,7 @@ func blockPadding(n int64) int64 { return -n & 511 }
 
 // paxRecord formats one PAX record, "<length> <key>=<value>\n", whose length counts itself.
 func paxRecord(k, v string) string {
-	size := len(k) + len(v) + 3 // "=", "\n", and a first guess at the length digits
+	size := len(k) + len(v) + 3 // The 3 counts " ", "=" and "\n"; the next line adds the length's digits.
 	size += len(strconv.Itoa(size))
 	rec := strconv.Itoa(size) + " " + k + "=" + v + "\n"
 	if len(rec) != size {

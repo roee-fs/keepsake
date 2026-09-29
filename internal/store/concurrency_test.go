@@ -500,10 +500,17 @@ func TestReplacePrefixDeletesARevisionCommittedWhileItWaits(t *testing.T) {
 	}()
 	// Commit only once the replace is queued behind the held row lock.
 	for blocked := false; !blocked; time.Sleep(10 * time.Millisecond) {
+		select {
+		case err := <-replaced:
+			close(release)
+			t.Fatalf("ReplacePrefix = %v before it waited on the row lock", err)
+		default:
+		}
 		err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 			return tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))", pid).Scan(&blocked)
 		})
 		if err != nil {
+			close(release)
 			t.Fatal(err)
 		}
 	}

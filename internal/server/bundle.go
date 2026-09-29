@@ -3,6 +3,7 @@ package server
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -20,7 +21,7 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// Upload limits, vars so tests can lower them.
+// The upload limits are vars so that tests can lower them.
 // ponytail: a bundle sits whole in memory, so uploads run one at a time; stream it if bundles outgrow these.
 var (
 	uploads           = make(chan struct{}, 1)
@@ -39,10 +40,12 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 	if err != nil {
 		return nil, nil, fmt.Errorf("not gzip: %w", err)
 	}
-	// One byte past the limit, so reaching it is distinguishable from ending exactly on it.
+	// The limit is one byte past the maximum, so reaching it differs from ending exactly on it.
 	unpacked := &io.LimitedReader{R: gz, N: maxUnpacked + 1}
-	tr := tar.NewReader(unpacked)
+	tail := &zeroTail{r: unpacked}
+	tr := tar.NewReader(tail)
 	seen := map[string]bool{}
+	var files int
 	var materialized int64
 	for {
 		hdr, err := tr.Next()
@@ -50,6 +53,10 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 			return nil, nil, errTooLarge
 		}
 		if errors.Is(err, io.EOF) {
+			// archive/tar also ends quietly on a stream cut between entries, and the replace would delete what was cut.
+			if tail.n < 2*512 {
+				return nil, nil, errors.New("not a tar archive: it has no end-of-archive marker")
+			}
 			// gzip checks its CRC only at its own end, and refuses trailing bytes as a bad next member.
 			_, err := io.Copy(io.Discard, unpacked)
 			if unpacked.N <= 0 {
@@ -71,6 +78,12 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 		// ._ files are the resource forks macOS tar adds beside each file.
 		case !strings.HasSuffix(name, ".md") || strings.HasPrefix(path.Base(name), "._") || okf.Reserved(rel):
 			continue
+		}
+		// Refused files count too, so the problem list stays bounded.
+		if files++; files > maxFiles {
+			return nil, nil, errTooLarge
+		}
+		switch {
 		case !fs.ValidPath(name):
 			problems = append(problems, name+": not a relative path inside the bundle")
 			continue
@@ -85,9 +98,6 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 			continue
 		}
 		seen[name] = true
-		if len(seen) > maxFiles {
-			return nil, nil, errTooLarge
-		}
 		text, err := io.ReadAll(tr)
 		if unpacked.N <= 0 {
 			return nil, nil, errTooLarge
@@ -112,6 +122,22 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 	}
 }
 
+// zeroTail counts the zero bytes at the end of what has been read through it.
+type zeroTail struct {
+	r io.Reader
+	n int
+}
+
+func (z *zeroTail) Read(p []byte) (int, error) {
+	n, err := z.r.Read(p)
+	if kept := len(bytes.TrimRight(p[:n], "\x00")); kept > 0 {
+		z.n = n - kept
+	} else {
+		z.n += n
+	}
+	return n, err
+}
+
 // replaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
 func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +157,7 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
 			return
 		}
-		// Checked before the slot, so a declared oversized body never holds it.
+		// This runs before the slot is taken, so a declared oversized body never holds it.
 		if r.ContentLength > maxUpload {
 			writeJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
 			return

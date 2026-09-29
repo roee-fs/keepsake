@@ -117,8 +117,8 @@ type claimSet struct {
 	Exp  *float64        `json:"exp"`
 	Nbf  *float64        `json:"nbf"`
 	Tctx json.RawMessage `json:"tctx"`
-	// Scope is space-separated, as OAuth writes it (RFC 8693 §4.2).
-	Scope string `json:"scope"`
+	// Scope is space-separated, as OAuth writes it (RFC 8693 §4.2). Another shape grants nothing but still verifies.
+	Scope json.RawMessage `json:"scope"`
 }
 
 var errForbidden = errors.New("no tenant in the token")
@@ -169,7 +169,9 @@ func (j *JWT) verify(token string) (caller, error) {
 	if err != nil || tenant == uuid.Nil {
 		return caller{}, errForbidden
 	}
-	return caller{tenant, c.Sub, slices.Contains(strings.Fields(c.Scope), uploadScope)}, nil
+	var scope string
+	json.Unmarshal(c.Scope, &scope)
+	return caller{tenant, c.Sub, slices.Contains(strings.Fields(scope), uploadScope)}, nil
 }
 
 // Middleware binds the verified caller, or answers 401 for a bad token and 403 for a token naming no tenant.
@@ -181,7 +183,11 @@ func (j *JWT) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		// The reason is logged, never returned, and never includes the token.
-		slog.Warn("refused /mcp request", "reason", err.Error())
+		msg := "refused /mcp request"
+		if r.Pattern == "PUT /bundle" {
+			msg = "refused /bundle request"
+		}
+		slog.Warn(msg, "reason", err.Error())
 		if errors.Is(err, errForbidden) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return

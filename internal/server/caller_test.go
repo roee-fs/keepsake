@@ -92,6 +92,13 @@ func TestAnAudienceListContainingKeepsakeIsAccepted(t *testing.T) {
 	}
 }
 
+func TestANonStringScopeVerifiesWithoutGrantingUpload(t *testing.T) {
+	c, err := issuer.verify(sign(key, hs256, claims(uuid.NewString(), func(c map[string]any) { c["scope"] = []string{"bundle"} })))
+	if err != nil || c.upload {
+		t.Fatalf("verify = %+v, %v, want a caller without upload", c, err)
+	}
+}
+
 func TestAMinterClockAFewSecondsOffIsTolerated(t *testing.T) {
 	now := time.Now().Unix()
 	for name, mutate := range map[string]func(map[string]any){

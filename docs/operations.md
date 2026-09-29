@@ -101,8 +101,10 @@ curl -X PUT --data-binary @bundle.tgz \
   as for any write.
 - The server runs one upload at a time. Another upload meanwhile gets a 503 with
   `Retry-After: 5`.
-- Links to concepts outside the bundle are not checked. Run `keepsake validate`
-  on the directory first to catch them.
+- Links to concepts outside the bundle are not checked. Operators SHOULD run
+  `keepsake validate` on the directory first to catch them.
+- The archive MUST end with tar's end-of-archive marker. A stream cut between
+  entries gets a 400, so it cannot delete the files it lost.
 
 ## Metrics
 
@@ -136,7 +138,7 @@ tenant. The Go runtime and process metrics are included as well.
 | `tool call failed` | error | `tool`, `err` |
 | `bundle replaced` | info | `tenant`, `actor`, `written`, `deleted` |
 | `refused /mcp request` | warn | `reason` |
-| `refused /bundle request` | warn | `reason`, `actor` |
+| `refused /bundle request` | warn | `reason`, and `actor` once the token verifies |
 
 No line carries a tool's arguments, a concept body, a token or a password.
 `remote_addr` is the TCP peer, so behind a proxy it names the proxy. At `warn`,
