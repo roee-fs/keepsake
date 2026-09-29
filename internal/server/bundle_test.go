@@ -272,7 +272,7 @@ func TestAnUploadReplacesOnlyTheCallersPrefix(t *testing.T) {
 		t.Fatalf("theirs = %v", p)
 	}
 	revs, err := cs.Revisions(ctx, mine, 10)
-	if err != nil || revs[len(revs)-1].UpdatedBy != "platform-ingest" {
+	if err != nil || revs[0].UpdatedBy != "platform-ingest" {
 		t.Fatalf("revisions = %+v, %v, want the token's subject as actor", revs, err)
 	}
 }

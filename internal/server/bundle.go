@@ -69,7 +69,7 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 		case hdr.Typeflag == tar.TypeDir || hdr.Typeflag == tar.TypeXGlobalHeader:
 			continue
 		// ._ files are the resource forks macOS tar adds beside each file.
-		case !strings.HasSuffix(name, ".md") || strings.HasPrefix(path.Base(name), "._") || okf.ReservedPaths[rel]:
+		case !strings.HasSuffix(name, ".md") || strings.HasPrefix(path.Base(name), "._") || okf.Reserved(rel):
 			continue
 		case !fs.ValidPath(name):
 			problems = append(problems, name+": not a relative path inside the bundle")
