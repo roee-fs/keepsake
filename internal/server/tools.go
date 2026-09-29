@@ -15,8 +15,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's retries past concurrent writers; each round has one winner.
-const relateAttempts = 20
+// writeAttempts bounds retries past concurrent writers; each round has one winner.
+const writeAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
 type ToolError struct{ Msg string }
@@ -176,14 +176,25 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
 func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	existing, err := t.c.Read(ctx, t.t, path)
-	if err != nil {
-		return nil, err
+	for range writeAttempts {
+		existing, err := t.c.Read(ctx, t.t, path)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			return nil, toolErr("no concept at " + path)
+		}
+		// Without a version, pin the one guard checks, so a concurrent import cannot slip past it.
+		expected := expectedVersion
+		if expected == nil {
+			expected = &existing.Version
+		}
+		result, err := t.write(ctx, *existing, path, expected, kw)
+		if _, conflict := result.(conflictResult); err != nil || !conflict || expectedVersion != nil {
+			return result, err
+		}
 	}
-	if existing == nil {
-		return nil, toolErr("no concept at " + path)
-	}
-	return t.write(ctx, *existing, path, expectedVersion, kw)
+	return nil, toolErr(path + " is being rewritten faster than the update could be recorded")
 }
 
 // write writes kw over the concept the caller already read.
@@ -262,7 +273,7 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
 			return nil, err

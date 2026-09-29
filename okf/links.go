@@ -8,9 +8,9 @@ import (
 )
 
 // pySpace is Python's str.isspace() set, which re's \s matches for str patterns.
-const pySpace = "\t\n\v\f\r \x1c\x1d\x1e\x1f\u0085  " +
-	"           " +
-	"    　"
+const pySpace = "\t\n\v\f\r \x1c\x1d\x1e\x1f\u0085\u00a0\u1680" +
+	"\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a" +
+	"\u2028\u2029\u202f\u205f\u3000"
 
 func isPySpace(r rune) bool { return strings.ContainsRune(pySpace, r) }
 
@@ -105,10 +105,11 @@ func ExtractLinks(body, p string) []string {
 			if label == "" {
 				label = body[i+1 : closeAt]
 			}
+			// An undefined label is text, so it may still open an inline link.
 			if dest, ok := defs[normalLabel(label)]; ok {
 				add(dest)
+				i = closeAt + 2 + end
 			}
-			i = closeAt + 2 + end
 		case ':':
 			// A definition, which definitions reads.
 		default:
@@ -147,7 +148,8 @@ func conceptTarget(dest string) bool {
 	return ext == "" || strings.EqualFold(ext, ".md")
 }
 
-var definition = regexp.MustCompile(`(?m)^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)`)
+// A definition's line holds only the destination and an optional title, so a footnote is not one.
+var definition = regexp.MustCompile(`(?m)^ {0,3}\[([^\]]+)\]:[ \t]*(<[^>\n]*>|\S+)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t\r]*$`)
 
 // definitions maps each normalized reference label to its destination. The first definition wins.
 func definitions(body string) map[string]string {
@@ -175,13 +177,6 @@ func maskCode(body string) string {
 		return body
 	}
 	b := []byte(body)
-	blank := func(from, to int) {
-		for k := from; k < to; k++ {
-			if b[k] != '\n' {
-				b[k] = ' '
-			}
-		}
-	}
 	// fenceLen is the open fence's length, 0 outside a fenced block.
 	var fenceChar byte
 	fenceLen := 0
@@ -202,53 +197,77 @@ func maskCode(body string) string {
 		switch {
 		case fenceLen > 0:
 			closes := run >= fenceLen && trimmed[0] == fenceChar && len(bytes.TrimSpace(trimmed[run:])) == 0
-			blank(start, end)
+			blank(b[start:end])
 			if closes {
 				fenceLen = 0
 			}
-		case run >= 3:
+		// A backtick fence's info string holds no backtick; such a line opens a code span instead.
+		case run >= 3 && (trimmed[0] == '~' || bytes.IndexByte(trimmed[run:], '`') < 0):
 			fenceChar, fenceLen = trimmed[0], run
-			blank(start, end)
+			blank(b[start:end])
 		}
 		start = end + 1
 	}
-	// A code span runs from a backtick run to the next run of the same length.
-	missing := map[int]bool{}
-	for i := 0; i < len(b); {
-		k := bytes.IndexByte(b[i:], '`')
+	// A code span ends with its paragraph, so each run of lines up to a blank one is masked alone.
+	para := 0
+	for start := 0; start <= len(b); {
+		end := bytes.IndexByte(b[start:], '\n')
+		if end < 0 {
+			end = len(b)
+		} else {
+			end += start
+		}
+		if end == len(b) || len(bytes.TrimSpace(b[start:end])) == 0 {
+			maskSpans(b[para:end])
+			para = end
+		}
+		start = end + 1
+	}
+	return string(b)
+}
+
+// maskSpans blanks each code span in p: a backtick run up to the next run of the same length.
+func maskSpans(p []byte) {
+	type run struct{ at, n int }
+	var runs []run
+	for i := 0; i < len(p); {
+		k := bytes.IndexByte(p[i:], '`')
 		if k < 0 {
 			break
 		}
-		i += k
-		j := i
-		for j < len(b) && b[j] == '`' {
-			j++
+		at := i + k
+		for i = at; i < len(p) && p[i] == '`'; i++ {
 		}
-		n, closeAt := j-i, -1
-		for k := j; !missing[n] && k < len(b); {
-			d := bytes.IndexByte(b[k:], '`')
-			if d < 0 {
-				break
-			}
-			k += d
-			m := k
-			for m < len(b) && b[m] == '`' {
-				m++
-			}
-			if m-k == n {
-				closeAt = k
-				break
-			}
-			k = m
-		}
-		if closeAt < 0 {
-			// No later run of this length exists, so no later opener of that length closes either.
-			missing[n] = true
-			i = j
-			continue
-		}
-		blank(i, closeAt+n)
-		i = closeAt + n
+		runs = append(runs, run{at, i - at})
 	}
-	return string(b)
+	if len(runs) < 2 {
+		return
+	}
+	// next[r] is the next run as long as run r, or -1, which keeps pairing linear.
+	next := make([]int, len(runs))
+	last := map[int]int{}
+	for r := len(runs) - 1; r >= 0; r-- {
+		next[r] = -1
+		if q, ok := last[runs[r].n]; ok {
+			next[r] = q
+		}
+		last[runs[r].n] = r
+	}
+	for r := 0; r < len(runs); {
+		if q := next[r]; q >= 0 {
+			blank(p[runs[r].at : runs[q].at+runs[q].n])
+			r = q + 1
+		} else {
+			r++
+		}
+	}
+}
+
+// blank replaces every byte of p but a newline with a space.
+func blank(p []byte) {
+	for k := range p {
+		if p[k] != '\n' {
+			p[k] = ' '
+		}
+	}
 }
