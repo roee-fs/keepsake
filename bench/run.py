@@ -116,9 +116,9 @@ class Postgres:
                     raise TimeoutError("postgres did not start")
                 time.sleep(0.5)
             for sql in (
-                "CREATE ROLE okf_owner LOGIN PASSWORD 'owner'",
-                "CREATE ROLE okf_app LOGIN PASSWORD 'app'",
-                "CREATE DATABASE bench OWNER okf_owner",
+                "CREATE ROLE keepsake_owner LOGIN PASSWORD 'owner'",
+                "CREATE ROLE keepsake_app LOGIN PASSWORD 'app'",
+                "CREATE DATABASE bench OWNER keepsake_owner",
             ):
                 sh("docker", "exec", self.name, "psql", "-U", "postgres", "-c", sql)
         except BaseException:
@@ -131,7 +131,7 @@ class Postgres:
     def database(self, name: str) -> None:
         sh(
             "docker", "exec", self.name, "psql", "-U", "postgres", "-c",
-            f"CREATE DATABASE {name} OWNER okf_owner",
+            f"CREATE DATABASE {name} OWNER keepsake_owner",
         )
 
     def close(self) -> None:
@@ -216,6 +216,37 @@ class _Forward(BaseHTTPRequestHandler):
         pass
 
 
+def serve(
+    binary: Path, app: str, tenant: str, stderr: Any
+) -> tuple[subprocess.Popen[bytes], int]:
+    """Starts `keepsake serve` on free ports and waits until it is ready."""
+    for attempt in range(1, 4):
+        port = free_port()
+        server = subprocess.Popen(
+            [str(binary), "serve", "--dsn", app, "--tenant", tenant]
+            + ["--host", "127.0.0.1", "--port", str(port)],
+            stderr=stderr,
+            # Parallel servers would otherwise all bind the default metrics port.
+            env={
+                **os.environ,
+                "KEEPSAKE_UI": "false",
+                "KEEPSAKE_METRICS_PORT": str(free_port()),
+            },
+        )
+        try:
+            wait_ready(f"http://127.0.0.1:{port}/readyz", server)
+            return server, port
+        except RuntimeError:
+            # A probed port is free only until closed, so another process may have taken it.
+            if attempt == 3:
+                raise
+        except BaseException:
+            server.kill()
+            server.wait()
+            raise
+    raise AssertionError("unreachable")
+
+
 def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -275,7 +306,7 @@ def trial(
     out: Path,
 ) -> dict[str, Any]:
     binary, db = build_
-    app = pg.dsn("okf_app", "app", db)
+    app = pg.dsn("keepsake_app", "app", db)
     tenant = str(uuid.uuid4())
     row: dict[str, Any] = {
         "variant": variant["name"],
@@ -288,27 +319,14 @@ def trial(
         work = Path(tmp)
         bundle = Path(task.get("bundle_path", BUNDLE))
         sh(str(binary), "import", "--dsn", app, "--tenant", tenant, str(bundle))
-        port = free_port()
         log = (out / f"{variant['name']}.{task['id']}.{n}.server.log").open("wb")
-        server = subprocess.Popen(
-            [
-                str(binary),
-                "serve",
-                "--dsn",
-                app,
-                "--tenant",
-                tenant,
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-            ],
-            stderr=log,
-            env={**os.environ, "KEEPSAKE_UI": "false"},
-        )
+        try:
+            server, port = serve(binary, app, tenant, log)
+        except BaseException:
+            log.close()
+            raise
         proxy = None
         try:
-            wait_ready(f"http://127.0.0.1:{port}/readyz", server)
             proxy = Proxy(f"http://127.0.0.1:{port}/mcp", variant)
             config = work / "mcp.json"
             config.write_text(
@@ -513,7 +531,7 @@ def main() -> None:
             db = "bench" if i == 0 else f"bench_{i}"
             if i:
                 pg.database(db)
-            sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner", db))
+            sh(str(binary), "migrate", "--dsn", pg.dsn("keepsake_owner", "owner", db))
             builds[s] = (binary, db)
         jobs = [
             (t, v, n)

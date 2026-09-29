@@ -455,7 +455,7 @@ func TestScopeDoesNotLeakAcrossPooledConnections(t *testing.T) {
 	probeUntilScopedConnectionReturns(t, s, scoped)
 }
 
-// TestIsUnavailable is new: no Python test kills backends. It also locks okf_app
+// TestIsUnavailable is new: no Python test kills backends. It also locks keepsake_app
 // out of new connections, not just existing ones: with login still allowed, the
 // pool's ping-on-acquire silently discards a killed connection and dials a fresh
 // one (see TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed), so a real
@@ -476,7 +476,7 @@ func TestIsUnavailable(t *testing.T) {
 
 	scopeErr := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil })
 	if scopeErr == nil {
-		t.Fatal("Scope succeeded after okf_app was locked out and its backends terminated")
+		t.Fatal("Scope succeeded after keepsake_app was locked out and its backends terminated")
 	}
 	if !store.IsUnavailable(scopeErr) {
 		t.Errorf("IsUnavailable(%v) = false, want true", scopeErr)

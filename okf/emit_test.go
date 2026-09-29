@@ -52,13 +52,14 @@ func TestSerializeMatchesPythonExport(t *testing.T) {
 	}
 }
 
-func TestSerializeLetsFrontmatterOverwriteAPromotedFieldInPlace(t *testing.T) {
-	// Python meta.update keeps `type` first and takes the frontmatter's value.
+func TestSerializeWritesThePromotedFieldsOverAFrontmatterCopy(t *testing.T) {
+	// A row written before Validate refused these keys MUST still export a non-empty type.
 	fm := NewMap()
 	fm.Set("x", "1")
-	fm.Set("type", "Other")
-	got, _ := Serialize(Concept{Type: "Concept", Frontmatter: fm})
-	if got != "---\ntype: Other\nx: '1'\n---\n" {
+	fm.Set("type", "")
+	fm.Set("title", "Other")
+	got, _ := Serialize(Concept{Type: "Concept", Title: "T", Frontmatter: fm})
+	if got != "---\ntype: Concept\ntitle: T\nx: '1'\n---\n" {
 		t.Fatalf("%q", got)
 	}
 }

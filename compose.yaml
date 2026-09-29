@@ -21,7 +21,7 @@ services:
     build: .
     command: ["keepsake", "migrate"]
     environment:
-      KEEPSAKE_DSN: postgres://okf_owner:owner@postgres:5432/keepsake
+      KEEPSAKE_DSN: postgres://keepsake_owner:owner@postgres:5432/keepsake
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,7 +31,7 @@ services:
     build: .
     environment:
       # The app role. The server refuses to start as the owner or a superuser.
-      KEEPSAKE_DSN: postgres://okf_app:app@postgres:5432/keepsake
+      KEEPSAKE_DSN: postgres://keepsake_app:app@postgres:5432/keepsake
       KEEPSAKE_AUTH_MODE: none
       KEEPSAKE_TENANT_ID: 00000000-0000-0000-0000-000000000001
       KEEPSAKE_UI: "true"

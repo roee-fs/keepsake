@@ -216,7 +216,7 @@ func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Co
 	return out, err
 }
 
-// Revisions returns the newest limit revisions, oldest first.
+// Revisions returns the newest limit revisions, newest first.
 func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]Revision, error) {
 	if limit <= 0 {
 		return nil, nil
@@ -224,13 +224,10 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 	var out []Revision
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
 		out, err = collect[Revision](ctx, tx,
-			"SELECT path, version, op, updated_by, created_at, tenant_id,"+
-				" to_char(created_at, 'YYYY-MM-DD') FROM ("+
-				"  SELECT path, version, op, coalesce(updated_by, '') AS updated_by,"+
-				"         created_at, tenant_id"+
-				"  FROM concept_revision"+
-				"  ORDER BY created_at DESC, path DESC, version DESC LIMIT $1"+
-				") recent ORDER BY created_at, path, version",
+			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id,"+
+				" to_char(created_at, 'YYYY-MM-DD')"+
+				" FROM concept_revision"+
+				" ORDER BY created_at DESC, path DESC, version DESC LIMIT $1",
 			limit)
 		return err
 	})

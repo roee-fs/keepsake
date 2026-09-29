@@ -60,9 +60,9 @@ _INSTALL_ARGS = [
     "--set",
     "postgres.mode=existing",
     "--set",
-    "postgres.dsn=postgres://okf_app:app@postgres:5432/keepsake",
+    "postgres.dsn=postgres://keepsake_app:app@postgres:5432/keepsake",
     "--set",
-    "postgres.ownerDsn=postgres://okf_owner:owner@postgres:5432/keepsake",
+    "postgres.ownerDsn=postgres://keepsake_owner:owner@postgres:5432/keepsake",
     "--set",
     "service.type=NodePort",
     "--set",
@@ -216,7 +216,7 @@ def test_the_owner_migrated_the_schema() -> None:
     only way back."""
     assert _psql("SELECT version_num FROM okf.alembic_version") == HEAD
     owner = _psql("SELECT nspowner::regrole FROM pg_namespace WHERE nspname = 'okf'")
-    assert owner == "okf_owner"
+    assert owner == "keepsake_owner"
 
 
 def test_every_server_pod_is_ready() -> None:

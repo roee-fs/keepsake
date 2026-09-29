@@ -202,6 +202,23 @@ func TestEmptyFrontmatterParsesToAnEmptyMapping(t *testing.T) {
 	}
 }
 
+func TestAConformantFenceParsesInEveryShape(t *testing.T) {
+	for _, doc := range []string{
+		"---\ntype: Concept\n---",
+		"---\r\ntype: Concept\r\n---",
+		"\ufeff---\ntype: Concept\n---\n",
+		"--- \ntype: Concept\n---\n",
+	} {
+		if c, err := Parse(doc, "p"); err != nil || c.Type != "Concept" {
+			t.Errorf("%q: %+v, %v", doc, c, err)
+		}
+	}
+	// A thematic break in the body is not a fence.
+	if c, _ := Parse("---\ntype: Concept\n---\nA\n----\nB\n", "p"); c.Body != "A\n----\nB\n" {
+		t.Fatalf("%q", c.Body)
+	}
+}
+
 func TestCRLFDocumentNormalisesToLF(t *testing.T) {
 	c, err := Parse("---\r\ntype: Concept\r\ntitle: T\r\n---\r\nBody.\r\n", "p")
 	if err != nil || c.Title != "T" || c.Body != "Body.\n" {

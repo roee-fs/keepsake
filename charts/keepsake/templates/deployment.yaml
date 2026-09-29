@@ -57,7 +57,7 @@ spec:
             - name: KEEPSAKE_DSN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-dsn
+                  name: {{ include "keepsake.dsnSecret" . }}
                   key: app-dsn
             - name: KEEPSAKE_AUTH_MODE
               value: {{ .Values.auth.mode | quote }}

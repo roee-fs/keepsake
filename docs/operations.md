@@ -12,7 +12,9 @@ helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.3.0
   already be installed. Override `postgres.cluster.ownerPassword` and
   `appPassword` for any install that matters.
 - `existing` uses a Postgres you run. Set `postgres.dsn` for the server and
-  `postgres.ownerDsn` for the migration. They MUST be different roles.
+  `postgres.ownerDsn` for the migration. They MUST be different roles. A GitOps
+  install sets `postgres.existingSecret` instead, naming a Secret with keys
+  `app-dsn` and `owner-dsn` that exists before the migration hook runs.
 
 ## Database roles
 
@@ -24,9 +26,9 @@ bypasses row-level security.
 In `existing` mode, create the roles before the first install:
 
 ```sql
-CREATE ROLE okf_owner LOGIN PASSWORD '...';
-CREATE ROLE okf_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
-GRANT CREATE ON DATABASE keepsake TO okf_owner;
+CREATE ROLE keepsake_owner LOGIN PASSWORD '...';
+CREATE ROLE keepsake_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
+GRANT CREATE ON DATABASE keepsake TO keepsake_owner;
 ```
 
 The migration MUST NOT run as `postgres.dsn`. The tables would belong to the
@@ -54,7 +56,7 @@ The chart configures no backups. You MUST set up one of these:
   ```bash
   kubectl port-forward svc/<release>-db-rw 5432:5432 &
   keepsake export ./backup --tenant <uuid> \
-    --dsn postgres://okf_app:<app password>@localhost:5432/keepsake
+    --dsn postgres://keepsake_app:<app password>@localhost:5432/keepsake
   ```
 
 `keepsake import` restores a bundle into a tenant.

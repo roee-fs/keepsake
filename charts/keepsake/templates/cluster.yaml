@@ -19,16 +19,16 @@ spec:
   bootstrap:
     initdb:
       database: {{ .Values.postgres.cluster.database }}
-      owner: okf_owner
+      owner: keepsake_owner
       secret:
         name: {{ .Release.Name }}-db-owner
       # At bootstrap rather than through managed roles, which reconcile after the
-      # cluster reports ready: the migration's grant to okf_app is guarded by a
+      # cluster reports ready: the migration's grant to keepsake_app is guarded by a
       # pg_roles check, so a role created too late means no grant and no failure.
       # The cost is that the password sits here in plaintext as well as in the
       # Secret; a managed role with a passwordSecret is the fix when that matters.
       postInitApplicationSQL:
-        - CREATE ROLE okf_app LOGIN PASSWORD '{{ .Values.postgres.cluster.appPassword | replace "'" "''" }}'
+        - CREATE ROLE keepsake_app LOGIN PASSWORD '{{ .Values.postgres.cluster.appPassword | replace "'" "''" }}'
   storage:
     size: {{ .Values.postgres.cluster.storage }}
 {{- end }}

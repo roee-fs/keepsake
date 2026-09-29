@@ -66,20 +66,20 @@ func decoyDDL(name, columns, values string) []string {
 		fmt.Sprintf("ALTER TABLE okf.%s ENABLE ROW LEVEL SECURITY", name),
 		fmt.Sprintf("ALTER TABLE okf.%s FORCE ROW LEVEL SECURITY", name),
 		fmt.Sprintf("CREATE POLICY tenant_isolation ON okf.%s USING (%s)", name, tenantQual),
-		fmt.Sprintf("GRANT SELECT ON okf.%s TO okf_app", name),
+		fmt.Sprintf("GRANT SELECT ON okf.%s TO keepsake_app", name),
 	}
 }
 
 // One per catalog table the check reads: a superuser role, an okf schema the app role
 // owns, and an unprotected table in okf.
 var decoys = []struct{ name, columns, values string }{
-	{"pg_roles", "rolname name, rolsuper bool, rolbypassrls bool", "'okf_app', true, true"},
-	{"pg_namespace", "nspname name, nspowner oid", "'okf', 'okf_app'::regrole::oid"},
+	{"pg_roles", "rolname name, rolsuper bool, rolbypassrls bool", "'keepsake_app', true, true"},
+	{"pg_namespace", "nspname name, nspowner oid", "'okf', 'keepsake_app'::regrole::oid"},
 	{
 		"pg_class",
 		`oid oid, relname name, relrowsecurity bool, relforcerowsecurity bool, ` +
 			`relowner oid, relnamespace oid, relkind "char"`,
-		`0, 'evil', false, false, 'okf_app'::regrole::oid, ` +
+		`0, 'evil', false, false, 'keepsake_app'::regrole::oid, ` +
 			`(SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'okf'), 'r'`,
 	},
 }
@@ -167,11 +167,11 @@ func TestVerifyRejectsANoinheritMemberOfTheSchemaOwner(t *testing.T) {
 	const role, password = "okf_noinherit", "noinherit"
 	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD '%s'", role, password),
-		fmt.Sprintf("GRANT okf_owner TO %s", role),
+		fmt.Sprintf("GRANT keepsake_owner TO %s", role),
 	)
 	t.Cleanup(func() {
 		pgtest.Exec(t, db.AdminDSN,
-			fmt.Sprintf("REVOKE okf_owner FROM %s", role),
+			fmt.Sprintf("REVOKE keepsake_owner FROM %s", role),
 			fmt.Sprintf("DROP ROLE %s", role),
 		)
 	})
@@ -213,11 +213,11 @@ func TestVerifyRejectsASuperuserReachedBySetRole(t *testing.T) {
 	const role = "okf_masked"
 	pgtest.Exec(t, db.AdminDSN,
 		fmt.Sprintf("CREATE ROLE %s SUPERUSER NOLOGIN", role),
-		fmt.Sprintf("GRANT %s TO okf_app", role),
+		fmt.Sprintf("GRANT %s TO keepsake_app", role),
 	)
 	t.Cleanup(func() {
 		pgtest.Exec(t, db.AdminDSN,
-			fmt.Sprintf("REVOKE %s FROM okf_app", role),
+			fmt.Sprintf("REVOKE %s FROM keepsake_app", role),
 			fmt.Sprintf("DROP ROLE %s", role),
 		)
 	})

@@ -53,7 +53,7 @@ trap teardown EXIT
 # through the node.
 keepsake() {
   docker run --rm --network kind -v "$PWD/demo/bundle:/bundle:ro" \
-    -e KEEPSAKE_DSN="postgres://okf_app:app@$CLUSTER-control-plane:$PG_NODE_PORT/keepsake" \
+    -e KEEPSAKE_DSN="postgres://keepsake_app:app@$CLUSTER-control-plane:$PG_NODE_PORT/keepsake" \
     -e KEEPSAKE_TENANT_ID="$TENANT" \
     "$IMAGE" keepsake "$@"
 }
@@ -132,8 +132,8 @@ kubectl wait --for=condition=available deploy/postgres --timeout=180s
 helm install keepsake charts/keepsake \
   --set image.repository="${IMAGE%:*}" --set image.tag="${IMAGE##*:}" \
   --set postgres.mode=existing \
-  --set postgres.dsn="postgres://okf_app:app@postgres:5432/keepsake" \
-  --set postgres.ownerDsn="postgres://okf_owner:owner@postgres:5432/keepsake" \
+  --set postgres.dsn="postgres://keepsake_app:app@postgres:5432/keepsake" \
+  --set postgres.ownerDsn="postgres://keepsake_owner:owner@postgres:5432/keepsake" \
   --set service.type=NodePort --set service.nodePort="$NODE_PORT" \
   --wait --timeout 180s >/dev/null
 # The pod being ready does not mean the host port forwards to it yet.

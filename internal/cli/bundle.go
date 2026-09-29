@@ -58,7 +58,7 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 	for _, parts := range rels {
 		rel := strings.Join(parts, "/")
 		path := strings.TrimSuffix(rel, ".md")
-		if okf.ReservedPaths[path] {
+		if okf.Reserved(path) {
 			continue
 		}
 		file := filepath.Join(root, rel)
@@ -98,8 +98,8 @@ func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 
 // target is a concept's file relative to the bundle root, refused if it would leave the bundle.
 func target(path string) (string, error) {
-	if okf.ReservedPaths[path] {
-		return "", fmt.Errorf("the concept %s collides with a generated file: the bundle root reserves index.md and log.md",
+	if okf.Reserved(path) {
+		return "", fmt.Errorf("the concept %s collides with a generated file: OKF reserves index.md and log.md in every directory",
 			okf.PyReprString(path))
 	}
 	// Whatever is stored, the export MUST NOT write outside the directory the operator named.
@@ -127,12 +127,10 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	}
 	// Every path is checked first: a half-written bundle looks like a complete one.
 	targets := make([]string, len(concepts))
-	paths := make([]string, len(concepts))
 	for i, c := range concepts {
 		if targets[i], err = target(c.Path); err != nil {
 			return 0, err
 		}
-		paths[i] = c.Path
 	}
 	made := map[string]bool{}
 	for i, c := range concepts {
@@ -150,7 +148,7 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 			return 0, err
 		}
 	}
-	if err := dir.WriteFile("index.md", []byte(renderIndex(paths)), 0o666); err != nil {
+	if err := dir.WriteFile("index.md", []byte(renderIndex(concepts)), 0o666); err != nil {
 		return 0, err
 	}
 	log, err := renderLog(ctx, cs, tenant, logLimit)
@@ -160,7 +158,7 @@ func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID,
 	if err := dir.WriteFile("log.md", []byte(log), 0o666); err != nil {
 		return 0, err
 	}
-	return len(paths), nil
+	return len(concepts), nil
 }
 
 // ValidateBundle returns every rule the bundle breaks: per-concept errors plus links to nothing.
@@ -188,27 +186,31 @@ func ValidateBundle(root string) ([]string, error) {
 }
 
 // renderIndex groups the corpus by its first path segment.
-func renderIndex(paths []string) string {
-	groups := map[string][]string{}
-	for _, p := range paths {
-		first, _, found := strings.Cut(p, "/")
+func renderIndex(concepts []okf.Concept) string {
+	groups := map[string][]okf.Concept{}
+	for _, c := range concepts {
+		first, _, found := strings.Cut(c.Path, "/")
 		if !found {
 			first = topLevel
 		}
-		groups[first] = append(groups[first], p)
+		groups[first] = append(groups[first], c)
 	}
 	lines := []string{"# Index", ""}
 	for _, g := range slices.Sorted(maps.Keys(groups)) {
 		lines = append(lines, "## "+g, "")
-		for _, p := range groups[g] {
-			lines = append(lines, fmt.Sprintf("- [%s](%s.md)", p, p))
+		for _, c := range groups[g] {
+			line := fmt.Sprintf("- [%s](%s.md)", c.Path, c.Path)
+			if d := strings.Join(strings.Fields(c.Description), " "); d != "" {
+				line += " - " + d
+			}
+			lines = append(lines, line)
 		}
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
 }
 
-// renderLog renders the most recent limit revisions, oldest first, under date headings.
+// renderLog renders the most recent limit revisions, newest first, under date headings.
 func renderLog(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, limit int) (string, error) {
 	revisions, err := cs.Revisions(ctx, tenant, limit)
 	if err != nil {

@@ -20,7 +20,7 @@ import (
 var sqlFS embed.FS
 
 // appRole is restated, as 2de90d2:src/keepsake/store/migrations/versions/0001_initial.py restates it.
-const appRole = "okf_app"
+const appRole = "keepsake_app"
 
 type fields struct {
 	SCHEMA       string

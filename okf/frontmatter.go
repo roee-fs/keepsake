@@ -22,7 +22,8 @@ type YAMLError struct{ Msg string }
 func (e YAMLError) Error() string { return e.Msg }
 
 // The closing fence is anchored per line so that empty frontmatter matches too.
-var fence = regexp.MustCompile(`(?sm)\A---\n(.*?)^---\n(.*)\z`)
+// The opening fence MAY carry trailing blanks. The closing one MAY end the file; `--- ` there is a YAML separator.
+var fence = regexp.MustCompile(`(?sm)\A---[ \t]*\n(.*?)^---(?:\n|\z)(.*)\z`)
 
 // split returns the frontmatter mapping and the body. A document without a fence has no frontmatter.
 func split(text string) (*Map, string, error) {
@@ -30,7 +31,7 @@ func split(text string) (*Map, string, error) {
 		return nil, "", YAMLError{"not valid UTF-8"}
 	}
 	// LF is OKF's canonical line ending; CRLF input does not round-trip.
-	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.TrimPrefix(strings.ReplaceAll(text, "\r\n", "\n"), "\ufeff")
 	m := fence.FindStringSubmatch(text)
 	if m == nil {
 		return NewMap(), text, nil

@@ -190,6 +190,86 @@ def test_a_longmemeval_task_carries_the_official_judge_prompt() -> None:
     assert "unanswerable" in abstained["expect"]["judge_template"]
 
 
+def test_stream_yields_each_instance_across_chunk_boundaries(tmp_path: Path) -> None:
+    import longmemeval
+
+    instances = [
+        {"question_id": "a", "text": "brackets ] and [ commas, inside"},
+        {"question_id": "b", "text": 'an escaped \\" quote and a } brace'},
+        {"question_id": "c", "nested": [{"x": 1}, {"y": [2, 3]}]},
+    ]
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps(instances, indent=1))
+    assert list(longmemeval.stream(path, chunk=7)) == instances
+    # The opening bracket can arrive after a whole chunk of whitespace.
+    path.write_text(" " * 20 + json.dumps(instances))
+    assert list(longmemeval.stream(path, chunk=7)) == instances
+
+
+def test_a_failed_download_leaves_no_dataset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import longmemeval
+
+    parts = []
+
+    def interrupted(cmd: list[str], check: bool) -> None:
+        parts.append(cmd[cmd.index("-o") + 1])
+        Path(parts[-1]).write_text("[{")
+        raise subprocess.CalledProcessError(18, cmd)
+
+    monkeypatch.setattr(longmemeval.subprocess, "run", interrupted)
+    dest = tmp_path / "fresh" / "m.json"
+    for _ in range(2):
+        with pytest.raises(subprocess.CalledProcessError):
+            longmemeval.fetch("https://example.com/m.json", dest)
+    # Two runs that overlap MUST NOT share a temporary file, and neither leaves one behind.
+    assert len(set(parts)) == 2
+    assert list(dest.parent.iterdir()) == []
+
+
+def test_stream_refuses_data_after_the_array(tmp_path: Path) -> None:
+    import longmemeval
+
+    path = tmp_path / "m.json"
+    path.write_text('[{"a": 1}] {"b": 2}')
+    with pytest.raises(ValueError, match="after its closing"):
+        list(longmemeval.stream(path, chunk=4))
+
+
+def test_m_sample_zero_is_refused_before_any_split_is_written(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import longmemeval
+
+    monkeypatch.setattr(sys, "argv", ["longmemeval.py", "--m-sample", "0"])
+    monkeypatch.setattr(longmemeval, "write", lambda *a: pytest.fail("wrote a split"))
+    with pytest.raises(SystemExit):
+        longmemeval.main()
+
+
+def test_a_split_outside_the_agent_directory_resolves_its_bundles(
+    tmp_path: Path,
+) -> None:
+    import longmemeval
+
+    instance = {
+        "question_id": "q",
+        "question_type": "single-session-user",
+        "question": "Where?",
+        "answer": "Oslo",
+        "question_date": "2023/05/30 (Tue) 23:40",
+        "haystack_session_ids": ["s1"],
+        "haystack_dates": ["2023/05/01"],
+        "haystack_sessions": [[{"role": "user", "content": "I moved to Oslo."}]],
+    }
+    full = tmp_path / "full"
+    longmemeval.write(full, {"all": [instance]})
+    [task] = json.loads((full / "all.json").read_text())
+    # run.py resolves a bundle against its tasks file's directory.
+    assert list((full / task["bundle"] / "session").glob("*.md"))
+
+
 def test_curated_pairs_each_question_with_one_variants_first_trial(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -269,6 +349,37 @@ def test_resolve_ref_returns_the_commit_sha() -> None:
 def test_resolve_ref_refuses_an_unknown_ref() -> None:
     with pytest.raises(subprocess.CalledProcessError):
         run.resolve_ref("no-such-ref-anywhere")
+
+
+def test_serve_retries_a_server_that_exits_while_starting(tmp_path: Path) -> None:
+    (tmp_path / "www").mkdir()
+    (tmp_path / "www" / "readyz").write_text("ok")
+    # Exits on its first start, as on a port taken since it was probed; serves /readyz on its second.
+    fake = tmp_path / "keepsake"
+    fake.write_text(
+        "#!/bin/sh\n"
+        f'echo x >> "{tmp_path}/starts"\n'
+        f'[ "$(wc -l < "{tmp_path}/starts")" -gt 1 ] || exit 1\n'
+        'while [ "$1" != --port ]; do shift; done\n'
+        f'exec "{sys.executable}" -m http.server "$2" --bind 127.0.0.1 --directory "{tmp_path}/www"\n'
+    )
+    fake.chmod(0o755)
+    server, port = run.serve(fake, "dsn", "tenant", subprocess.DEVNULL)
+    try:
+        assert port > 0
+        assert (tmp_path / "starts").read_text().count("x") == 2
+    finally:
+        server.terminate()
+        server.wait()
+
+
+def test_serve_gives_up_after_three_starts(tmp_path: Path) -> None:
+    fake = tmp_path / "keepsake"
+    fake.write_text(f'#!/bin/sh\necho x >> "{tmp_path}/starts"\nexit 1\n')
+    fake.chmod(0o755)
+    with pytest.raises(RuntimeError):
+        run.serve(fake, "dsn", "tenant", subprocess.DEVNULL)
+    assert (tmp_path / "starts").read_text().count("x") == 3
 
 
 def _read(path: str, links: list, backlinks: list) -> dict:

@@ -7,6 +7,17 @@ tune.json and report them on holdout.json, which a tuning loop MUST NOT read.
     python3 bench/longmemeval.py --per-bucket 8
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune.json --trials 1
 
+To report a score comparable with published ones, run all 500 questions. The full set
+includes the holdout questions, so it MUST NOT feed a tuning loop either:
+
+    python3 bench/longmemeval.py --full
+    python3 bench/run.py --tasks-file bench/data/longmemeval/full/all.json --variants baseline --trials 1
+
+LongMemEval_M asks the same questions over ~500 sessions each. Its bundles are ~5 MB, so sample it:
+
+    python3 bench/longmemeval.py --m-sample 100
+    python3 bench/run.py --tasks-file bench/data/longmemeval/m/sample.json --variants baseline --trials 1
+
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
     python3 bench/longmemeval.py --curate single-session-preference multi-session
@@ -22,10 +33,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import shutil
 import subprocess
+import tempfile
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 
 import grade
@@ -34,7 +48,10 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE / "data" / "longmemeval"
 SOURCE = DATA / "longmemeval_s_cleaned.json"
 URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
+SOURCE_M = DATA / "longmemeval_m_cleaned.json"
+URL_M = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_m_cleaned.json"
 OUT = DATA / "agent"
+FULL = DATA / "full"
 RESPONSE = grade.RESPONSE
 
 # Verbatim from LongMemEval's src/evaluation/evaluate_qa.py (MIT), response slot marked.
@@ -78,11 +95,60 @@ TEMPLATES = {
 }
 
 
+def fetch(url: str, dest: Path) -> Path:
+    """Downloads url to dest once. Each call writes its own temporary file, so a failed or
+    concurrent transfer never leaves a partial dest."""
+    if not dest.exists():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(dir=dest.parent, prefix=dest.name, suffix=".part")
+        os.close(fd)
+        part = Path(name)
+        try:
+            subprocess.run(["curl", "-sfL", "-o", str(part), url], check=True)
+            part.replace(dest)
+        finally:
+            part.unlink(missing_ok=True)
+    return dest
+
+
 def load() -> list[dict]:
-    if not SOURCE.exists():
-        DATA.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["curl", "-sfL", "-o", str(SOURCE), URL], check=True)
-    return json.loads(SOURCE.read_text())
+    return json.loads(fetch(URL, SOURCE).read_text(encoding="utf-8"))
+
+
+def load_m() -> Iterator[dict]:
+    """Yields LongMemEval_M one question at a time, since the 2.7 GB file would take ~20 GB parsed whole."""
+    return stream(fetch(URL_M, SOURCE_M))
+
+
+def stream(path: Path, chunk: int = 1 << 24) -> Iterator[dict]:
+    """Yields each element of a JSON array file, decoding one element at a time."""
+    decoder = json.JSONDecoder()
+    with path.open(encoding="utf-8") as f:
+        buf = f.read(chunk).lstrip()
+        while not buf:
+            more = f.read(chunk)
+            if not more:
+                raise ValueError(f"{path} is empty, not a JSON array")
+            buf = more.lstrip()
+        if not buf.startswith("["):
+            raise ValueError(f"{path} is not a JSON array")
+        buf = buf[1:]
+        while True:
+            buf = buf.lstrip().removeprefix(",").lstrip()
+            if buf.startswith("]"):
+                if (buf[1:] + f.read()).strip():
+                    raise ValueError(f"{path} has data after its closing ]")
+                return
+            try:
+                item, end = decoder.raw_decode(buf)
+            except ValueError:
+                more = f.read(chunk)
+                if not more:
+                    raise
+                buf += more
+                continue
+            yield item
+            buf = buf[end:]
 
 
 def kind(instance: dict) -> str:
@@ -124,7 +190,8 @@ def task(instance: dict, bundle: Path) -> dict:
     return {
         "id": instance["question_id"],
         "kind": k,
-        "bundle": str(bundle.relative_to(OUT)),
+        # Relative to the tasks file's directory, which is how run.py resolves it.
+        "bundle": str(bundle.relative_to(bundle.parents[1])),
         "prompt": f"Today is {instance['question_date']}. {instance['question']}",
         "system_prompt": HOST,
         "expect": {"judge_template": template},
@@ -231,7 +298,31 @@ def main() -> None:
         help="Questions per kind in each split. Default: 8.",
     )
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--full",
+        action="store_true",
+        help="Write all 500 questions to full/all.json, leave tune and holdout alone, and exit.",
+    )
+    p.add_argument(
+        "--m-sample",
+        type=int,
+        metavar="N",
+        help="Write N random LongMemEval_M questions to m/sample.json, seeded by --seed, and exit.",
+    )
     args = p.parse_args()
+    if args.m_sample is not None and args.m_sample < 1:
+        p.error("--m-sample MUST be at least 1")
+    if args.full:
+        write(FULL, {"all": load()})
+        return
+    if args.m_sample is not None:
+        # Sampled from _S's ids, which _M shares, so each answer compares with its _S run.
+        ids = [d["question_id"] for d in load()]
+        chosen = set(random.Random(args.seed).sample(ids, args.m_sample))
+        write(
+            DATA / "m", {"sample": [d for d in load_m() if d["question_id"] in chosen]}
+        )
+        return
     if args.curate:
         curate(args.split, args.curate)
         return
@@ -249,20 +340,24 @@ def main() -> None:
         half = len(chosen) // 2
         splits["tune"] += chosen[:half]
         splits["holdout"] += chosen[half:]
+    write(OUT, splits)
 
-    shutil.rmtree(OUT, ignore_errors=True)
+
+def write(out: Path, splits: dict[str, list[dict]]) -> None:
+    """Replaces out with one tasks file per split, each question's bundle under out/bundles."""
+    shutil.rmtree(out, ignore_errors=True)
     for name, instances in splits.items():
         tasks = []
         for instance in instances:
-            bundle = OUT / "bundles" / instance["question_id"]
+            bundle = out / "bundles" / instance["question_id"]
             bundle_session(instance, bundle)
             tasks.append(task(instance, bundle))
-        (OUT / f"{name}.json").write_text(json.dumps(tasks, indent=2) + "\n")
+        (out / f"{name}.json").write_text(json.dumps(tasks, indent=2) + "\n")
         counts = defaultdict(int)
         for t in tasks:
             counts[t["kind"]] += 1
         print(
-            f"{name}: {len(tasks)} tasks {dict(sorted(counts.items()))} -> {OUT / (name + '.json')}"
+            f"{name}: {len(tasks)} tasks {dict(sorted(counts.items()))} -> {out / (name + '.json')}"
         )
 
 

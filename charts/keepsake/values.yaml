@@ -86,9 +86,14 @@ postgres:
   # not repair it, because the owner role holds nothing on a schema it does not own.
   # Recovering means ALTER ... OWNER surgery or recreating the database.
   ownerDsn: "" # required when mode = existing
+  # existing mode, instead of the two above: a Secret you create, holding keys
+  # `app-dsn` and `owner-dsn`. Required for GitOps, where values are committed and
+  # the DSNs with them. It MUST exist before the migration hook runs, which Argo CD
+  # runs as PreSync, ahead of every resource that is not a hook.
+  existingSecret: ""
 
-  # managed mode. CloudNativePG bootstraps the database owned by okf_owner and
-  # creates okf_app, the unprivileged role the server connects as.
+  # managed mode. CloudNativePG bootstraps the database owned by keepsake_owner and
+  # creates keepsake_app, the unprivileged role the server connects as.
   cluster:
     instances: 1
     storage: 1Gi

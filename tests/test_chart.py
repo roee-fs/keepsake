@@ -1,6 +1,6 @@
 """What the chart renders, read as objects rather than as text.
 
-The load-bearing property is not that `okf_owner` appears somewhere in the output:
+The load-bearing property is not that `keepsake_owner` appears somewhere in the output:
 it is that the migration Job takes the owner DSN and the server takes the app DSN.
 A substring assertion passes on a comment, so every check here is pinned to the
 container, annotation or field it belongs to.
@@ -62,10 +62,10 @@ def _env(workload: dict[str, Any]) -> dict[str, Any]:
     return {e["name"]: e for e in _container(workload)["env"]}
 
 
-def _dsn_secret_key(workload: dict[str, Any], release: str = "keepsake") -> str:
+def _dsn_secret_key(workload: dict[str, Any], secret: str = "keepsake-dsn") -> str:
     """The Secret key the workload's KEEPSAKE_DSN resolves to."""
     ref = _env(workload)["KEEPSAKE_DSN"]["valueFrom"]["secretKeyRef"]
-    assert ref["name"] == f"{release}-dsn"
+    assert ref["name"] == secret
     return str(ref["key"])
 
 
@@ -128,22 +128,41 @@ def test_server_and_migration_use_different_roles() -> None:
     assert _dsn_secret_key(_only(docs, "Job")) == "owner-dsn"
     assert _dsn_secret_key(_only(docs, "Deployment")) == "app-dsn"
     dsns = _named(docs, "Secret", "keepsake-dsn")["stringData"]
-    assert "//okf_owner:" in dsns["owner-dsn"]
-    assert "//okf_app:" in dsns["app-dsn"]
+    assert "//keepsake_owner:" in dsns["owner-dsn"]
+    assert "//keepsake_app:" in dsns["app-dsn"]
 
 
 def test_managed_mode_creates_the_app_role_during_bootstrap() -> None:
     """The migration's grant is guarded by a pg_roles check: no role, no grant."""
     initdb = _only(_render(MANAGED), "Cluster")["spec"]["bootstrap"]["initdb"]
-    assert initdb["owner"] == "okf_owner"
+    assert initdb["owner"] == "keepsake_owner"
     sql = initdb["postInitApplicationSQL"]
-    assert any(s.startswith("CREATE ROLE okf_app ") for s in sql)
+    assert any(s.startswith("CREATE ROLE keepsake_app ") for s in sql)
 
 
 def test_existing_mode_runs_the_migration_as_the_owner_dsn() -> None:
     dsns = _named(_render(EXISTING), "Secret", "keepsake-dsn")["stringData"]
     assert dsns["owner-dsn"] == "postgres://owner@db/keepsake"
     assert dsns["app-dsn"] == "postgres://app@db/keepsake"
+
+
+EXISTING_SECRET = {"postgres.mode": "existing", "postgres.existingSecret": "keepsake-db"}
+
+
+def test_an_existing_secret_replaces_the_rendered_dsns() -> None:
+    """Under GitOps the values are committed, so a rendered DSN Secret commits the
+    passwords in it."""
+    docs = _render(EXISTING_SECRET)
+    assert [d for d in docs if d["metadata"]["name"] == "keepsake-dsn"] == []
+    assert _dsn_secret_key(_only(docs, "Job"), secret="keepsake-db") == "owner-dsn"
+    assert _dsn_secret_key(_only(docs, "Deployment"), secret="keepsake-db") == "app-dsn"
+
+
+def test_managed_mode_ignores_an_existing_secret() -> None:
+    """The managed DSNs point at the cluster the chart creates, so only it can write them."""
+    docs = _render(dict(MANAGED, **{"postgres.existingSecret": "keepsake-db"}))
+    assert _dsn_secret_key(_only(docs, "Deployment")) == "app-dsn"
+    _named(docs, "Secret", "keepsake-dsn")
 
 
 def test_the_server_reads_the_variables_the_cli_reads() -> None:
@@ -247,7 +266,7 @@ def test_labels_derive_from_the_release_name() -> None:
     job = _only(docs, "Job")
     assert job["metadata"]["labels"]["app"] == "other-migrate"
     assert job["spec"]["template"]["metadata"]["labels"]["app"] == "other-migrate"
-    assert _dsn_secret_key(deployment, release="other") == "app-dsn"
+    assert _dsn_secret_key(deployment, secret="other-dsn") == "app-dsn"
 
 
 def test_readiness_asks_the_server_and_nothing_restarts_it() -> None:
@@ -292,7 +311,7 @@ def test_the_bootstrap_password_is_escaped_into_the_sql() -> None:
     values = dict(MANAGED, **{"postgres.cluster.appPassword": "it's"})
     initdb = _only(_render(values), "Cluster")["spec"]["bootstrap"]["initdb"]
     assert initdb["postInitApplicationSQL"] == [
-        "CREATE ROLE okf_app LOGIN PASSWORD 'it''s'"
+        "CREATE ROLE keepsake_app LOGIN PASSWORD 'it''s'"
     ]
 
 

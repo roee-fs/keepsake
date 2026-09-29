@@ -119,7 +119,8 @@ func TestCreateRejectsAPathReservedForAGeneratedBundleFile(t *testing.T) {
 	tools := newTools(t)
 	_, err := tools.Create(ctx, "index", map[string]any{"type": "Concept"})
 	wantToolError(t, err, "reserved")
-	seed(t, tools, "architecture/index", map[string]any{})
+	_, err = tools.Create(ctx, "architecture/index", map[string]any{"type": "Concept"})
+	wantToolError(t, err, "reserved")
 }
 
 func TestCreateRejectsAPathThatIsTaken(t *testing.T) {
@@ -494,8 +495,8 @@ func TestACallMissingARequiredArgumentIsAnErrorResult(t *testing.T) {
 // agent to retry a request that was never wrong, and hide the bug.
 func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	session := connect(t, newTools(t))
-	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM okf_app`)
-	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO okf_app`) })
+	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM keepsake_app`)
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO keepsake_app`) })
 	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err == nil {
 		t.Fatalf("got a result, want a protocol error: %+v", res)
 	}
@@ -515,8 +516,8 @@ func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 	if logs.Len() != 0 {
 		t.Fatalf("a tool error was logged: %s", logs.String())
 	}
-	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM okf_app`)
-	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO okf_app`) })
+	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM keepsake_app`)
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO keepsake_app`) })
 	session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
 	if !strings.Contains(logs.String(), "okf_list") || !strings.Contains(logs.String(), "permission denied") {
 		t.Fatalf("the defect was not logged: %q", logs.String())

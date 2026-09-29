@@ -35,13 +35,21 @@ func TestEveryBrokenRuleIsReported(t *testing.T) {
 	}
 }
 
+func TestFrontmatterMustNotShadowAPromotedField(t *testing.T) {
+	fm := NewMap()
+	fm.Set("type", "")
+	if errs := Validate(Concept{Path: "a", Type: "Concept", Frontmatter: fm}); len(errs) != 1 || !strings.Contains(errs[0], "'type'") {
+		t.Fatalf("got %q", errs)
+	}
+}
+
 func TestValidConceptHasNoErrors(t *testing.T) {
 	if got := Validate(Concept{Path: "a/b", Type: "Concept"}); len(got) != 0 {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestTheGeneratedBundleNamesAreReservedAtTheRoot(t *testing.T) {
+func TestTheGeneratedBundleNamesAreReservedInEveryDirectory(t *testing.T) {
 	// A bundle writes index.md and log.md itself, so a concept holding one of those
 	// paths would be exported over and skipped on the way back in.
 	if errs := Validate(Concept{Path: "index", Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
@@ -50,8 +58,12 @@ func TestTheGeneratedBundleNamesAreReservedAtTheRoot(t *testing.T) {
 	if errs := Validate(Concept{Path: "log", Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
 		t.Fatalf("got %q", errs)
 	}
-	// Only at the root: deeper in the tree the name is ordinary knowledge.
-	if got := Validate(Concept{Path: "architecture/index", Type: "Concept"}); len(got) != 0 {
+	for _, p := range []string{"architecture/index", `architecture\log`} {
+		if errs := Validate(Concept{Path: p, Type: "Concept"}); !strings.Contains(errs[0], "reserved") {
+			t.Fatalf("%s: got %q", p, errs)
+		}
+	}
+	if got := Validate(Concept{Path: "architecture/indexes", Type: "Concept"}); len(got) != 0 {
 		t.Fatalf("got %q", got)
 	}
 }

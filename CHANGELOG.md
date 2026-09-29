@@ -9,6 +9,23 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## Unreleased
 
+### Changed
+
+- The database roles are now `keepsake_owner` and `keepsake_app`, not
+  `okf_owner` and `okf_app`. The schema is still `okf`.
+
+### Upgrading
+
+- You MUST rename the roles before you upgrade, as a superuser or a role with
+  `CREATEROLE`. A rename keeps every grant and ownership:
+  `ALTER ROLE okf_owner RENAME TO keepsake_owner; ALTER ROLE okf_app RENAME TO keepsake_app;`
+  In `managed` mode, run it with `kubectl exec <release>-db-1 -- psql -d keepsake -c '...'`.
+- A rename clears an MD5 password. SCRAM passwords, the default since Postgres
+  14, survive it. Reset any MD5 password after the rename.
+- Pods still running the old release cannot open new connections after the
+  rename. Upgrade right after it. In `existing` mode, update `postgres.dsn` and
+  `postgres.ownerDsn` in the same upgrade.
+
 ### Added
 
 - `PUT /bundle?prefix=P` replaces the concepts under `P/` with an uploaded
@@ -29,10 +46,22 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - One log line per tool call, with its outcome, duration, tenant and actor. A
   database outage, a console login and a refused console login are logged too.
 - `logLevel` in the chart and `KEEPSAKE_LOG_LEVEL`.
+- `postgres.existingSecret` in the chart: in existing mode, both workloads read
+  `app-dsn` and `owner-dsn` from a Secret you create, and the chart renders no
+  `<release>-dsn`. A GitOps install no longer commits its DSNs.
 
 ### Changed
 
 - `serve` logs JSON lines, not `key=value` text.
+- `index` and `log` are reserved in every directory, as OKF §3.1 requires. Import skips an
+  `index.md` or `log.md` anywhere in the bundle instead of failing on it. A write to a path such
+  as `architecture/index` is refused, and export refuses a stored one.
+- The exported `log.md` lists revisions newest first, as OKF §9 requires.
+- Each entry in the exported `index.md` carries the concept's description.
+- A write whose `frontmatter` holds `type`, `title` or `description` is refused. Export writes the
+  concept's own fields over any such key already stored, so it never exports an empty `type`.
+- Import accepts a closing `---` at the end of the file, a byte-order mark, and trailing blanks on
+  the opening `---`. It refused these conformant files with "type is required".
 
 ### Upgrading
 

@@ -180,7 +180,7 @@ func TestTheAppRoleOwnsNoTables(t *testing.T) {
 	conn := appConn(t)
 	rows, err := conn.Query(context.Background(), `
 		SELECT relname, pg_get_userbyid(relowner),
-		       has_table_privilege('okf_app', c.oid, 'TRUNCATE')
+		       has_table_privilege('keepsake_app', c.oid, 'TRUNCATE')
 		FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 		WHERE n.nspname = 'okf' AND c.relkind = 'r'`)
 	if err != nil {
@@ -196,12 +196,12 @@ func TestTheAppRoleOwnsNoTables(t *testing.T) {
 		if err := rows.Scan(&name, &owner, &truncatable); err != nil {
 			t.Fatal(err)
 		}
-		if owner != "okf_owner" {
+		if owner != "keepsake_owner" {
 			t.Errorf("okf.%s is owned by %s", name, owner)
 		}
 		// TRUNCATE is not filtered by a policy, so it would empty every tenant.
 		if truncatable {
-			t.Errorf("okf_app may TRUNCATE okf.%s", name)
+			t.Errorf("keepsake_app may TRUNCATE okf.%s", name)
 		}
 	}
 	if !found {
@@ -239,11 +239,11 @@ func TestOnlyTheAppRoleExecutesPurgeTenant(t *testing.T) {
 	var public, app bool
 	if err := appConn(t).QueryRow(context.Background(),
 		"SELECT has_function_privilege('public', 'okf.purge_tenant(uuid)', 'EXECUTE'), "+
-			"has_function_privilege('okf_app', 'okf.purge_tenant(uuid)', 'EXECUTE')").Scan(&public, &app); err != nil {
+			"has_function_privilege('keepsake_app', 'okf.purge_tenant(uuid)', 'EXECUTE')").Scan(&public, &app); err != nil {
 		t.Fatal(err)
 	}
 	if public || !app {
-		t.Errorf("public = %v, okf_app = %v", public, app)
+		t.Errorf("public = %v, keepsake_app = %v", public, app)
 	}
 }
 

@@ -7,11 +7,17 @@ reads {"id","query"} JSON lines for a bundle and writes {"id","results":[paths]}
 
     python3 bench/rankers.py
     python3 bench/rankers.py --datasets scifact --skip-scale --external okf=/path/to/okfsearch
+
+LongMemEval_M asks the same questions over ~500 sessions each instead of ~50, so it measures
+ranking where _S is too easy. It is not in the default set:
+
+    python3 bench/rankers.py --datasets longmemeval longmemeval-m --skip-scale --longmemeval-limit 100
 """
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import statistics
@@ -192,10 +198,13 @@ def quality(args: argparse.Namespace, db: DB, binary: Path, app: str) -> list[di
                     r, ms = rank_external(cmd, Path(tmp), queries, ids)
                     rankings[label], latency[label] = r, [ms]
             else:
-                data = [
-                    d for d in longmemeval.load() if longmemeval.kind(d) != "abstention"
-                ]
-                for d in data[: args.longmemeval_limit]:
+                source = (
+                    longmemeval.load_m()
+                    if name == "longmemeval-m"
+                    else longmemeval.load()
+                )
+                data = (d for d in source if longmemeval.kind(d) != "abstention")
+                for d in itertools.islice(data, args.longmemeval_limit):
                     tenant, root = str(uuid.uuid4()), Path(tmp) / d["question_id"]
                     sids = longmemeval.bundle_session(d, root)
                     ids.update({f"{p}\x00{tenant}": s for p, s in sids.items()})
@@ -295,7 +304,7 @@ def scale(db: DB) -> dict:
     rls = db.psql(
         f"SELECT set_config('okf.current_tenant', {lit(big)}, false);\n"
         f"EXPLAIN (ANALYZE, TIMING OFF, SUMMARY ON) SELECT * FROM okf.rank_shipped('w40 | w2500 | w4800', NULL, 10, {lit(big)}::uuid);",
-        role="okf_app",
+        role="keepsake_app",
     )
     return {
         "write_s_per_1k_without_trigger": round(1000 * without / n, 3),
@@ -343,7 +352,7 @@ def report(quality_rows: list[dict], scale_row: dict | None) -> str:
                 f"Storage: concept {scale_row['concept_bytes'] / 1e6:.0f} MB, posting {scale_row['posting_bytes'] / 1e6:.0f} MB "
                 f"({scale_row['postings']:,} postings for {scale_row['concepts']:,} concepts)."
             ),
-            f"bm25 postings as okf_app under FORCE RLS, 100k tenant, 3 terms: {scale_row['bm25_postings_as_app_role_ms']} ms.",
+            f"bm25 postings as keepsake_app under FORCE RLS, 100k tenant, 3 terms: {scale_row['bm25_postings_as_app_role_ms']} ms.",
         ]
     return "\n".join(out)
 
@@ -356,7 +365,8 @@ def main() -> None:
         "--datasets",
         nargs="*",
         default=[*beir.DATASETS, "longmemeval"],
-        choices=[*beir.DATASETS, "longmemeval"],
+        # longmemeval-m is opt-in: ~500 sessions per question from a 2.7 GB download.
+        choices=[*beir.DATASETS, "longmemeval", "longmemeval-m"],
     )
     p.add_argument(
         "--longmemeval-limit",
@@ -386,11 +396,11 @@ def main() -> None:
     pg = run.Postgres()
     try:
         db = DB(pg)
-        run.sh(str(binary), "migrate", "--dsn", pg.dsn("okf_owner", "owner"))
+        run.sh(str(binary), "migrate", "--dsn", pg.dsn("keepsake_owner", "owner"))
         db.psql((run.BENCH / "rankers.sql").read_text() + shipped_ranker())
         # scale() first, so its sizes count only the concepts it writes.
         scale_row = None if args.skip_scale else scale(db)
-        rows = quality(args, db, binary, pg.dsn("okf_app", "app"))
+        rows = quality(args, db, binary, pg.dsn("keepsake_app", "app"))
     finally:
         pg.close()
     (out / "results.json").write_text(

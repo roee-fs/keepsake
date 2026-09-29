@@ -36,11 +36,11 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:
-            # The owner DSN. It creates the schema and grants okf_app the DML on it.
+            # The owner DSN. It creates the schema and grants keepsake_app the DML on it.
             - name: KEEPSAKE_DSN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-dsn
+                  name: {{ include "keepsake.dsnSecret" . }}
                   key: owner-dsn
             - name: KEEPSAKE_SCHEMA
               value: {{ .Values.postgres.schema | quote }}

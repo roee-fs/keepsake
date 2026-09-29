@@ -7,7 +7,8 @@
     "key fails every in-place upgrade, on the one release that adds it. Requiring a",
     "defaulted key buys nothing anyway: the default always supplies it. `dsn` and",
     "`ownerDsn` are the only required values, conditionally, because they have no",
-    "usable default and the install is broken without them."
+    "usable default and the install is broken without them. `existingSecret` stands",
+    "in for both."
   ],
   "type": "object",
   "properties": {
@@ -18,10 +19,17 @@
         "schema": {"type": "string", "pattern": "^[a-z_][a-z0-9_]*$"},
         "poolSize": {"type": "integer", "minimum": 1},
         "dsn": {"type": "string"},
-        "ownerDsn": {"type": "string"}
+        "ownerDsn": {"type": "string"},
+        "existingSecret": {"type": "string"}
       },
       "allOf": [{
-        "if": {"properties": {"mode": {"const": "existing"}}, "required": ["mode"]},
+        "if": {
+          "properties": {
+            "mode": {"const": "existing"},
+            "existingSecret": {"maxLength": 0}
+          },
+          "required": ["mode"]
+        },
         "then": {
           "properties": {"dsn": {"minLength": 1}, "ownerDsn": {"minLength": 1}},
           "required": ["dsn", "ownerDsn"]
