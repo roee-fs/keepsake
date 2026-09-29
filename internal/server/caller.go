@@ -28,11 +28,11 @@ const leeway = 30
 type caller struct {
 	tenant uuid.UUID
 	actor  string
-	// upload lets the caller replace a prefix through /bundle, which deletes concepts and their history.
+	// upload lets the caller replace a prefix through /bundle, which deletes concepts.
 	upload bool
 }
 
-// uploadScope is the token scope /bundle requires, so a token handed to an agent cannot erase history.
+// uploadScope is the token scope /bundle requires, so a token handed to an agent cannot delete concepts in bulk.
 const uploadScope = "bundle"
 
 type callerKey struct{}

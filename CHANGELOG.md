@@ -42,6 +42,10 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   `bigint`. Both tables are locked while it runs, and the time grows with their size.
 - An agent holding a version read before the upgrade still gets a correct answer:
   the sequence starts above every existing version.
+- Pods on the older release still number a write as the concept's version plus
+  one. Until the rollout finishes, a write to a concept an old pod just wrote can
+  fail once with a database error. Retrying succeeds. Scaling to zero before the
+  upgrade avoids it.
 - A rollback MUST first take the schema back to revision 0005, as the owner role,
   with `okf` replaced by your `KEEPSAKE_SCHEMA` if you set one:
   `BEGIN; ALTER TABLE okf.concept ALTER COLUMN version SET DEFAULT 1; DROP SEQUENCE

@@ -106,7 +106,8 @@ func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle
 }
 
 // replaceSQL deletes the concepts under $1 that $2 omits and logs each as a delete revision with a new version.
-// NOT EXISTS keeps a generic plan from scanning $2 per row.
+// NOT EXISTS keeps a generic plan from scanning $2 per row. nextval sits in a select list, so it runs
+// once per deleted row; an uncorrelated LATERAL may run once for the whole statement.
 const replaceSQL = `
 WITH d AS (
   DELETE FROM concept WHERE starts_with(path, $1) AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) k WHERE k = path)
@@ -115,7 +116,7 @@ WITH d AS (
 INSERT INTO concept_revision (tenant_id, path, version, op, snapshot, updated_by)
 SELECT tenant_id, path, v, 'delete', jsonb_build_object('path', path, 'type', type, 'title', title,
   'description', description, 'body', body, 'frontmatter', frontmatter, 'links', to_jsonb(links), 'version', v), $3
-FROM d, LATERAL (SELECT nextval('version_seq') AS v) s`
+FROM (SELECT *, nextval('version_seq') AS v FROM d) d`
 
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
 func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (written, deleted int, err error) {
@@ -194,7 +195,8 @@ func importWrites(ctx context.Context, tx pgx.Tx, tenant uuid.UUID, writes []wri
 			return err
 		})
 	}
-	return written, tx.SendBatch(ctx, &batch).Close()
+	err = tx.SendBatch(ctx, &batch).Close()
+	return written, err
 }
 
 // write is a concept with its jsonb parameters marshalled once.
