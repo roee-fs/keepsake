@@ -929,3 +929,17 @@ func TestGraphRespectsLimit(t *testing.T) {
 		t.Fatalf("Graph(limit=1) = %+v, want just \"a\"", rows)
 	}
 }
+
+func TestSearchReturnsFrontmatter(t *testing.T) {
+	cs, tenant := fixture(t)
+	fm := okf.NewMap()
+	fm.Set("status", "deprecated")
+	create(t, okf.Concept{Path: "a/old", Type: "Concept", Title: "Zqxold", Frontmatter: fm})
+	hits, err := cs.Search(ctx, tenant, "zqxold", 10, nil)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits = %+v, %v", hits, err)
+	}
+	if v, _ := hits[0].Frontmatter.Get("status"); v != "deprecated" {
+		t.Fatalf("frontmatter = %v", hits[0].Frontmatter)
+	}
+}

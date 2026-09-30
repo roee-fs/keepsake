@@ -187,7 +187,9 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h store.Hit) searchHit { return searchHit(h) }), nil
+	return convert(hits, func(h store.Hit) searchHit {
+		return searchHit{h.Path, h.Type, h.Title, h.Description, h.Score}
+	}), nil
 }
 
 func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit, error) {

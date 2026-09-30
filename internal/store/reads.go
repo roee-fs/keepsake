@@ -47,6 +47,7 @@ type Hit struct {
 	Title       string
 	Description string
 	Score       float64
+	Frontmatter *okf.Map
 }
 
 // Summary is a concept table row: Hit without the score, plus TenantID for mixed-tenant pages.
@@ -373,10 +374,10 @@ ranked AS MATERIALIZED (
   LIMIT $3
 ),
 cards AS MATERIALIZED (
-  SELECT c.path, c.type, c.title, c.description FROM concept c
+  SELECT c.path, c.type, c.title, c.description, c.frontmatter FROM concept c
   WHERE c.tenant_id = $4 AND c.path = ANY (ARRAY(SELECT path FROM ranked))
 )
-SELECT c.path, c.type, c.title, c.description, r.score
+SELECT c.path, c.type, c.title, c.description, r.score, c.frontmatter
 FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
 
