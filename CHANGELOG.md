@@ -7,6 +7,14 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Added
+
+- `okf_search` cards and `okf_read` results carry `status`, `stale`, `trust`
+  and `generated_at`, derived from OKF v0.2 §5 frontmatter. A bare `verified`
+  mapping counts as one verification. Ranking is unchanged.
+
 ## 0.4.0 — 2026-09-29
 
 ### Changed

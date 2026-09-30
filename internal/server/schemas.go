@@ -78,8 +78,11 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "okf_search",
 			Description: "Find concepts by keyword, ranked by relevance. Returns cards — path, " +
-				"type, title, description, score — and never a body; read a promising " +
-				"path with okf_read.\n\n" +
+				"type, title, description, score, status, stale, trust, generated_at — and " +
+				"never a body; read a promising path with okf_read.\n\n" +
+				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
+				"stale_after date has passed. `trust` is unverified, machine-confirmed or " +
+				"human-reviewed. `generated_at` is when the content last changed, or empty.\n\n" +
 				"Matching is lexical, not semantic: the index holds the words that were " +
 				"actually written, so distinctive keywords ('dormant', 'PKCE', " +
 				"'indextime') find far more than a natural-language question does. Terms " +
@@ -89,8 +92,11 @@ func toolDefinitions() []*mcp.Tool {
 				"one part of the tree.",
 			InputSchema: schema(obj("query", str(), "limit", limit(), "prefix", str()), "query", "limit"),
 			OutputSchema: results(schema(
-				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number")),
-				"path", "type", "title", "description", "score",
+				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
+					"status", str(), "stale", obj("type", "boolean"),
+					"trust", obj("type", "string", "enum", []string{okf.Unverified, okf.MachineConfirmed, okf.HumanReviewed}),
+					"generated_at", str()),
+				"path", "type", "title", "description", "score", "status", "stale", "trust", "generated_at",
 			)),
 		},
 		{
@@ -106,7 +112,8 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "okf_read",
 			Description: "Read one concept in full: body, frontmatter, the concepts it links to, " +
-				"and the concepts that link back to it. Returns null if nothing is stored " +
+				"and the concepts that link back to it, with the same status, stale, trust " +
+				"and generated_at as okf_search. Returns null if nothing is stored " +
 				"at that path. Take paths from okf_list, okf_search or okf_grep.",
 			InputSchema: schema(obj("path", str()), "path"),
 		},

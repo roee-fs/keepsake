@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -62,6 +63,12 @@ type searchHit struct {
 	Score       float64 `json:"score"`
 }
 
+// card is an okf_search result: a searchHit plus the OKF §5 signals.
+type card struct {
+	searchHit
+	okf.Signals
+}
+
 type grepHit struct {
 	Path    string `json:"path"`
 	Snippet string `json:"snippet"`
@@ -82,6 +89,7 @@ type concept struct {
 	Version     int      `json:"version"`
 	Links       []string `json:"links"`
 	Backlinks   []string `json:"backlinks"`
+	okf.Signals
 }
 
 // textField reads an absent field as empty and refuses a non-string, so null cannot erase a field.
@@ -182,13 +190,14 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	return writeResult{path, version}, nil
 }
 
-func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *string) ([]searchHit, error) {
+func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *string) ([]card, error) {
 	hits, err := t.c.Search(ctx, t.t, query, limit, prefix)
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h store.Hit) searchHit {
-		return searchHit{h.Path, h.Type, h.Title, h.Description, h.Score}
+	now := time.Now()
+	return convert(hits, func(h store.Hit) card {
+		return card{searchHit{h.Path, h.Type, h.Title, h.Description, h.Score}, okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
@@ -225,7 +234,8 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 	if err != nil || c == nil {
 		return nil, err
 	}
-	return &concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks}, nil
+	return &concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks,
+		okf.Derive(c.Frontmatter, time.Now())}, nil
 }
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.

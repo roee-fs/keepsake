@@ -13,9 +13,9 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `okf_list` | `prefix?` | Every path under `prefix`, with a count per type. The cheapest way to learn the shape of the tree. |
-| `okf_search` | `query`, `limit`, `prefix?` | Cards ranked by BM25: `path`, `type`, `title`, `description`, `score`. Never a body. |
+| `okf_search` | `query`, `limit`, `prefix?` | Cards ranked by BM25: `path`, `type`, `title`, `description`, `score`, and the OKF signals `status`, `stale`, `trust`, `generated_at`. Never a body. |
 | `okf_grep` | `pattern`, `limit` | Paths whose title, description or body match a POSIX regex, case-insensitively, each with a snippet. |
-| `okf_read` | `path` | The full concept: body, frontmatter, version, outbound links and backlinks. `null` if the path is empty. |
+| `okf_read` | `path` | The full concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
 | `okf_create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
 | `okf_update` | `path`, `expected_version?`, and any field `okf_create` takes | The new version. Omitted fields keep their values. |
 | `okf_relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |

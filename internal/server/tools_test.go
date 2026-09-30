@@ -260,6 +260,47 @@ func TestSearchTermsAreOredSoExtraTermsBroaden(t *testing.T) {
 	}
 }
 
+func TestSearchAndReadCarryTrustSignals(t *testing.T) {
+	tools := newTools(t)
+	fm := okf.NewMap()
+	fm.Set("status", "deprecated")
+	fm.Set("stale_after", "2000-01-01T00:00:00Z")
+	fm.Set("verified", obj("by", "human:ann", "at", "2026-06-25T09:00:00Z"))
+	fm.Set("generated", obj("by", "agent/v1", "at", "2026-06-20T22:53:05Z"))
+	seed(t, tools, "a/old", map[string]any{"title": "Zqxold", "frontmatter": fm})
+	seed(t, tools, "a/new", map[string]any{"title": "Zqxold"})
+
+	want := map[string]okf.Signals{
+		"a/old": {Status: "deprecated", Stale: true, Trust: okf.HumanReviewed, GeneratedAt: "2026-06-20T22:53:05Z"},
+		"a/new": {Status: "stable", Trust: okf.Unverified},
+	}
+	hits, err := tools.Search(ctx, "zqxold", 5, nil)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("hits = %+v, %v", hits, err)
+	}
+	for _, h := range hits {
+		if h.Signals != want[h.Path] {
+			t.Errorf("search %s: %+v", h.Path, h.Signals)
+		}
+		c, err := tools.Read(ctx, h.Path)
+		if err != nil || c.Signals != want[h.Path] {
+			t.Errorf("read %s: %+v, %v", h.Path, c, err)
+		}
+	}
+}
+
+func TestSearchRanksADeprecatedConceptLikeAnyOther(t *testing.T) {
+	tools := newTools(t)
+	fm := okf.NewMap()
+	fm.Set("status", "deprecated")
+	seed(t, tools, "a/a", map[string]any{"title": "Zqxtie", "frontmatter": fm})
+	seed(t, tools, "a/b", map[string]any{"title": "Zqxtie"})
+	hits, err := tools.Search(ctx, "zqxtie", 5, nil)
+	if err != nil || len(hits) != 2 || hits[0].Score != hits[1].Score {
+		t.Fatalf("hits = %+v, %v", hits, err)
+	}
+}
+
 func TestGrepReturnsASnippetForEveryMatch(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/b", map[string]any{"body": "alpha " + secret + " omega"})
@@ -463,6 +504,12 @@ func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 	if len(hits) != 1 || field(hits[0], "path") != "e2e/smoke" {
 		t.Fatalf("hits = %v", hits)
 	}
+	if field(hits[0], "trust") != okf.Unverified || field(hits[0], "status") != "stable" {
+		t.Fatalf("card = %v", hits[0])
+	}
+	if err := compile(listTools(t)["okf_search"].OutputSchema).Validate(result.StructuredContent); err != nil {
+		t.Fatalf("result breaks the advertised output schema: %v", err)
+	}
 	structured, _ := json.Marshal(result.StructuredContent)
 	if strings.Contains(string(structured), secret) || strings.Contains(text(t, result), secret) {
 		t.Fatal("leaked a body")
@@ -624,7 +671,8 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
-		fmt.Sprintf(`"frontmatter": {"n": 1}, "version": %v, "links": [], "backlinks": []}`, field(created.StructuredContent, "version"))
+		fmt.Sprintf(`"frontmatter": {"n": 1}, "version": %v, "links": [], "backlinks": [], `+
+			`"status": "stable", "stale": false, "trust": "unverified", "generated_at": ""}`, field(created.StructuredContent, "version"))
 	if got := text(t, res); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
