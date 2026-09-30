@@ -283,7 +283,7 @@ func TestSearchAndReadCarryTrustSignals(t *testing.T) {
 			t.Errorf("search %s: %+v", h.Path, h.Signals)
 		}
 		c, err := tools.Read(ctx, h.Path)
-		if err != nil || c.Signals != want[h.Path] {
+		if err != nil || c == nil || c.Signals != want[h.Path] {
 			t.Errorf("read %s: %+v, %v", h.Path, c, err)
 		}
 	}

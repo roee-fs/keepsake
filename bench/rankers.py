@@ -46,7 +46,7 @@ def shipped_ranker() -> str:
     sql = re.search(r"const searchSQL = `(.*?)`", src, re.DOTALL).group(1)
     return (
         "CREATE FUNCTION okf.rank_shipped(text, text, int, uuid)\n"
-        "RETURNS TABLE (path text, type text, title text, description text, score float8)\n"
+        "RETURNS TABLE (path text, type text, title text, description text, score float8, frontmatter jsonb)\n"
         f"LANGUAGE sql STABLE SET search_path = okf, pg_catalog AS $shipped${sql}$shipped$;"
     )
 

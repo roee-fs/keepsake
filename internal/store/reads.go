@@ -50,7 +50,7 @@ type Hit struct {
 	Frontmatter *okf.Map
 }
 
-// Summary is a concept table row: Hit without the score, plus TenantID for mixed-tenant pages.
+// Summary is a concept table row: Hit without the score or frontmatter, plus TenantID for mixed-tenant pages.
 type Summary struct {
 	Path        string
 	Type        string

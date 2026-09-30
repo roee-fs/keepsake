@@ -63,6 +63,10 @@ type searchHit struct {
 	Score       float64 `json:"score"`
 }
 
+func hitOf(h store.Hit) searchHit {
+	return searchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
+}
+
 // card is an okf_search result: a searchHit plus the OKF §5 signals.
 type card struct {
 	searchHit
@@ -197,7 +201,7 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 	}
 	now := time.Now()
 	return convert(hits, func(h store.Hit) card {
-		return card{searchHit{h.Path, h.Type, h.Title, h.Description, h.Score}, okf.Derive(h.Frontmatter, now)}
+		return card{hitOf(h), okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
