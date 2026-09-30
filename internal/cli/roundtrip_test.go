@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -318,7 +319,7 @@ func TestAnInvalidDocumentIsNamedAndRefusesTheWholeImport(t *testing.T) {
 func TestValidateReportsAMalformedDocumentByName(t *testing.T) {
 	src := bundle(t, t.TempDir(), doc, "layers.md")
 	writeFile(t, src, "architecture/broken.md", "---\ntype: [unclosed\n---\nx\n")
-	if _, err := ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
+	if _, _, err := ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -344,12 +345,13 @@ func TestAFrontmatterCommentIsNotPreserved(t *testing.T) {
 	}
 }
 
-func TestAnUnquotedYAMLDateComesBackAsAString(t *testing.T) {
-	got, stored := roundTrip(t, strings.Replace(doc, "custom_vendor_field: keep-me", "created: 2026-01-01", 1))
+func TestAnUnquotedYAMLDateRoundTripsUnquoted(t *testing.T) {
+	in := strings.Replace(doc, "custom_vendor_field: keep-me", "created: 2026-01-01", 1)
+	got, stored := roundTrip(t, in)
 	if v, _ := stored.Frontmatter.Get("created"); v != "2026-01-01" {
 		t.Fatalf("created = %#v", v)
 	}
-	if !strings.Contains(got, "2026-01-01") || strings.Contains(got, "created: 2026-01-01\n") {
+	if got != in {
 		t.Fatalf("%q", got)
 	}
 }
@@ -357,22 +359,21 @@ func TestAnUnquotedYAMLDateComesBackAsAString(t *testing.T) {
 func TestValidateAcceptsABundleWhoseLinksResolve(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [see](./other.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/other.md", "---\ntype: Concept\n---\nOther.\n")
-	if errs, err := ValidateBundle(src); err != nil || len(errs) != 0 {
-		t.Fatal(errs, err)
+	if errs, warnings, err := ValidateBundle(src); err != nil || len(errs)+len(warnings) != 0 {
+		t.Fatal(errs, warnings, err)
 	}
 }
 
 func TestValidateReportsADanglingLinkAndAMissingType(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [gone](./gone.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	errs, err := ValidateBundle(src)
+	errs, warnings, err := ValidateBundle(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := strings.Join(errs, "\n")
-	if !strings.Contains(all, "architecture/layers: link to unknown concept architecture/gone") ||
-		!strings.Contains(all, "architecture/typeless: type is required") {
-		t.Fatal(all)
+	if !slices.Equal(warnings, []string{"architecture/layers: link to unknown concept architecture/gone"}) ||
+		!slices.Equal(errs, []string{"architecture/typeless: type is required"}) {
+		t.Fatal(errs, warnings)
 	}
 }
 
@@ -576,8 +577,13 @@ func TestExportMatchesPythonForEveryGolden(t *testing.T) {
 				t.Fatal(err)
 			}
 			mustExport(t, cs, tenant, filepath.Join(tmp, "out"))
-			if got := readFile(t, filepath.Join(tmp, "out", "doc.md")); got != g.Exported {
-				t.Errorf("go:\n%s\npython:\n%s", got, g.Exported)
+			want := g.Exported
+			if strings.HasPrefix(g.Name, "V_") && strings.Contains(g.Name, "DATE") {
+				// Python quotes a timestamp. Keepsake writes it plain, as okf's own golden test explains.
+				want = strings.Replace(strings.Replace(want, "v: '", "v: ", 1), "'\n---", "\n---", 1)
+			}
+			if got := readFile(t, filepath.Join(tmp, "out", "doc.md")); got != want {
+				t.Errorf("go:\n%s\nwant:\n%s", got, want)
 			}
 		})
 	}
@@ -602,7 +608,7 @@ func TestImportRefusesNaNAndWritesNothing(t *testing.T) {
 func TestValidateAcceptsNaN(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "b.md", "---\ntype: Concept\nv: [1, .nan]\n---\nx\n")
-	if errs, err := ValidateBundle(dir); err != nil || len(errs) != 0 {
+	if errs, _, err := ValidateBundle(dir); err != nil || len(errs) != 0 {
 		t.Fatal(errs, err)
 	}
 }
@@ -618,7 +624,7 @@ func TestImportAndValidateFollowASymlinkedRoot(t *testing.T) {
 		t.Fatalf("imported %d", n)
 	}
 	writeFile(t, real, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	if errs, err := ValidateBundle(link); err != nil || len(errs) != 1 {
+	if errs, _, err := ValidateBundle(link); err != nil || len(errs) != 1 {
 		t.Fatal(errs, err)
 	}
 	// Files are named by the path the operator typed, not the one it resolves to.
@@ -677,7 +683,7 @@ func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
 // The demo's first diff is empty only while this holds.
 func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 	src := filepath.Join("..", "..", "demo", "bundle")
-	if errs, err := ValidateBundle(src); err != nil || len(errs) > 0 {
+	if errs, _, err := ValidateBundle(src); err != nil || len(errs) > 0 {
 		t.Fatal(err, errs)
 	}
 	cs, tenant, out := conceptStore(t), uuid.New(), t.TempDir()

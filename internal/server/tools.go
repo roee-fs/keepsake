@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -14,8 +15,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's retries past concurrent writers; each round has one winner.
-const relateAttempts = 20
+// writeAttempts bounds retries past concurrent writers; each round has one winner.
+const writeAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
 type ToolError struct{ Msg string }
@@ -128,9 +129,39 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	return c, nil
 }
 
+// attested is the OKF §10 type whose computation an agent MUST NOT author or edit.
+const attested = "Attested Computation"
+
+// guard refuses what an agent MUST NOT write: an Attested Computation, or a change to `verified`.
+// Both still arrive through a bundle import.
+func guard(existing *okf.Concept, c okf.Concept) error {
+	if c.Type == attested || existing != nil && existing.Type == attested {
+		return toolErr("an Attested Computation cannot be written here: OKF §10.3 forbids an agent from authoring or editing its computation")
+	}
+	var before any
+	if existing != nil {
+		before = verified(existing.Frontmatter)
+	}
+	if !reflect.DeepEqual(before, verified(c.Frontmatter)) {
+		return toolErr("`verified` records a human or process confirmation, so an agent cannot set or change it (OKF §5.2)")
+	}
+	return nil
+}
+
+func verified(fm *okf.Map) any {
+	if fm == nil {
+		return nil
+	}
+	v, _ := fm.Get("verified")
+	return v
+}
+
 func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (writeResult, error) {
 	c, err := t.concept(path, kw)
 	if err != nil {
+		return writeResult{}, err
+	}
+	if err := guard(nil, c); err != nil {
 		return writeResult{}, err
 	}
 	version, created, err := t.c.Create(ctx, t.t, c, t.actor)
@@ -145,14 +176,25 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
 func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	existing, err := t.c.Read(ctx, t.t, path)
-	if err != nil {
-		return nil, err
+	for range writeAttempts {
+		existing, err := t.c.Read(ctx, t.t, path)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			return nil, toolErr("no concept at " + path)
+		}
+		// Without a version, pin the one guard checks, so a concurrent import cannot slip past it.
+		expected := expectedVersion
+		if expected == nil {
+			expected = &existing.Version
+		}
+		result, err := t.write(ctx, *existing, path, expected, kw)
+		if _, conflict := result.(conflictResult); err != nil || !conflict || expectedVersion != nil {
+			return result, err
+		}
 	}
-	if existing == nil {
-		return nil, toolErr("no concept at " + path)
-	}
-	return t.write(ctx, *existing, path, expectedVersion, kw)
+	return nil, toolErr(path + " is being rewritten faster than the update could be recorded")
 }
 
 // write writes kw over the concept the caller already read.
@@ -166,6 +208,9 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	}
 	c, err := t.concept(path, merged)
 	if err != nil {
+		return nil, err
+	}
+	if err := guard(&existing, c); err != nil {
 		return nil, err
 	}
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)
@@ -228,7 +273,7 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
 			return nil, err

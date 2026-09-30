@@ -295,9 +295,12 @@ func runBundle(fn func(context.Context, *store.ConceptStore, uuid.UUID, string) 
 }
 
 func runValidate(_ context.Context, o *options, _, stderr io.Writer) (int, error) {
-	errs, err := ValidateBundle(o.directory)
+	errs, warnings, err := ValidateBundle(o.directory)
 	if err != nil {
 		return 0, err
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(stderr, "warning: "+w)
 	}
 	for _, e := range errs {
 		fmt.Fprintln(stderr, e)
