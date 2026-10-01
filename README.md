@@ -117,7 +117,7 @@ pod crash-loops, `kubectl logs` names the misconfiguration.
 
 ```bash
 kubectl port-forward svc/keepsake 8000:8000 &
-token=$(kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub smoke --ttl 5m)
+token=$(kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub process:smoke --ttl 5m)
 curl -s localhost:8000/mcp -H "Authorization: Bearer $token" \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":{}}}'
@@ -240,12 +240,15 @@ helm install keepsake charts/keepsake --set auth.mode=jwt \
 
 Your orchestrator holds the same secret and signs a short-lived token per call.
 The HMAC key is the line's text as-is, not its hex-decoded bytes:
-`{"iss": "platform", "aud": "keepsake", "sub": "run:42", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
+`{"iss": "platform", "aud": "keepsake", "sub": "support-agent/1.4", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
+keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
+concept the token writes. It SHOULD follow the OKF actor convention, and MUST be
+`human:<id>` for a person.
 The secret MUST NOT be readable by anything an LLM drives. A client that can run
 code, or that only takes a static header, gets a token for its own tenant instead:
 
 ```bash
-kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub alice --ttl 720h
+kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub human:alice --ttl 720h
 ```
 
 ## Roadmap

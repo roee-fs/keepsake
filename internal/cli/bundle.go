@@ -18,7 +18,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-const actor = "cli"
+// An import copies a bundle in, so it records the OKF §7 process actor.
+const actor = "process:import"
 
 // The log is a bundle file an operator reads, not an audit export.
 const logLimit = 1000

@@ -512,7 +512,9 @@ options:
   -h, --help       show this help message and exit
   --tenant TENANT  The tenant the token reads and writes. Defaults to
                    $KEEPSAKE_TENANT_ID.
-  --sub SUB        Who the token acts as, recorded as updated_by.
+  --sub SUB        Who the token acts as, recorded as updated_by and as
+                   generated.by. Use the OKF actor form: human:<id> for a
+                   person, <producer>/<version> for an agent.
   --ttl TTL        How long the token lives, such as 30m or 720h. Defaults
                    to 1h.
   --scope SCOPE    Space-separated scopes. "bundle" lets the token replace

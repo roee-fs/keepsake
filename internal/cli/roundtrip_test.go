@@ -699,3 +699,12 @@ func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestImportRecordsTheOKFImportActor(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	mustImport(t, cs, tenant, bundle(t, t.TempDir(), doc, "layers.md"))
+	revs, err := cs.Revisions(ctx, tenant, 1)
+	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != "process:import" {
+		t.Fatalf("revisions = %+v, %v", revs, err)
+	}
+}

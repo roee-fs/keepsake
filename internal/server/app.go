@@ -17,7 +17,7 @@ import (
 )
 
 // The revision log's actor in auth mode none, where a request carries no caller identity.
-const actor = "mcp"
+const actor = "keepsake/" + Version
 
 // Where the image bakes the built console; KEEPSAKE_STATIC_DIR overrides it.
 const defaultStaticDir = "/app/static"
