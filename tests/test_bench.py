@@ -440,3 +440,53 @@ def test_summary_tolerates_rows_without_link_metrics() -> None:
     for key in ("reads", "offered", "followed", "link_only_reads", "missed_links"):
         row.pop(key, None)
     assert "| v | 1/1 |" in grade.summarize([row])
+
+
+BEAM_ROW = {
+    "conversation_id": "7",
+    "chat": [
+        [
+            {"role": "user", "content": "Use tabs.", "time_anchor": "March-01-2024"},
+            {"role": "assistant", "content": "Noted.", "time_anchor": "March-01-2024"},
+            {"role": "user", "content": "x" * 300_000, "time_anchor": "March-01-2024"},
+        ]
+    ],
+    "probing_questions": repr(
+        {
+            "instruction_following": [
+                {"question": "Format this.", "rubric": ["Uses tabs"]}
+            ]
+        }
+    ),
+}
+
+
+def test_a_beam_conversation_becomes_storable_concepts(tmp_path: Path) -> None:
+    import beam
+
+    beam.bundle(BEAM_ROW, tmp_path)
+    files = sorted(tmp_path.rglob("*.md"))
+    assert files[0].relative_to(tmp_path).as_posix() == "session/001/001.md"
+    assert "user: Use tabs." in files[0].read_text()
+    # The 300 KB turn is split, since keepsake caps a body at 256 KiB.
+    assert len(files) >= 3
+    assert all(len(f.read_bytes()) <= 256 * 1024 for f in files)
+
+
+def test_a_beam_task_carries_the_official_rubric_judge() -> None:
+    import beam
+
+    [task] = beam.tasks(BEAM_ROW, "1M", beam.OUT / "bundles" / "1M-7")
+    assert task["id"] == "1M-7-instruction_following-1"
+    assert task["kind"] == "instruction_following"
+    assert task["prompt"] == "Format this."
+    assert task["read_only"] is True
+    [prompt] = task["expect"]["judge_rubric"]
+    assert "RUBRIC CRITERION (what to check): Uses tabs" in prompt
+    assert grade.RESPONSE in prompt
+
+
+def test_a_rubric_judge_reply_scores_from_its_json() -> None:
+    assert run.rubric_score('```json\n{"score": 0.5, "reason": "partly"}\n```') == 0.5
+    assert run.rubric_score('{"score": 1.0}') == 1.0
+    assert run.rubric_score("no json") == 0.0

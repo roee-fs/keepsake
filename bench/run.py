@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -262,9 +263,24 @@ def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
     raise TimeoutError(f"{url} never became ready")
 
 
-def judged(model: str, task: dict[str, Any], answer: str, cwd: Path) -> bool | None:
-    """A judge model's verdict on the answer, or None when the task names no judge."""
+def rubric_score(reply: str) -> float:
+    """The score in a rubric judge's JSON reply, or 0 when it gave none."""
+    m = re.search(r'"score"\s*:\s*"?([0-9.]+)', reply)
+    return float(m.group(1)) if m else 0.0
+
+
+def judged(
+    model: str, task: dict[str, Any], answer: str, cwd: Path
+) -> bool | float | None:
+    """A judge model's verdict on the answer: a mean score for a rubric, else pass or fail.
+    None when the task names no judge."""
     expect = task["expect"]
+    if "judge_rubric" in expect:
+        scores = [
+            rubric_score(judge(model, p.replace(grade.RESPONSE, answer), cwd))
+            for p in expect["judge_rubric"]
+        ]
+        return sum(scores) / len(scores)
     if "judge_template" in expect:
         # LongMemEval's own prompt and parsing: the verdict is any "yes" in the reply.
         reply = judge(
@@ -281,19 +297,28 @@ def judged(model: str, task: dict[str, Any], answer: str, cwd: Path) -> bool | N
 
 
 def judge(model: str, prompt: str, cwd: Path) -> str:
-    out = sh(
-        "claude",
-        "-p",
-        prompt,
-        "--model",
-        model,
-        "--output-format",
-        "json",
-        *ISOLATED,
-        cwd=cwd,
-        timeout=120,
-    )
+    cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json"]
+    try:
+        out = sh(*cmd, *ISOLATED, cwd=cwd, timeout=120)
+    except subprocess.SubprocessError:
+        # Once more: a transient API error would otherwise fail a trial the agent passed.
+        out = sh(*cmd, *ISOLATED, cwd=cwd, timeout=120)
     return json.loads(out).get("result", "")
+
+
+_loaded: dict[tuple[str, str], str] = {}
+_loading = threading.Lock()
+
+
+def loaded(binary: Path, app: str, db: str, bundle: Path) -> str:
+    """The tenant holding bundle in db, imported on first use, for tasks that only read."""
+    with _loading:
+        key = (db, str(bundle))
+        if key not in _loaded:
+            tenant = str(uuid.uuid4())
+            sh(str(binary), "import", "--dsn", app, "--tenant", tenant, str(bundle))
+            _loaded[key] = tenant
+        return _loaded[key]
 
 
 def trial(
@@ -307,7 +332,15 @@ def trial(
 ) -> dict[str, Any]:
     binary, db = build_
     app = pg.dsn("keepsake_app", "app", db)
-    tenant = str(uuid.uuid4())
+    bundle = Path(task.get("bundle_path", BUNDLE))
+    # A read-only task shares its bundle's tenant across trials, so it MUST NOT be able to write.
+    read_only = bool(task.get("read_only"))
+    if read_only:
+        tenant = loaded(binary, app, db, bundle)
+        variant = {**variant, "tools": {**variant.get("tools", {}), **dict.fromkeys(grade.WRITES)}}
+    else:
+        tenant = str(uuid.uuid4())
+        sh(str(binary), "import", "--dsn", app, "--tenant", tenant, str(bundle))
     row: dict[str, Any] = {
         "variant": variant["name"],
         "task": task["id"],
@@ -317,8 +350,6 @@ def trial(
     }
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        bundle = Path(task.get("bundle_path", BUNDLE))
-        sh(str(binary), "import", "--dsn", app, "--tenant", tenant, str(bundle))
         log = (out / f"{variant['name']}.{task['id']}.{n}.server.log").open("wb")
         try:
             server, port = serve(binary, app, tenant, log)
@@ -382,13 +413,16 @@ def trial(
                     agent.kill()
                     agent.wait()
                     row["error"] = f"timed out after {args.timeout}s"
-            exported = work / "export"
-            sh(str(binary), "export", "--dsn", app, "--tenant", tenant, str(exported))
-            after = grade.load_bundle(exported)
-            # Kept, so a memory an agent wrote can seed a later task (bench/longmemeval.py --curated).
-            kept = out / "exports" / f"{variant['name']}.{task['id']}.{n}"
-            shutil.copytree(exported, kept)
-            row["export"] = str(kept)
+            # A read-only trial changed nothing, and its tenant can be millions of tokens.
+            after: dict[str, str] = {}
+            if not read_only:
+                exported = work / "export"
+                sh(str(binary), "export", "--dsn", app, "--tenant", tenant, str(exported))
+                after = grade.load_bundle(exported)
+                # Kept, so a memory an agent wrote can seed a later task (bench/longmemeval.py --curated).
+                kept = out / "exports" / f"{variant['name']}.{task['id']}.{n}"
+                shutil.copytree(exported, kept)
+                row["export"] = str(kept)
         finally:
             if proxy:
                 proxy.shutdown()
@@ -408,11 +442,14 @@ def trial(
             # The judge's fault fails the trial but keeps the agent's answer and metrics.
             verdict = None
             row.setdefault("error", f"judge: {type(e).__name__}")
+        if isinstance(verdict, float):
+            row["score"] = verdict
+            verdict = verdict >= 0.5
         row["checks"] = grade.grade(
             task["expect"],
             calls,
             answer,
-            grade.load_bundle(bundle),
+            {} if read_only else grade.load_bundle(bundle),
             after,
             verdict,
             require_tools=not variant.get("bundle_in_prompt"),

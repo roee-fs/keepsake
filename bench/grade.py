@@ -139,7 +139,7 @@ def grade(
         # Padded, so an alias matches whole words: "hu" must not pass "church".
         said = f" {normalize(answer)} "
         checks["answer ~ any alias"] = any(f" {a} " in said for a in aliases)
-    if "judge" in expect or "judge_template" in expect:
+    if {"judge", "judge_template", "judge_rubric"} & expect.keys():
         checks["judge"] = bool(judged)
     if expect.get("search_before_write"):
         first = next((i for i, c in enumerate(calls) if c["tool"] in WRITES), None)
