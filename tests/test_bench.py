@@ -88,6 +88,32 @@ def test_parse_keeps_keepsake_calls_in_order_and_marks_errors() -> None:
     assert result["result"] == "Run pg_ctl promote."
 
 
+def test_parse_counts_file_tools_over_the_exported_memory() -> None:
+    calls, _ = grade.parse(
+        [
+            _line(
+                "assistant",
+                {
+                    "type": "tool_use",
+                    "id": "1",
+                    "name": "Grep",
+                    "input": {"pattern": "promote"},
+                },
+                {
+                    "type": "tool_use",
+                    "id": "2",
+                    "name": "Read",
+                    "input": {"file_path": "/tmp/x/memory/runbooks/db-failover.md"},
+                },
+                {"type": "tool_use", "id": "3", "name": "Bash", "input": {"command": "ls"}},
+            ),
+        ]
+    )
+    assert [c["tool"] for c in calls] == ["okf_grep", "okf_read"]
+    checks = grade.grade({"reads": ["runbooks/db-failover"]}, calls, "", {}, {})
+    assert checks == {"used keepsake": True, "read runbooks/db-failover": True}
+
+
 def test_grade_normalizes_read_paths_and_diffs_the_store() -> None:
     calls, result = grade.parse(TRANSCRIPT)
     before = {"runbooks/db-failover": "page `#dba-oncall`"}

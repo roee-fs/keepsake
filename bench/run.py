@@ -327,6 +327,13 @@ def trial(
             raise
         proxy = None
         try:
+            isolated, cwd, allowed = list(ISOLATED), work, ["mcp__keepsake"]
+            if variant.get("files"):
+                allowed += grade.FILE_TOOLS
+                # A snapshot taken before the agent starts, so its own writes do not show up in it.
+                cwd = work / grade.MEMORY_DIR
+                sh(str(binary), "export", "--dsn", app, "--tenant", tenant, str(cwd))
+                isolated[isolated.index("--tools") + 1] = ",".join(grade.FILE_TOOLS)
             proxy = Proxy(f"http://127.0.0.1:{port}/mcp", variant)
             config = work / "mcp.json"
             config.write_text(
@@ -340,11 +347,11 @@ def trial(
                 task["prompt"],
                 "--model",
                 args.model,
-                *ISOLATED,
+                *isolated,
                 "--mcp-config",
                 str(config),
                 "--allowedTools",
-                "mcp__keepsake",
+                ",".join(allowed),
                 "--output-format",
                 "stream-json",
                 "--verbose",
@@ -367,7 +374,7 @@ def trial(
             transcript = out / f"{variant['name']}.{task['id']}.{n}.jsonl"
             with transcript.open("w") as f:
                 agent = subprocess.Popen(
-                    cmd, stdout=f, stderr=subprocess.STDOUT, cwd=work
+                    cmd, stdout=f, stderr=subprocess.STDOUT, cwd=cwd
                 )
                 try:
                     agent.wait(timeout=args.timeout)

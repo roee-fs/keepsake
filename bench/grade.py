@@ -18,6 +18,10 @@ from statistics import mean
 from typing import Any
 
 TOOL_PREFIX = "mcp__keepsake__"
+# The files variant's built-in tools, named as the keepsake tools they stand in for.
+FILE_TOOLS = {"Read": "okf_read", "Grep": "okf_grep", "Glob": "okf_list"}
+# The directory run.py exports a files trial's memory into.
+MEMORY_DIR = "memory"
 # Where a task's judge_template takes the agent's answer.
 RESPONSE = "<<RESPONSE>>"
 WRITES = {"okf_create", "okf_update", "okf_relate"}
@@ -74,17 +78,21 @@ def parse(lines: Iterable[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         content = (m.get("message") or {}).get("content")
         if m.get("type") == "assistant" and isinstance(content, list):
             for block in content:
-                if block.get("type") == "tool_use" and block["name"].startswith(
-                    TOOL_PREFIX
-                ):
-                    call = {
-                        "tool": block["name"].removeprefix(TOOL_PREFIX),
-                        "input": block.get("input") or {},
-                        "error": False,
-                        "output": "",
-                    }
-                    calls.append(call)
-                    by_id[block["id"]] = call
+                if block.get("type") != "tool_use":
+                    continue
+                name, args = block["name"], block.get("input") or {}
+                if name.startswith(TOOL_PREFIX):
+                    name = name.removeprefix(TOOL_PREFIX)
+                elif name in FILE_TOOLS:
+                    name = FILE_TOOLS[name]
+                    if "file_path" in args:
+                        path = args["file_path"].rpartition(f"/{MEMORY_DIR}/")[2]
+                        args = {**args, "path": path}
+                else:
+                    continue
+                call = {"tool": name, "input": args, "error": False, "output": ""}
+                calls.append(call)
+                by_id[block["id"]] = call
         elif m.get("type") == "user" and isinstance(content, list):
             for block in content:
                 if (
