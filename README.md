@@ -242,8 +242,8 @@ Your orchestrator holds the same secret and signs a short-lived token per call.
 The HMAC key is the line's text as-is, not its hex-decoded bytes:
 `{"iss": "platform", "aud": "keepsake", "sub": "support-agent/1.4", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
 keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
-concept the token writes. It SHOULD follow the OKF actor convention, and MUST be
-`human:<id>` for a person.
+concept the token writes through `/mcp`. It SHOULD follow the OKF actor convention,
+and MUST be `human:<id>` for a person.
 The secret MUST NOT be readable by anything an LLM drives. A client that can run
 code, or that only takes a static header, gets a token for its own tenant instead:
 

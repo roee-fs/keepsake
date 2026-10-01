@@ -44,7 +44,8 @@ and skips numbers. A path deleted and created again gets a new version, so a
 stale `expected_version` never matches it.
 
 Every write appends a revision, attributed to the caller: the JWT `sub`, or
-the fixed actor in `none` mode.
+the fixed actor in `none` mode. It also stamps frontmatter `generated: { by, at }`
+with that caller and the time, replacing any `generated` the caller sent.
 
 ## Errors
 

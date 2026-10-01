@@ -163,7 +163,8 @@ func TestUpdateKeepsTheFieldsItWasNotGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := read(t, tools, "a/b")
-	if owner, _ := c.Frontmatter.Get("owner"); c.Title != "Original" || c.Description != "D" || c.Body != "v2" || owner != "sec" {
+	owner, _ := c.Frontmatter.Get("owner")
+	if c.Title != "Original" || c.Description != "D" || c.Body != "v2" || owner != "sec" || !slices.Equal(c.Frontmatter.Keys(), []string{"owner", "generated"}) {
 		t.Fatalf("got %+v", c)
 	}
 }
@@ -179,7 +180,9 @@ func TestANullFrontmatterIsRefusedRatherThanErasing(t *testing.T) {
 	seed(t, tools, "a/b", map[string]any{"body": "v1", "frontmatter": obj("owner", "sec")})
 	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2", "frontmatter": nil})
 	wantToolError(t, err, "frontmatter must be an object")
-	if owner, _ := read(t, tools, "a/b").Frontmatter.Get("owner"); owner != "sec" {
+	if fm := read(t, tools, "a/b").Frontmatter; !slices.Equal(fm.Keys(), []string{"owner", "generated"}) {
+		t.Fatalf("frontmatter keys = %v", fm.Keys())
+	} else if owner, _ := fm.Get("owner"); owner != "sec" {
 		t.Fatalf("owner = %v", owner)
 	}
 }
@@ -303,7 +306,6 @@ func TestSearchRanksADeprecatedConceptLikeAnyOther(t *testing.T) {
 	}
 }
 
-// generated reads the stamp off the concept at path.
 func generated(t *testing.T, tools *Tools, path string) (by, at string) {
 	t.Helper()
 	g, _ := read(t, tools, path).Frontmatter.Get("generated")

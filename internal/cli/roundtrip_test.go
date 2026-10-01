@@ -712,11 +712,13 @@ func TestTheStampFollowsTheLatestWriterAcrossAnExportAndReimport(t *testing.T) {
 	if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "by: support-agent/1.4") {
 		t.Fatalf("export lacks the stamp:\n%s", got)
 	}
-	mustImport(t, cs, tenant, out)
-	if _, err := server.NewTools(cs, tenant, "human:ann").Update(ctx, "a", nil, map[string]any{"body": "edited"}); err != nil {
+	// Another tenant, so the concept holds only what the file carried.
+	other := uuid.New()
+	mustImport(t, cs, other, out)
+	if _, err := server.NewTools(cs, other, "human:ann").Update(ctx, "a", nil, map[string]any{"body": "edited"}); err != nil {
 		t.Fatal(err)
 	}
-	g, _ := read(t, cs, tenant, "a").Frontmatter.Get("generated")
+	g, _ := read(t, cs, other, "a").Frontmatter.Get("generated")
 	if m, _ := g.(*okf.Map); m == nil {
 		t.Fatalf("generated = %v", g)
 	} else if by, _ := m.Get("by"); by != "human:ann" {
