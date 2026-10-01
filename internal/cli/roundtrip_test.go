@@ -21,6 +21,7 @@ import (
 
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
+	"github.com/roee-fs/keepsake/internal/server"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -697,6 +698,29 @@ func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The stamp lives in the stored frontmatter, so an export and re-import MUST NOT freeze it.
+func TestTheStampFollowsTheLatestWriterAcrossAnExportAndReimport(t *testing.T) {
+	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
+	if _, err := server.NewTools(cs, tenant, "support-agent/1.4").Create(ctx, "a", map[string]any{"type": "Concept"}); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(tmp, "out")
+	mustExport(t, cs, tenant, out)
+	if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "by: support-agent/1.4") {
+		t.Fatalf("export lacks the stamp:\n%s", got)
+	}
+	mustImport(t, cs, tenant, out)
+	if _, err := server.NewTools(cs, tenant, "human:ann").Update(ctx, "a", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	g, _ := read(t, cs, tenant, "a").Frontmatter.Get("generated")
+	if m, _ := g.(*okf.Map); m == nil {
+		t.Fatalf("generated = %v", g)
+	} else if by, _ := m.Get("by"); by != "human:ann" {
+		t.Fatalf("by = %v", by)
 	}
 }
 

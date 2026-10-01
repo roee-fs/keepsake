@@ -134,6 +134,8 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	}
 	// Derived, never taken from the caller: a `links` argument is deliberately ignored.
 	c.Links = okf.ExtractLinks(body, path)
+	// The server knows who wrote through it, so its stamp replaces any the caller sent.
+	frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
 	if errs := okf.Validate(c); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
