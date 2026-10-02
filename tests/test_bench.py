@@ -114,6 +114,24 @@ def test_parse_counts_file_tools_over_the_exported_memory() -> None:
     assert checks == {"used keepsake": True, "read runbooks/db-failover": True}
 
 
+def test_parse_skips_file_tools_outside_the_exported_memory(tmp_path: Path) -> None:
+    root = tmp_path / "memory"
+    calls, _ = grade.parse(
+        [
+            _line(
+                "assistant",
+                {"type": "tool_use", "id": "1", "name": "Grep", "input": {"pattern": "x"}},
+                {"type": "tool_use", "id": "2", "name": "Read", "input": {"file_path": "/etc/hosts"}},
+                {"type": "tool_use", "id": "3", "name": "Glob", "input": {"pattern": "*", "path": ".."}},
+                {"type": "tool_use", "id": "4", "name": "Read", "input": {"file_path": f"{root}/a.md"}},
+            ),
+        ],
+        root,
+    )
+    assert [c["tool"] for c in calls] == ["okf_grep", "okf_read"]
+    assert calls[1]["input"]["path"] == "a.md"
+
+
 def test_grade_normalizes_read_paths_and_diffs_the_store() -> None:
     calls, result = grade.parse(TRANSCRIPT)
     before = {"runbooks/db-failover": "page `#dba-oncall`"}

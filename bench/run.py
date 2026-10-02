@@ -430,7 +430,7 @@ def trial(
             server.wait()
             log.close()
 
-        calls, result = grade.parse(transcript.read_text().splitlines())
+        calls, result = grade.parse(transcript.read_text().splitlines(), cwd)
         answer = result.get("result") or ""
         if not result:
             row.setdefault("error", "no result message; see the transcript")

@@ -65,8 +65,11 @@ def load_bundle(directory: Path) -> dict[str, str]:
     return {path: text for path, text in concepts.items() if path not in GENERATED}
 
 
-def parse(lines: Iterable[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Returns the keepsake tool calls in order, and the final `result` message."""
+def parse(
+    lines: Iterable[str], root: Path | None = None
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Returns the keepsake tool calls in order, and the final `result` message.
+    File tool calls count only inside root, the files variant's exported memory."""
     calls: list[dict[str, Any]] = []
     by_id: dict[str, dict[str, Any]] = {}
     result: dict[str, Any] = {}
@@ -84,6 +87,12 @@ def parse(lines: Iterable[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
                 if name.startswith(TOOL_PREFIX):
                     name = name.removeprefix(TOOL_PREFIX)
                 elif name in FILE_TOOLS:
+                    # Claude Code lets Read, Grep and Glob reach outside the working directory.
+                    target = args.get("file_path") or args.get("path") or "."
+                    if root and not (root / target).resolve().is_relative_to(
+                        root.resolve()
+                    ):
+                        continue
                     name = FILE_TOOLS[name]
                     if "file_path" in args:
                         path = args["file_path"].rpartition(f"/{MEMORY_DIR}/")[2]
