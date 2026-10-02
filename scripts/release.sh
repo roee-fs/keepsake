@@ -13,10 +13,10 @@ git fetch -q origin main
 git switch -c "release-$version" origin/main
 sed -i.bak -E "s/^version: .*/version: $version/; s/^appVersion: .*/appVersion: \"$version\"/" charts/keepsake/Chart.yaml
 sed -i.bak -E "s|(ghcr.io/[a-z0-9-]+/keepsake:)[0-9.]+|\1$version|" compose.yaml
-sed -i.bak -E "s/--version [0-9.]+/--version $version/; s|(cmd/keepsake@v)[0-9.]+|\1$version|" README.md docs/operations.md
+sed -i.bak -E "s/--version [0-9.]+/--version $version/; s|(cmd/keepsake@v)[0-9.]+|\1$version|" README.md docs/operations.md docs/deploy.md llms.txt
 sed -i.bak -E "s/^const Version = .*/const Version = \"$version\"/" internal/server/version.go
 sed -i.bak "s/^## Unreleased$/## $version — $(date -u +%F)/" CHANGELOG.md
-rm charts/keepsake/Chart.yaml.bak compose.yaml.bak README.md.bak docs/operations.md.bak internal/server/version.go.bak CHANGELOG.md.bak
+rm charts/keepsake/Chart.yaml.bak compose.yaml.bak README.md.bak docs/operations.md.bak docs/deploy.md.bak llms.txt.bak internal/server/version.go.bak CHANGELOG.md.bak
 
 git commit -qam "Release $version"
 git push -qu origin "release-$version"

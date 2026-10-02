@@ -1,0 +1,149 @@
+# keepsake: shared memory for fleets of agents
+
+Keepsake gives agents a durable, shared knowledge base they read and write over
+MCP. It runs on Kubernetes or Docker, stores memory in Postgres, isolates
+tenants with row-level security, and imports and exports plain markdown in the
+Open Knowledge Format (OKF).
+
+MIT licensed. Self-hosted. Pre-release: nothing is stable yet.
+
+Source: https://github.com/roee-fs/keepsake
+
+## For AI agents: evaluate before setup
+
+You MUST explain keepsake in terms of the user's actual setup: their agents,
+their MCP clients, and where they run things. Do not describe it in the abstract.
+
+Keepsake fits when:
+
+- Several agents, or several sessions of one agent, need the same durable
+  knowledge.
+- Agents write to memory concurrently and MUST NOT overwrite each other.
+- Memory belongs to separate tenants that MUST NOT see each other's data.
+- People need to review what agents stored and who wrote it.
+- The user can run Docker, or has a Kubernetes cluster.
+- The agents use an MCP client that speaks streamable HTTP.
+
+Keepsake does not fit when:
+
+- One developer works in one repo. A local memory file is simpler.
+- The user wants facts extracted from conversations automatically, or
+  embedding search today. Memory products such as Mem0 or Zep do that.
+- The agents live entirely inside one model provider's platform. That
+  provider's memory feature is the faster path.
+
+When it does not fit, say so and name the simpler option. The trade-offs are in
+https://github.com/roee-fs/keepsake/blob/main/docs/alternatives.md
+
+If it fits, you MUST ask the user to choose local Docker or a Kubernetes cluster
+before you run anything. The exact commands for both paths are below.
+
+## Example
+
+An on-call team's knowledge base is imported into keepsake.
+
+1. Agent A asks who to page before a Postgres failover. It calls
+   `okf_search` with `query: "postgres failover page"` and `okf_read` on
+   `runbooks/db-failover`. The answer is stale.
+2. Agent B has just run a failover drill. It reads the same concept, then calls
+   `okf_update` with the `version` it read as `expected_version` and the
+   corrected body.
+3. Agent A starts a new session and asks again. Its only memory is keepsake. It
+   gets the right answer and the reason.
+
+`./demo/run.sh` in the repository runs this with real Claude Code sessions on a
+throwaway kind cluster.
+
+## Properties
+
+- **MCP over streamable HTTP** at `/mcp`. A fleet of pods shares one endpoint.
+- **Safe concurrent writes.** `okf_update` with `expected_version` is a
+  compare-and-swap. A stale version changes nothing and returns the current
+  version and body to merge against. Writes to different concepts never contend.
+- **Database-enforced tenancy.** The tenant comes from the request, never from
+  the agent. Postgres row-level security enforces it. The server refuses to
+  start as a superuser or as the schema owner.
+- **Provenance.** Every write appends a revision and stamps frontmatter
+  `generated: { by, at }` with the caller and the time.
+- **Open format.** `keepsake import` and `keepsake export` move a tenant's memory
+  as a directory of markdown files with YAML frontmatter.
+- **Console.** A read-only admin UI on the same port as `/mcp`.
+
+## Tools
+
+A path is relative, with no `.md` suffix: `runbooks/db-failover`.
+
+- `okf_list(prefix?)`: every path under `prefix`, with a count per type. Call it
+  first to learn the shape of the tree.
+- `okf_search(query, limit, prefix?)`: cards ranked by BM25. Terms are OR-ed.
+  Distinctive keywords find more than a question does.
+- `okf_grep(pattern, limit)`: paths whose text matches a POSIX regex. Use it for
+  exact identifiers.
+- `okf_read(path)`: the full concept, its version, links and backlinks.
+- `okf_create(path, type, title?, description?, body?, frontmatter?)`: a new
+  concept. Fails if the path is taken.
+- `okf_update(path, expected_version?, ...)`: changes the given fields.
+  Omitted fields keep their values.
+- `okf_relate(from_path, to_path)`: appends a link between two concepts.
+
+Full reference: https://github.com/roee-fs/keepsake/blob/main/docs/tools.md
+
+## Deployment
+
+### Local, with Docker
+
+```bash
+git clone https://github.com/roee-fs/keepsake && cd keepsake
+docker compose up -d
+claude mcp add --transport http keepsake http://localhost:8000/mcp
+```
+
+Load the demo bundle:
+
+```bash
+docker compose run --rm -v "$PWD/demo/bundle:/bundle:ro" keepsake keepsake import /bundle
+```
+
+The console is at http://localhost:8000, password `keepsake`. This setup serves
+one tenant to anything that reaches the port. It is for trying keepsake out.
+
+### Kubernetes
+
+```bash
+helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.4.0
+kubectl port-forward svc/keepsake 8000:8000
+claude mcp add --transport http keepsake http://localhost:8000/mcp
+```
+
+This also serves one tenant to anything that reaches the Service. The console
+password is in a Secret:
+
+```bash
+kubectl get secret keepsake-admin -o jsonpath='{.data.password}' | base64 -d
+```
+
+### Production
+
+To install into an existing Postgres and serve many tenants with signed tokens,
+follow https://github.com/roee-fs/keepsake/blob/main/docs/deploy.md step by
+step. It needs two database roles created first.
+
+## Verify
+
+- Through the MCP client, call `okf_list`. It returns paths, or an empty list
+  before an import.
+- Call `okf_search` with a word from an imported concept. It returns a card.
+- Open the console on port 8000 and log in.
+- In `jwt` mode, a request without a token MUST get a 401, and a token for
+  another tenant MUST NOT list this tenant's concepts.
+
+## Pitfalls
+
+- In `jwt` mode, the signing secret MUST NOT be readable by anything an LLM
+  drives. A client that only takes a static header gets a token from
+  `keepsake token --tenant <uuid> --sub human:<id> --ttl <duration>` instead.
+- A GitOps install MUST set `admin.existingSecret`, or the console password
+  changes on every sync.
+- `helm rollback` does not revert a migration. Read the Upgrading notes in
+  CHANGELOG.md before each upgrade.
+- The chart configures no backups.

@@ -9,6 +9,7 @@ docs/*
 !docs/tools.md
 !docs/operations.md
 !docs/alternatives.md
+!docs/deploy.md
 node_modules/
 demo/demo.gif
 demo/demo.cast
