@@ -124,7 +124,7 @@ def fetch(split: str, offset: int) -> dict | None:
     """One conversation, cached with only the fields used here, or None past the last."""
     dest = DATA / split / f"{offset}.json"
     if dest.exists():
-        return json.loads(dest.read_text())
+        return json.loads(dest.read_text(encoding="utf-8"))
     dataset, (revision, _) = next((d, v) for d, v in DATASETS.items() if split in v[1])
     with urllib.request.urlopen(f"https://huggingface.co/api/datasets/{dataset}") as r:
         if (sha := json.load(r)["sha"]) != revision:
@@ -138,7 +138,7 @@ def fetch(split: str, offset: int) -> dict | None:
     full = rows[0]["row"]
     row = {k: full[k] for k in ("conversation_id", "chat", "probing_questions")}
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(row))
+    dest.write_text(json.dumps(row), encoding="utf-8")
     return row
 
 
@@ -176,7 +176,8 @@ def bundle(row: dict, root: Path) -> None:
                 n += 1
                 title = json.dumps(f"Session {s}, exchange {n}, {date}".strip(", "))
                 (root / "session" / f"{s:03d}" / f"{n:03d}.md").write_text(
-                    f"---\ntype: Exchange\ntitle: {title}\n---\n{body[part : part + step]}\n"
+                    f"---\ntype: Exchange\ntitle: {title}\n---\n{body[part : part + step]}\n",
+                    encoding="utf-8",
                 )
 
 
@@ -210,7 +211,7 @@ def tasks(row: dict, split: str, root: Path) -> list[dict]:
 def report(run: Path) -> str:
     """Mean rubric score per variant and ability, as BEAM reports it."""
     rows = [
-        json.loads(line) for line in (run / "results.jsonl").read_text().splitlines()
+        json.loads(line) for line in (run / "results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     scores: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
@@ -273,7 +274,7 @@ def main() -> None:
         bundle(row, root)
         out += tasks(row, args.split, root)
         offset += 1
-    (OUT / f"{args.split}.json").write_text(json.dumps(out, indent=2) + "\n")
+    (OUT / f"{args.split}.json").write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(
         f"{args.split}: {len(out)} tasks over {offset} conversations -> {OUT / (args.split + '.json')}"
     )
