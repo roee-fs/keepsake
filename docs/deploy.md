@@ -1,8 +1,8 @@
 # Deploy
 
 These steps install keepsake into a Postgres you already run (`existing` mode)
-and serve many tenants (`jwt` mode). Keepsake creates its own schema, `okf`, and
-touches nothing else in the database.
+and serve many tenants (`jwt` mode). Keepsake keeps its data in its own schema,
+`okf`, and touches nothing else in the database.
 
 ## 1. Create the database roles
 

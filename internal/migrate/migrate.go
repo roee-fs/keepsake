@@ -75,7 +75,7 @@ func up(ctx context.Context, tx pgx.Tx, schema string) error {
 	// CREATE SCHEMA IF NOT EXISTS checks the database CREATE grant even when the schema exists.
 	var owns bool
 	var owner, user string
-	err := tx.QueryRow(ctx, `SELECT pg_catalog.pg_has_role(nspowner, 'USAGE'), nspowner::regrole::text, current_user::text
+	err := tx.QueryRow(ctx, `SELECT pg_catalog.pg_has_role(nspowner, 'USAGE'), nspowner::regrole::text, pg_catalog.quote_ident(current_user)
 		FROM pg_catalog.pg_namespace WHERE nspname = $1`, schema).Scan(&owns, &owner, &user)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):

@@ -20,9 +20,8 @@ helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.4.0
 
 The migration runs as the owner role. It creates the schema if it is missing
 and grants the app role what it needs. The server runs as the app role. At
-startup it refuses a
-superuser, a `BYPASSRLS` role, or the owner of the tables, because each one
-bypasses row-level security.
+startup it refuses a superuser, a `BYPASSRLS` role, or the owner of the tables,
+because each one bypasses row-level security.
 
 In `existing` mode, create the roles before the first install:
 
