@@ -24,8 +24,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 ### Changed
 
 - Writers are recorded in the OKF actor convention. Auth mode none records
-  `keepsake/<version>` and `keepsake import` records `process:import`, not
-  `mcp` and `cli`. Rows written before keep their old actor.
+  `keepsake/<version>`, not `mcp`. `keepsake import` and a bundle upload in
+  mode none record `process:import`, not `cli`.
 
 ## 0.4.0 — 2026-09-29
 

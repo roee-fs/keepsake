@@ -187,7 +187,12 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"bundle holds no concepts"})
 			return
 		}
-		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, c.actor)
+		by := c.actor
+		// Mode none knows no uploader, so the upload is recorded as `keepsake import` records it.
+		if by == actor {
+			by = "process:import"
+		}
+		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by)
 		switch {
 		case store.IsUnavailable(err):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)

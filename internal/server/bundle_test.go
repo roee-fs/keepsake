@@ -272,6 +272,18 @@ func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string 
 	return out
 }
 
+func TestAnUploadInModeNoneIsRecordedAsAnImport(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	h := FixedTenant(tenant)(replaceBundle(cs))
+	if code, body := put(t, h, "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), tenant); code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	revs, err := cs.Revisions(ctx, tenant, 10)
+	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != "process:import" {
+		t.Fatalf("revisions = %+v, %v", revs, err)
+	}
+}
+
 func TestAnUploadReplacesOnlyTheCallersPrefix(t *testing.T) {
 	cs := conceptStore(t)
 	h := issuer.Middleware(replaceBundle(cs))
