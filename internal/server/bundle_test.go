@@ -284,6 +284,21 @@ func TestAnUploadInModeNoneIsRecordedAsAnImport(t *testing.T) {
 	}
 }
 
+func TestAnUploadWithATokenNamingThisServerKeepsItsSubject(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, actor, time.Minute, uploadScope))
+	rec := httptest.NewRecorder()
+	issuer.Middleware(replaceBundle(cs)).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", rec.Code, rec.Body)
+	}
+	revs, err := cs.Revisions(ctx, tenant, 10)
+	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != actor {
+		t.Fatalf("revisions = %+v, %v", revs, err)
+	}
+}
+
 func TestAnUploadReplacesOnlyTheCallersPrefix(t *testing.T) {
 	cs := conceptStore(t)
 	h := issuer.Middleware(replaceBundle(cs))

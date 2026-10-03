@@ -30,6 +30,8 @@ type caller struct {
 	actor  string
 	// upload lets the caller replace a prefix through /bundle, which deletes concepts.
 	upload bool
+	// anonymous is auth mode none, where actor names this server, not the caller.
+	anonymous bool
 }
 
 // uploadScope is the token scope /bundle requires, so a token handed to an agent cannot delete concepts in bulk.
@@ -46,7 +48,7 @@ func withCaller(next http.Handler, c caller) http.Handler {
 // FixedTenant serves every request as tenant, for auth mode none.
 func FixedTenant(tenant uuid.UUID) func(http.Handler) http.Handler {
 	// Mode none already trusts every client that reaches it, so it keeps /bundle.
-	return func(next http.Handler) http.Handler { return withCaller(next, caller{tenant, actor, true}) }
+	return func(next http.Handler) http.Handler { return withCaller(next, caller{tenant, actor, true, true}) }
 }
 
 // JWT verifies HS256 tokens from one trusted issuer. Secrets[0] signs; every secret verifies, for rotation.
@@ -171,7 +173,7 @@ func (j *JWT) verify(token string) (caller, error) {
 	}
 	var scope string
 	json.Unmarshal(c.Scope, &scope)
-	return caller{tenant, c.Sub, slices.Contains(strings.Fields(scope), uploadScope)}, nil
+	return caller{tenant, c.Sub, slices.Contains(strings.Fields(scope), uploadScope), false}, nil
 }
 
 // Middleware binds the verified caller, or answers 401 for a bad token and 403 for a token naming no tenant.

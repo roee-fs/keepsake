@@ -189,7 +189,7 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 		}
 		by := c.actor
 		// Mode none knows no uploader, so the upload is recorded as `keepsake import` records it.
-		if by == actor {
+		if c.anonymous {
 			by = "process:import"
 		}
 		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by)
