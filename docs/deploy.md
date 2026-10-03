@@ -10,7 +10,7 @@ Keepsake needs two roles. The names are fixed.
 
 | Role | Used by | Needs |
 | --- | --- | --- |
-| `keepsake_owner` | the migration Job | `CREATE` on the database. It will own the `okf` schema. |
+| `keepsake_owner` | the migration Job | ownership of the `okf` schema. |
 | `keepsake_app` | the server | nothing yet. The migration grants what it needs. |
 
 Run this as a role that can create roles, before the first install:
@@ -18,8 +18,13 @@ Run this as a role that can create roles, before the first install:
 ```sql
 CREATE ROLE keepsake_owner LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
 CREATE ROLE keepsake_app   LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
-GRANT CREATE ON DATABASE <database> TO keepsake_owner;
+CREATE SCHEMA okf AUTHORIZATION keepsake_owner;
 ```
+
+- You MAY run `GRANT CREATE ON DATABASE <database> TO keepsake_owner` instead of
+  creating the schema. The migration then creates `okf` itself. That grant lets
+  `keepsake_owner` create a schema with any name, including one named after
+  another role, which that role's default `search_path` would resolve first.
 
 - `keepsake_app` MUST exist before the first migration. The migration grants it
   access only if it exists, and it never runs again for revisions already applied.

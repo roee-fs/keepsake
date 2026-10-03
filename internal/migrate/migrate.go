@@ -72,8 +72,20 @@ func up(ctx context.Context, tx pgx.Tx, schema string) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('keepsake-migrate'))`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", schema)); err != nil {
+	// CREATE SCHEMA IF NOT EXISTS checks the database CREATE grant even when the schema exists.
+	var owns bool
+	var owner, user string
+	err := tx.QueryRow(ctx, `SELECT pg_catalog.pg_has_role(nspowner, 'USAGE'), nspowner::regrole::text, current_user::text
+		FROM pg_catalog.pg_namespace WHERE nspname = $1`, schema).Scan(&owns, &owner, &user)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		if _, err := tx.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", schema)); err != nil {
+			return err
+		}
+	case err != nil:
 		return err
+	case !owns:
+		return fmt.Errorf("schema %s is owned by %s, not %s: ALTER SCHEMA %s OWNER TO %s", schema, owner, user, schema, user)
 	}
 	// Alembic's own DDL for its bookkeeping table.
 	if _, err := tx.Exec(ctx, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.alembic_version (
@@ -84,7 +96,7 @@ func up(ctx context.Context, tx pgx.Tx, schema string) error {
 	}
 
 	var current string
-	err := tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
+	err = tx.QueryRow(ctx, fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&current)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}

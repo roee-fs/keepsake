@@ -23,6 +23,10 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ### Changed
 
+- `keepsake migrate` no longer needs `CREATE` on the database when the schema
+  already exists and the owner role owns it. It refuses a schema it does not own.
+  The deploy docs now pre-create the schema instead of granting `CREATE`.
+  Deployments that keep the grant need no change.
 - Writers are recorded in the OKF actor convention. Auth mode none records
   `keepsake/<version>`, not `mcp`. `keepsake import` and a bundle upload in
   mode none record `process:import`, not `cli`.

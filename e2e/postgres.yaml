@@ -10,7 +10,7 @@ data:
   init.sql: |
     CREATE ROLE keepsake_owner LOGIN PASSWORD 'owner';
     CREATE ROLE keepsake_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD 'app';
-    GRANT CREATE ON DATABASE keepsake TO keepsake_owner;
+    CREATE SCHEMA okf AUTHORIZATION keepsake_owner;
 ---
 apiVersion: v1
 kind: Service
