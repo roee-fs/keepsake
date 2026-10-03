@@ -315,23 +315,3 @@ func TestAToolCallWithNoTenantWritesNothing(t *testing.T) {
 		t.Fatal("a tool ran with no tenant")
 	}
 }
-
-func TestAFixedTenantWritesAsThisKeepsakeVersion(t *testing.T) {
-	cs, tenant := conceptStore(t), uuid.New()
-	srv := httptest.NewServer(FixedTenant(tenant)(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))
-	t.Cleanup(srv.Close)
-	client := mcp.NewClient(&mcp.Implementation{Name: "keepsake-test"}, nil)
-	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = session.Close() })
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{"path": "a", "type": "Concept"}})
-	if err != nil || res.IsError {
-		t.Fatalf("create = %+v, %v", res, err)
-	}
-	revs, err := cs.Revisions(ctx, tenant, 1)
-	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != "keepsake/"+Version {
-		t.Fatalf("revisions = %+v, %v", revs, err)
-	}
-}

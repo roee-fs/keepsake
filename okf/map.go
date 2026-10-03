@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -40,6 +41,9 @@ func (m *Map) Delete(k string) {
 }
 
 func (m *Map) Keys() []string { return slices.Clone(m.keys) }
+
+// Clone copies the top level only; nested values are shared.
+func (m *Map) Clone() *Map { return &Map{keys: slices.Clone(m.keys), vals: maps.Clone(m.vals)} }
 
 func (m *Map) Len() int { return len(m.keys) }
 

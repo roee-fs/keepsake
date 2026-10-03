@@ -26,6 +26,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - Writers are recorded in the OKF actor convention. Auth mode none records
   `keepsake/<version>`, not `mcp`. `keepsake import` and a bundle upload in
   mode none record `process:import`, not `cli`.
+- A token's `sub` MUST be `agent:<id>` for an agent and `human:<id>` for a
+  person.
 
 ## 0.4.0 — 2026-09-29
 

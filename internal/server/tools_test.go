@@ -322,13 +322,13 @@ func generated(t *testing.T, tools *Tools, path string) (by, at string) {
 
 func TestEveryAuthoringWriteStampsWhoWroteItAndWhen(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
-	agent, human := NewTools(cs, tenant, "support-agent/1.4"), NewTools(cs, tenant, "human:ann")
+	agent, human := NewTools(cs, tenant, "agent:support"), NewTools(cs, tenant, "human:ann")
 	before := time.Now().UTC().Add(-time.Minute)
 
 	seed(t, agent, "a/b", map[string]any{"frontmatter": obj("generated", "yes")})
 	by, at := generated(t, agent, "a/b")
 	stamp, err := time.Parse(time.RFC3339, at)
-	if by != "support-agent/1.4" || err != nil || stamp.Before(before) || !strings.HasSuffix(at, "Z") {
+	if by != "agent:support" || err != nil || stamp.Before(before) || !strings.HasSuffix(at, "Z") {
 		t.Fatalf("create: by %q at %q (%v)", by, at, err)
 	}
 
@@ -346,6 +346,14 @@ func TestEveryAuthoringWriteStampsWhoWroteItAndWhen(t *testing.T) {
 	}
 	if by, at := generated(t, agent, "a/b"); by != "human:ann" || at != edited {
 		t.Fatalf("relate: by %q at %q", by, at)
+	}
+}
+
+func TestAStampLeavesTheCallersFrontmatterAsItWas(t *testing.T) {
+	fm := obj("k", 1)
+	seed(t, newTools(t), "a/b", map[string]any{"frontmatter": fm})
+	if _, ok := fm.Get("generated"); ok || fm.Len() != 1 {
+		t.Fatalf("frontmatter = %v", fm.Keys())
 	}
 }
 

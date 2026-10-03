@@ -112,7 +112,7 @@ Postgres and many tenants, follow the [deploy guide](docs/deploy.md).
   token for its own tenant:
 
   ```bash
-  kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub human:alice --ttl 720h
+  kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub agent:claude-code --ttl 720h
   ```
 
 The server sends the agent `instructions` with the tools: search before
@@ -148,10 +148,10 @@ answering, follow links, and update rather than duplicate.
 In `jwt` mode each `/mcp` request carries an HS256 bearer token. Your
 orchestrator holds the signing secret. The HMAC key is the line's text as-is,
 not its hex-decoded bytes:
-`{"iss": "platform", "aud": "keepsake", "sub": "support-agent/1.4", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
+`{"iss": "platform", "aud": "keepsake", "sub": "agent:support", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
 keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
-concept the token writes through `/mcp`. It SHOULD follow the OKF actor convention,
-and MUST be `human:<id>` for a person.
+concept the token writes through `/mcp`. It MUST be `agent:<id>` for an agent
+and `human:<id>` for a person.
 The secret MUST NOT be readable by anything an LLM drives.
 
 The server refuses to start if it is connected as a superuser or as the schema
