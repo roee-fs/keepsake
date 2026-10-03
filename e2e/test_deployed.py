@@ -510,7 +510,7 @@ def test_jwt_mode_refuses_a_request_without_a_valid_token(jwt_release: str) -> N
 
 def test_jwt_mode_serves_each_tenant_only_its_own_concepts(jwt_release: str) -> None:
     a, b = str(uuid.uuid4()), str(uuid.uuid4())
-    token_a, token_b = _mint(a, "e2e-a"), _mint(b, "e2e-b")
+    token_a, token_b = _mint(a, "process:e2e-a"), _mint(b, "process:e2e-b")
     created = _as(
         jwt_release,
         token_a,
@@ -531,4 +531,4 @@ def test_jwt_mode_serves_each_tenant_only_its_own_concepts(jwt_release: str) -> 
         f"SELECT tenant_id::text || ' ' || updated_by FROM {JWT_SCHEMA}.concept "
         "WHERE path = 'e2e/private'"
     )
-    assert stored == f"{a} e2e-a"
+    assert stored == f"{a} process:e2e-a"
