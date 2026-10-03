@@ -150,8 +150,9 @@ orchestrator holds the signing secret. The HMAC key is the line's text as-is,
 not its hex-decoded bytes:
 `{"iss": "platform", "aud": "keepsake", "sub": "support-agent/1.4", "tctx": {"tenant": "<uuid>"}, "exp": …}`.
 keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
-concept the token writes through `/mcp`. It MUST be `<producer>/<version>` for an
-agent and `human:<id>` for a person, the OKF §7 actor convention.
+concept the token writes through `/mcp`. It MUST be an OKF §7 actor: `<producer>/<version>`
+for an agent, `human:<id>` for a person or `process:<id>` for a process.
+`keepsake token` refuses anything else.
 The secret MUST NOT be readable by anything an LLM drives.
 
 The server refuses to start if it is connected as a superuser or as the schema

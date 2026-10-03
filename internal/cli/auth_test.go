@@ -44,7 +44,7 @@ func TestServeInJWTModeAcceptsOnlyATokenFromKeepsakeToken(t *testing.T) {
 	if code, _, stderr := run(t, "serve", "--dsn", db.AppDSN); code != 0 {
 		t.Fatalf("serve exit %d: %s", code, stderr)
 	}
-	code, token, stderr := run(t, "token", "--tenant", uuid.NewString(), "--sub", "alice", "--ttl", "1h")
+	code, token, stderr := run(t, "token", "--tenant", uuid.NewString(), "--sub", "human:alice", "--ttl", "1h")
 	if code != 0 {
 		t.Fatalf("token exit %d: %s", code, stderr)
 	}
@@ -70,7 +70,7 @@ func TestOnlyATokenMintedWithTheBundleScopeCanUpload(t *testing.T) {
 		{nil, http.StatusForbidden},
 		{[]string{"--scope", "bundle"}, http.StatusBadRequest},
 	} {
-		code, token, stderr := run(t, append([]string{"token", "--tenant", tenant, "--sub", "ingest"}, c.args...)...)
+		code, token, stderr := run(t, append([]string{"token", "--tenant", tenant, "--sub", "process:ingest"}, c.args...)...)
 		if code != 0 {
 			t.Fatalf("token exit %d: %s", code, stderr)
 		}
@@ -111,14 +111,28 @@ func TestServeRefusesAnUnknownAuthMode(t *testing.T) {
 	}
 }
 
-func TestTokenNeedsATenantASubjectAndADuration(t *testing.T) {
+func TestTokenAcceptsEveryOKFActorForm(t *testing.T) {
+	jwtEnv(t)
+	for _, sub := range []string{"claude-code/2.1", "human:alice", "process:smoke"} {
+		if code, _, stderr := run(t, "token", "--tenant", uuid.NewString(), "--sub", sub); code != 0 {
+			t.Errorf("%s: exit %d: %s", sub, code, stderr)
+		}
+	}
+}
+
+func TestTokenNeedsATenantAnOKFActorAndADuration(t *testing.T) {
 	jwtEnv(t)
 	for _, args := range [][]string{
-		{"token", "--sub", "alice"},
+		{"token", "--sub", "human:alice"},
 		{"token", "--tenant", uuid.NewString()},
-		{"token", "--tenant", uuid.NewString(), "--sub", "alice", "--ttl", "soon"},
-		{"token", "--tenant", uuid.NewString(), "--sub", "alice", "--ttl", "500ms"},
-		{"token", "--tenant", uuid.Nil.String(), "--sub", "alice"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "human:alice", "--ttl", "soon"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "human:alice", "--ttl", "500ms"},
+		{"token", "--tenant", uuid.Nil.String(), "--sub", "human:alice"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "alice"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "human:"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "claude-code/"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "a/b/c"},
+		{"token", "--tenant", uuid.NewString(), "--sub", "agent:claude"},
 	} {
 		if code, stdout, stderr := run(t, args...); code != 1 || stdout != "" {
 			t.Errorf("%v: exit %d: %q %q", args, code, stdout, stderr)
