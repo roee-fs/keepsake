@@ -18,18 +18,21 @@ helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.4.0
 
 ## Database roles
 
-The migration runs as the owner role. It creates the schema and grants the app
-role what it needs. The server runs as the app role. At startup it refuses a
-superuser, a `BYPASSRLS` role, or the owner of the tables, because each one
-bypasses row-level security.
+The migration runs as the owner role. It creates the schema if it is missing
+and grants the app role what it needs. The server runs as the app role. At
+startup it refuses a superuser, a `BYPASSRLS` role, or the owner of the tables,
+because each one bypasses row-level security.
 
 In `existing` mode, create the roles before the first install:
 
 ```sql
 CREATE ROLE keepsake_owner LOGIN PASSWORD '...';
 CREATE ROLE keepsake_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD '...';
-GRANT CREATE ON DATABASE keepsake TO keepsake_owner;
+CREATE SCHEMA okf AUTHORIZATION keepsake_owner;
 ```
+
+If the schema already exists, the owner role MUST own it, and the migration
+needs no `CREATE` on the database.
 
 The migration MUST NOT run as `postgres.dsn`. The tables would belong to the
 server's role, and the server would refuse to start for good.

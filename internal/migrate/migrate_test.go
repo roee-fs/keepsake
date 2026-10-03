@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -391,6 +392,44 @@ func TestANonDefaultSchemaMigrates(t *testing.T) {
 	want := []string{"concept", "concept_revision", "posting"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("guarded tables = %v, want %v", got, want)
+	}
+}
+
+// The database CREATE grant reaches beyond keepsake, so an operator who pre-creates the schema skips it.
+func TestUpMigratesAPreCreatedSchemaWithoutDatabaseCreate(t *testing.T) {
+	ctx := context.Background()
+	role := "keepsake_precreated_" + uuid.NewString()[:8]
+	pgtest.Exec(t, db.AdminDSN,
+		"CREATE ROLE "+role+" LOGIN PASSWORD 'pw'",
+		"CREATE SCHEMA okf_precreated AUTHORIZATION "+role)
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, "DROP OWNED BY "+role+" CASCADE", "DROP ROLE "+role) })
+	u, err := url.Parse(db.OwnerDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword(role, "pw")
+
+	if err := Up(ctx, u.String(), "okf_precreated"); err != nil {
+		t.Fatal(err)
+	}
+	var version string
+	if err := connect(t, u.String()).QueryRow(ctx,
+		"SELECT version_num FROM okf_precreated.alembic_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if want := migrations[len(migrations)-1].revision; version != want {
+		t.Fatalf("version = %s, want %s", version, want)
+	}
+}
+
+func TestUpRefusesASchemaItDoesNotOwn(t *testing.T) {
+	pgtest.Exec(t, db.AdminDSN, "CREATE SCHEMA okf_foreign")
+	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, "DROP SCHEMA okf_foreign CASCADE") })
+
+	err := Up(context.Background(), db.OwnerDSN, "okf_foreign")
+	want := "schema okf_foreign is owned by postgres, not keepsake_owner: ALTER SCHEMA okf_foreign OWNER TO keepsake_owner"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
 
