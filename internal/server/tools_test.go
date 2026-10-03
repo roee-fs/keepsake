@@ -223,7 +223,7 @@ func TestUpdateOfAnotherTenantsPathIsIndistinguishableFromAbsent(t *testing.T) {
 func TestUpdateOfARowThatVanishedMidWriteIsNotFound(t *testing.T) {
 	tools := newTools(t)
 	phantom := okf.Concept{Path: "ghost/path", Type: "Concept", Frontmatter: okf.NewMap()}
-	_, err := tools.write(ctx, phantom, "ghost/path", nil, map[string]any{"body": "x"})
+	_, err := tools.write(ctx, phantom, "ghost/path", nil, map[string]any{"body": "x"}, true)
 	if msg := toolError(t, err); msg != "no concept at ghost/path" {
 		t.Fatalf("got %q", msg)
 	}
@@ -268,7 +268,7 @@ func TestSearchAndReadCarryTrustSignals(t *testing.T) {
 	fm.Set("stale_after", "2000-01-01T00:00:00Z")
 	fm.Set("verified", obj("by", "human:ann", "at", "2026-06-25T09:00:00Z"))
 	fm.Set("generated", obj("by", "agent/v1", "at", "2026-06-20T22:53:05Z"))
-	// Imported, since a tool write would replace generated with its own stamp.
+	// Written through the store, since a tool write would replace generated with its own stamp.
 	if _, _, err := tools.c.Create(ctx, tools.t, okf.Concept{Path: "a/old", Type: "Concept", Title: "Zqxold", Frontmatter: fm}, "process:import"); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func generated(t *testing.T, tools *Tools, path string) (by, at string) {
 	return by, at
 }
 
-func TestEveryAgentWriteStampsWhoWroteItAndWhen(t *testing.T) {
+func TestEveryAuthoringWriteStampsWhoWroteItAndWhen(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	agent, human := NewTools(cs, tenant, "support-agent/1.4"), NewTools(cs, tenant, "human:ann")
 	before := time.Now().UTC().Add(-time.Minute)
@@ -339,12 +339,38 @@ func TestEveryAgentWriteStampsWhoWroteItAndWhen(t *testing.T) {
 		t.Fatalf("update: by %q", by)
 	}
 
+	_, edited := generated(t, human, "a/b")
 	seed(t, agent, "a/c", map[string]any{})
 	if _, err := agent.Relate(ctx, "a/b", "a/c"); err != nil {
 		t.Fatal(err)
 	}
-	if by, _ := generated(t, agent, "a/b"); by != "support-agent/1.4" {
-		t.Fatalf("relate: by %q", by)
+	if by, at := generated(t, agent, "a/b"); by != "human:ann" || at != edited {
+		t.Fatalf("relate: by %q at %q", by, at)
+	}
+}
+
+func TestAnUpdateThatChangesNothingWritesNothing(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	ann, bob := NewTools(cs, tenant, "human:ann"), NewTools(cs, tenant, "human:bob")
+	seed(t, ann, "a/b", map[string]any{"body": "same", "frontmatter": obj("k", 1)})
+	before, err := ann.Read(ctx, "a/b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, at := generated(t, ann, "a/b")
+	stale := before.Version - 1
+	result, err := bob.Update(ctx, "a/b", &stale, map[string]any{"body": "same", "frontmatter": obj("k", 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (writeResult{"a/b", before.Version}); result != want {
+		t.Fatalf("got %+v, want %+v", result, want)
+	}
+	if by, now := generated(t, bob, "a/b"); by != "human:ann" || now != at {
+		t.Fatalf("restamped: by %q at %q", by, now)
+	}
+	if _, _, history, err := cs.Detail(ctx, tenant, "a/b", 10); err != nil || len(history) != 1 {
+		t.Fatalf("history %d, %v", len(history), err)
 	}
 }
 

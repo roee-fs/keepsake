@@ -71,7 +71,7 @@ The chart configures no backups. You MUST set up one of these:
 
 - In `none` mode, anything that reaches the Service can read and write the one
   tenant. Keep the Service `ClusterIP`.
-- In `jwt` mode, see [Serving many tenants](../README.md#tenancy-and-authority).
+- In `jwt` mode, see [Tenancy and authority](../README.md#tenancy-and-authority).
   The signing secret MUST NOT be readable by anything an LLM drives.
 - The console shares the port with `/mcp` and has its own password in
   `<release>-admin`. A GitOps install MUST set `admin.existingSecret`, or the

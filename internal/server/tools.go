@@ -109,7 +109,7 @@ func textField(kw map[string]any, name string) (string, error) {
 	return s, nil
 }
 
-func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
+func (t *Tools) concept(path string, kw map[string]any, stamp bool) (okf.Concept, error) {
 	body, err := textField(kw, "body")
 	if err != nil {
 		return okf.Concept{}, err
@@ -135,7 +135,9 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 	// Derived, never taken from the caller: a `links` argument is deliberately ignored.
 	c.Links = okf.ExtractLinks(body, path)
 	// The server knows who wrote through it, so its stamp replaces any the caller sent.
-	frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
+	if stamp {
+		frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
+	}
 	if errs := okf.Validate(c); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
@@ -143,7 +145,7 @@ func (t *Tools) concept(path string, kw map[string]any) (okf.Concept, error) {
 }
 
 func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (writeResult, error) {
-	c, err := t.concept(path, kw)
+	c, err := t.concept(path, kw, true)
 	if err != nil {
 		return writeResult{}, err
 	}
@@ -166,11 +168,11 @@ func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, k
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
 	}
-	return t.write(ctx, *existing, path, expectedVersion, kw)
+	return t.write(ctx, *existing, path, expectedVersion, kw, true)
 }
 
-// write writes kw over the concept the caller already read.
-func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any) (any, error) {
+// write writes kw over the concept the caller already read. Unless stamp is set it keeps the authorship stamp.
+func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any, stamp bool) (any, error) {
 	merged := map[string]any{
 		"type": existing.Type, "title": existing.Title, "description": existing.Description,
 		"body": existing.Body, "frontmatter": existing.Frontmatter,
@@ -178,7 +180,7 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	for k, v := range kw {
 		merged[k] = v
 	}
-	c, err := t.concept(path, merged)
+	c, err := t.concept(path, merged, stamp)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +267,8 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 			return nil, toolErr("to_path " + okf.PyReprString(toPath) + " is not a concept path such as detect/dormant-rules")
 		}
 		version := source.Version
-		result, err := t.write(ctx, *source, fromPath, &version, map[string]any{"body": body})
+		// A link does not make its adder the author, and the revision still records who added it.
+		result, err := t.write(ctx, *source, fromPath, &version, map[string]any{"body": body}, false)
 		if err != nil {
 			return nil, err
 		}

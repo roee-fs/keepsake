@@ -63,8 +63,9 @@ throwaway kind cluster.
 - **Database-enforced tenancy.** The tenant comes from the request, never from
   the agent. Postgres row-level security enforces it. The server refuses to
   start as a superuser or as the schema owner.
-- **Provenance.** Every write appends a revision and stamps frontmatter
-  `generated: { by, at }` with the caller and the time.
+- **Provenance.** Every change appends a revision. `okf_create` and
+  `okf_update` also stamp frontmatter `generated: { by, at }` with the caller
+  and the time. `okf_relate` keeps the existing stamp.
 - **Open format.** `keepsake import` and `keepsake export` move a tenant's memory
   as a directory of markdown files with YAML frontmatter.
 - **Console.** A read-only admin UI on the same port as `/mcp`.

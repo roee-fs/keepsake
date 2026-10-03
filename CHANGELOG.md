@@ -14,10 +14,12 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - `okf_search` cards and `okf_read` results carry `status`, `stale`, `trust`
   and `generated_at`, derived from OKF v0.2 §5 frontmatter. A bare `verified`
   mapping counts as one verification. Ranking is unchanged.
-- Every `okf_create`, `okf_update` and `okf_relate` stamps OKF
-  `generated: { by, at }` with the writer and the time. It replaces any
-  `generated` the caller sent. Imports are never stamped, so an imported
-  bundle still exports byte-for-byte.
+- Every `okf_create` and `okf_update` stamps OKF `generated: { by, at }`
+  with the writer and the time. It replaces any `generated` the caller sent.
+  `okf_relate` keeps the existing stamp, since adding a link is not authorship.
+  An `okf_update` that changes nothing writes nothing, keeps the stamp and
+  returns the current version, even when `expected_version` is stale.
+  Imports are never stamped, so an imported bundle still exports byte-for-byte.
 
 ### Changed
 

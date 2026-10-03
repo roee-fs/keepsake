@@ -38,7 +38,21 @@ var insertSQL = func() string {
 		strings.Join(fields, ", "), placeholders(n+3), 1, 2, "create", n+4, n+3)
 }()
 
-// updateSQL overwrites a concept and logs it, or returns no row on a stale version or missing path.
+// sameContent is true when the row holds the fields bound from $off+1, ignoring the authorship stamp.
+func sameContent(off int) string {
+	cols := make([]string, len(fields))
+	vals := make([]string, len(fields))
+	for i, f := range fields {
+		cols[i], vals[i] = f, fmt.Sprintf("$%d", off+i+1)
+		if f == "frontmatter" {
+			cols[i] += " - 'generated'"
+			vals[i] += "::jsonb - 'generated'"
+		}
+	}
+	return fmt.Sprintf("(%s) IS NOT DISTINCT FROM (%s)", strings.Join(cols, ", "), strings.Join(vals, ", "))
+}
+
+// updateSQL overwrites a concept and logs it, or returns no row on a stale version, a missing path or no change.
 var updateSQL = func() string {
 	n := len(fields)
 	assignments := make([]string, n)
@@ -46,7 +60,7 @@ var updateSQL = func() string {
 		assignments[i] = fmt.Sprintf("%s=$%d", f, i+1)
 	}
 	return fmt.Sprintf("WITH w AS (UPDATE concept SET %s, updated_by=$%d, version=nextval('version_seq'), updated_at=now() "+
-		"WHERE path=$%d AND ($%d::bigint IS NULL OR version=$%d) RETURNING version) "+revise,
+		"WHERE path=$%d AND ($%d::bigint IS NULL OR version=$%d) AND NOT "+sameContent(0)+" RETURNING version) "+revise,
 		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3, n+4, n+2, "update", n+5, n+1)
 }()
 
@@ -80,13 +94,14 @@ func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Conc
 }
 
 // Update writes a concept, as a compare-and-swap unless expected is nil. err is a *NotFoundError for a missing path.
+// A concept that differs only in its authorship stamp writes nothing and returns the current version.
 func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *Conflict, err error) {
 	w, err := newWrite(c)
 	if err != nil {
 		return 0, nil, err
 	}
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		version, conflict, err = overwrite(ctx, tx, tx.QueryRow(ctx, updateSQL, w.updateArgs(tenant, actor, expected)...), c.Path)
+		version, conflict, err = overwrite(ctx, tx, tx.QueryRow(ctx, updateSQL, w.updateArgs(tenant, actor, expected)...), w)
 		return err
 	})
 	return version, conflict, err
@@ -245,19 +260,26 @@ func scanInsert(row pgx.Row) (version int, created bool, err error) {
 	return version, err == nil, err
 }
 
-// overwrite scans updateSQL's row, telling a stale version from a missing path when there is none.
-func overwrite(ctx context.Context, tx pgx.Tx, row pgx.Row, path string) (version int, conflict *Conflict, err error) {
+// overwrite scans updateSQL's row. When there is none it tells a stale version from a missing path or no change.
+func overwrite(ctx context.Context, tx pgx.Tx, row pgx.Row, w write) (version int, conflict *Conflict, err error) {
 	err = row.Scan(&version)
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return version, nil, err
 	}
+	c := w.c
 	var current Conflict
-	err = tx.QueryRow(ctx, "SELECT version, body FROM concept WHERE path=$1", path).Scan(&current.CurrentVersion, &current.CurrentBody)
+	var same bool
+	err = tx.QueryRow(ctx, "SELECT version, body, "+sameContent(1)+" FROM concept WHERE path=$1",
+		c.Path, c.Type, c.Title, c.Description, c.Body, w.fm, links(c.Links)).Scan(&current.CurrentVersion, &current.CurrentBody, &same)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, &NotFoundError{path}
+		return 0, nil, &NotFoundError{c.Path}
 	}
 	if err != nil {
 		return 0, nil, err
+	}
+	// Nothing to merge, so a stale expected version is no conflict either.
+	if same {
+		return current.CurrentVersion, nil, nil
 	}
 	return 0, &current, nil
 }
