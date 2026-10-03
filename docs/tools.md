@@ -43,9 +43,12 @@ A version is an opaque token from one sequence. It only grows, never repeats,
 and skips numbers. A path deleted and created again gets a new version, so a
 stale `expected_version` never matches it.
 
-Every write appends a revision, attributed to the caller: the JWT `sub`, or
-the fixed actor in `none` mode. It also stamps frontmatter `generated: { by, at }`
-with that caller and the time, replacing any `generated` the caller sent.
+Every write that changes a concept appends a revision, attributed to the
+caller: the JWT `sub`, or the fixed actor in `none` mode. `okf_create` and
+`okf_update` also stamp frontmatter `generated: { by, at }` with that caller and
+the time, replacing any `generated` the caller sent. `okf_relate` keeps the
+existing stamp. An update that changes nothing writes nothing and returns the
+current version, even when `expected_version` is stale.
 
 ## Errors
 
