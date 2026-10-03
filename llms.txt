@@ -142,7 +142,7 @@ step. It needs two database roles created first.
 
 - In `jwt` mode, the signing secret MUST NOT be readable by anything an LLM
   drives. A client that only takes a static header gets a token from
-  `keepsake token --tenant <uuid> --sub agent:<id> --ttl <duration>` instead.
+  `keepsake token --tenant <uuid> --sub <producer>/<version> --ttl <duration>` instead.
 - A GitOps install MUST set `admin.existingSecret`, or the console password
   changes on every sync.
 - `helm rollback` does not revert a migration. Read the Upgrading notes in

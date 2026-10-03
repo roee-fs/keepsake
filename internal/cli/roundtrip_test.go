@@ -704,12 +704,12 @@ func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 // The stamp lives in the stored frontmatter, so an export and re-import MUST NOT freeze it.
 func TestTheStampFollowsTheLatestWriterAcrossAnExportAndReimport(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
-	if _, err := server.NewTools(cs, tenant, "agent:support").Create(ctx, "a", map[string]any{"type": "Concept"}); err != nil {
+	if _, err := server.NewTools(cs, tenant, "support-agent/1.4").Create(ctx, "a", map[string]any{"type": "Concept"}); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(tmp, "out")
 	mustExport(t, cs, tenant, out)
-	if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "by: agent:support") {
+	if got := readFile(t, filepath.Join(out, "a.md")); !strings.Contains(got, "by: support-agent/1.4") {
 		t.Fatalf("export lacks the stamp:\n%s", got)
 	}
 	// Another tenant, so the concept holds only what the file carried.
