@@ -25,7 +25,7 @@ CREATE SCHEMA okf AUTHORIZATION keepsake_owner;
   creating the schema. The migration then creates `okf` itself. That grant lets
   `keepsake_owner` create a schema with any name, including one named after
   another role, which that role's default `search_path` would resolve first.
-
+- If you set `postgres.schema`, create that schema instead of `okf`.
 - `keepsake_app` MUST exist before the first migration. The migration grants it
   access only if it exists, and it never runs again for revisions already applied.
 - The two roles MUST be different. The server refuses to start as a superuser,
