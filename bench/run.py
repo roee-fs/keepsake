@@ -48,6 +48,17 @@ ISOLATED = [
     "--disable-slash-commands",
     "--no-session-persistence",
 ]
+# A token, since a `claude /login` session puts the account's email in the agent's context.
+TOKENS = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")
+
+
+def isolated_env(home: Path) -> dict[str, str]:
+    """An environment with none of the operator's identity: no USER, git config or real HOME."""
+    return {
+        "PATH": os.environ["PATH"],
+        "HOME": str(home),
+        **{k: os.environ[k] for k in TOKENS if k in os.environ},
+    }
 
 
 def free_port() -> int:
@@ -299,10 +310,10 @@ def judged(
 def judge(model: str, prompt: str, cwd: Path) -> str:
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json"]
     try:
-        out = sh(*cmd, *ISOLATED, cwd=cwd, timeout=120)
+        out = sh(*cmd, *ISOLATED, cwd=cwd, env=isolated_env(cwd), timeout=120)
     except subprocess.SubprocessError:
         # Once more: a transient API error would otherwise fail a trial the agent passed.
-        out = sh(*cmd, *ISOLATED, cwd=cwd, timeout=120)
+        out = sh(*cmd, *ISOLATED, cwd=cwd, env=isolated_env(cwd), timeout=120)
     return json.loads(out).get("result", "")
 
 
@@ -405,7 +416,11 @@ def trial(
             transcript = out / f"{variant['name']}.{task['id']}.{n}.jsonl"
             with transcript.open("w") as f:
                 agent = subprocess.Popen(
-                    cmd, stdout=f, stderr=subprocess.STDOUT, cwd=cwd
+                    cmd,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    cwd=cwd,
+                    env=isolated_env(work),
                 )
                 try:
                     agent.wait(timeout=args.timeout)
@@ -544,6 +559,8 @@ def main() -> None:
     for tool in ("claude", "docker", "go"):
         if not shutil.which(tool):
             sys.exit(f"{tool} not found on PATH")
+    if not any(k in os.environ for k in TOKENS):
+        sys.exit("set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY")
 
     out = BENCH / "results" / time.strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True)

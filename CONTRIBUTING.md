@@ -66,7 +66,9 @@ update it.
   them in a 100k-concept tenant.
 - `python3 bench/run.py` runs Claude over MCP on the tasks in
   `bench/tasks.json`, once per variant in `bench/variants/`. It needs the
-  `claude` CLI and costs about $0.05 a run. A change to a tool description or to
+  `claude` CLI and costs about $0.05 a run. It MUST have
+  `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`
+  set. A `/login` session puts your email in the agent's context. A change to a tool description or to
   the server instructions MUST come with its result.
 - `python3 bench/longmemeval.py` turns LongMemEval into two sets of 56 agent
   tasks for `run.py --tasks-file`: `tune.json` and `holdout.json`. Tune on the

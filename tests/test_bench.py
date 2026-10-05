@@ -395,6 +395,17 @@ def test_resolve_ref_refuses_an_unknown_ref() -> None:
         run.resolve_ref("no-such-ref-anywhere")
 
 
+def test_isolated_env_carries_the_token_but_not_the_operator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("USER", "operator")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "operator@example.com")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token")
+    env = run.isolated_env(tmp_path)
+    assert env.keys() == {"PATH", "HOME", "CLAUDE_CODE_OAUTH_TOKEN"}
+    assert env["HOME"] == str(tmp_path)
+
+
 def test_serve_retries_a_server_that_exits_while_starting(tmp_path: Path) -> None:
     (tmp_path / "www").mkdir()
     (tmp_path / "www" / "readyz").write_text("ok")
