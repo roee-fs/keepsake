@@ -513,10 +513,11 @@ def main() -> None:
         default="claude-sonnet-5",
         help="The agent's model. Default: claude-sonnet-5.",
     )
+    # Haiku fails correct answers that cite memory paths as fabricated.
     p.add_argument(
         "--judge-model",
-        default="claude-haiku-4-5-20251001",
-        help="Grades rubric tasks.",
+        default="claude-sonnet-5",
+        help="Grades rubric tasks. Default: claude-sonnet-5.",
     )
     p.add_argument(
         "--timeout", type=int, default=300, help="Seconds per agent run. Default: 300."
