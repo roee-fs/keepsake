@@ -40,7 +40,8 @@ type Revision struct {
 	Day string
 }
 
-// Hit is one search result. It carries no body: the agent searches, chooses, then reads.
+// Hit is one search result. It carries no body, only the passages that match: the agent
+// searches, chooses, then reads.
 type Hit struct {
 	Path        string
 	Type        string
@@ -48,6 +49,7 @@ type Hit struct {
 	Description string
 	Score       float64
 	Frontmatter *okf.Map
+	Snippet     string
 }
 
 // Summary is a concept table row: Hit without the score or frontmatter, plus TenantID for mixed-tenant pages.
@@ -350,7 +352,8 @@ func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 // searchSQL is BM25 (k1=0.9, b=0.4) over posting. Document frequency is exact: OR-ed terms
 // make every concept holding a term a hit. avgdl is over the hits, which BEIR scores the
 // same as over the tenant. $1 is terms, $2 prefix, $3 limit, $4 the tenant, which RLS
-// enforces anyway; naming it lets the planner lead with it.
+// enforces anyway; naming it lets the planner lead with it. snippet is up to two short
+// passages around the matched terms, unmarked as grep's are, and empty for a title-only hit.
 //
 // MATERIALIZED, or the planner inlines docs and avgdl and recounts them once per hit, and
 // repeats the card lookup once per ranked path. Cards come by `path = ANY`, a primary-key
@@ -373,11 +376,19 @@ ranked AS MATERIALIZED (
   ORDER BY score DESC, h.path
   LIMIT $3
 ),
+q AS MATERIALIZED (
+  SELECT to_tsquery('simple', string_agg(quote_literal(lexeme), ' | ')) AS q FROM terms
+),
 cards AS MATERIALIZED (
-  SELECT c.path, c.type, c.title, c.description, c.frontmatter FROM concept c
+  SELECT c.path, c.type, c.title, c.description, c.frontmatter,
+         CASE WHEN to_tsvector('english', c.body) @@ q.q
+           THEN btrim(regexp_replace(ts_headline('english', c.body, q.q,
+             'MaxFragments=2, MaxWords=25, MinWords=10, FragmentDelimiter=" … ", StartSel="", StopSel=""'), '\s+', ' ', 'g'))
+           ELSE '' END AS snippet
+  FROM concept c, q
   WHERE c.tenant_id = $4 AND c.path = ANY (ARRAY(SELECT path FROM ranked))
 )
-SELECT c.path, c.type, c.title, c.description, r.score, c.frontmatter
+SELECT c.path, c.type, c.title, c.description, r.score, c.frontmatter, c.snippet
 FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
 

@@ -78,8 +78,10 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "search",
 			Description: "Find concepts by keyword, ranked by relevance. Returns cards — path, " +
-				"type, title, description, score, status, stale, trust, generated_at — and " +
-				"never a body; read a promising path with `read`.\n\n" +
+				"type, title, description, score, snippet, status, stale, trust, generated_at — and " +
+				"never a whole body; read a promising path with `read`.\n\n" +
+				"`snippet` holds the passages of the body that match the query, or is empty " +
+				"when only the title or description matched. Use it to choose which paths to read.\n\n" +
 				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
 				"stale_after date has passed. `trust` is unverified, machine-confirmed or " +
 				"human-reviewed. `generated_at` is when the content last changed, or empty.\n\n" +
@@ -93,10 +95,10 @@ func toolDefinitions() []*mcp.Tool {
 			InputSchema: schema(obj("query", str(), "limit", limit(), "prefix", str()), "query", "limit"),
 			OutputSchema: results(schema(
 				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
-					"status", str(), "stale", obj("type", "boolean"),
+					"snippet", str(), "status", str(), "stale", obj("type", "boolean"),
 					"trust", obj("type", "string", "enum", []string{okf.Unverified, okf.MachineConfirmed, okf.HumanReviewed}),
 					"generated_at", str()),
-				"path", "type", "title", "description", "score", "status", "stale", "trust", "generated_at",
+				"path", "type", "title", "description", "score", "snippet", "status", "stale", "trust", "generated_at",
 			)),
 		},
 		{

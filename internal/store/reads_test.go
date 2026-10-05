@@ -232,6 +232,28 @@ func TestSearchNeverReturnsABody(t *testing.T) {
 	}
 }
 
+func TestSearchSnippetsTheMatchedPassage(t *testing.T) {
+	filler := strings.Repeat("weather talk ", 80)
+	create(t, okf.Concept{Path: "s/a", Type: "Session", Title: "Session", Body: filler + "I tried a lavender gin fizz last weekend. " + filler})
+	create(t, okf.Concept{Path: "s/b", Type: "Session", Title: "Cocktail ideas", Body: filler})
+	cs, tenant := fixture(t)
+	hits, err := cs.Search(ctx, tenant, "cocktail fizz", 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snippets := map[string]string{}
+	for _, h := range hits {
+		snippets[h.Path] = h.Snippet
+	}
+	if s := snippets["s/a"]; !strings.Contains(s, "lavender gin fizz") || len(s) > 300 {
+		t.Errorf("s/a snippet = %q, want the passage around fizz", s)
+	}
+	// A title-only hit has no matching passage, so it MUST NOT leak the body's opening.
+	if s, ok := snippets["s/b"]; !ok || s != "" {
+		t.Errorf("s/b snippet = %q (hit %v), want an empty snippet", s, ok)
+	}
+}
+
 func TestSearchRespectsLimit(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)

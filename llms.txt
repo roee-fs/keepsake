@@ -76,7 +76,8 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 
 - `list(prefix?)`: every path under `prefix`, with a count per type. Call it
   first to learn the shape of the tree.
-- `search(query, limit, prefix?)`: cards ranked by BM25. Terms are OR-ed.
+- `search(query, limit, prefix?)`: cards ranked by BM25, each with the
+  passages that match. Terms are OR-ed.
   Distinctive keywords find more than a question does.
 - `grep(pattern, limit)`: paths whose text matches a POSIX regex. Use it for
   exact identifiers.

@@ -67,9 +67,10 @@ func hitOf(h store.Hit) searchHit {
 	return searchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
 }
 
-// card is a search result: a searchHit plus the OKF §5 signals.
+// card is a search result: a searchHit, the passages that match, and the OKF §5 signals.
 type card struct {
 	searchHit
+	Snippet string `json:"snippet"`
 	okf.Signals
 }
 
@@ -207,7 +208,7 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 	}
 	now := time.Now()
 	return convert(hits, func(h store.Hit) card {
-		return card{hitOf(h), okf.Derive(h.Frontmatter, now)}
+		return card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
