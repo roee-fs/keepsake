@@ -409,6 +409,8 @@ def jwt_release() -> Iterator[str]:
         "keepsake-jwt",
         f"--from-literal=secrets={secrets.token_hex(32)}",
     )
+    # keepsake_owner holds no CREATE on the database, as docs/deploy.md recommends.
+    _psql(f"CREATE SCHEMA IF NOT EXISTS {JWT_SCHEMA} AUTHORIZATION keepsake_owner")
     _run(
         [
             "helm",
