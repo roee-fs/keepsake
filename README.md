@@ -36,8 +36,8 @@ agents wrote into it.
 
 What keepsake provides:
 
-- **An MCP server.** Seven bounded tools: `keepsake_list`, `keepsake_search`, `keepsake_grep`,
-  `keepsake_read`, `keepsake_create`, `keepsake_update`, `keepsake_relate`. Streamable HTTP, so a
+- **An MCP server.** Seven bounded tools: `list`, `search`, `grep`,
+  `read`, `create`, `update`, `relate`. Streamable HTTP, so a
   fleet of pods shares one endpoint.
 - **Safe concurrent writes.** One row per concept, keyed `(tenant_id, path)`.
   Optimistic concurrency via an optional `expected_version`, so two agents

@@ -22,7 +22,7 @@ body:
     attributes:
       label: Where
       options:
-        - An MCP tool (keepsake_read, keepsake_create, …)
+        - An MCP tool (read, create, …)
         - The CLI (import, export, validate, migrate, serve)
         - The Helm chart or the install
         - Something else

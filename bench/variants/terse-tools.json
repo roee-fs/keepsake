@@ -1,12 +1,12 @@
 {
   "description": "One-line tool descriptions, to measure what the shipped guidance earns.",
   "tools": {
-    "keepsake_list": "List concepts under a prefix, with counts per type.",
-    "keepsake_search": "Keyword search over concepts. Returns ranked paths and titles.",
-    "keepsake_grep": "Regex search over concept text. Returns paths and snippets.",
-    "keepsake_read": "Read one concept: body, frontmatter, links and backlinks.",
-    "keepsake_create": "Create a concept at a new path.",
-    "keepsake_update": "Update an existing concept.",
-    "keepsake_relate": "Add a link from one concept to another."
+    "list": "List concepts under a prefix, with counts per type.",
+    "search": "Keyword search over concepts. Returns ranked paths and titles.",
+    "grep": "Regex search over concept text. Returns paths and snippets.",
+    "read": "Read one concept: body, frontmatter, links and backlinks.",
+    "create": "Create a concept at a new path.",
+    "update": "Update an existing concept.",
+    "relate": "Add a link from one concept to another."
   }
 }

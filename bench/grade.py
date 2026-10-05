@@ -19,12 +19,12 @@ from typing import Any
 
 TOOL_PREFIX = "mcp__keepsake__"
 # The files variant's built-in tools, named as the keepsake tools they stand in for.
-FILE_TOOLS = {"Read": "keepsake_read", "Grep": "keepsake_grep", "Glob": "keepsake_list"}
+FILE_TOOLS = {"Read": "read", "Grep": "grep", "Glob": "list"}
 # The directory run.py exports a files trial's memory into.
 MEMORY_DIR = "memory"
 # Where a task's judge_template takes the agent's answer.
 RESPONSE = "<<RESPONSE>>"
-WRITES = {"keepsake_create", "keepsake_update", "keepsake_relate"}
+WRITES = {"create", "update", "relate"}
 # Export generates these at the bundle root; they are not concepts.
 GENERATED = {"index", "log"}
 
@@ -137,7 +137,7 @@ def grade(
     read = {
         concept_path(c["input"].get("path", ""))
         for c in calls
-        if c["tool"] == "keepsake_read"
+        if c["tool"] == "read"
     }
     for path in expect.get("reads", []) if require_tools else []:
         checks[f"read {path}"] = path in read
@@ -181,7 +181,7 @@ def grade(
 
 
 def _paths(items: Any) -> list[str]:
-    """Paths from a list of path strings or of cards, as keepsake_read and search return them."""
+    """Paths from a list of path strings or of cards, as read and search return them."""
     return [
         concept_path(i if isinstance(i, str) else i.get("path", ""))
         for i in items or []
@@ -192,7 +192,7 @@ def _paths(items: Any) -> list[str]:
 def link_metrics(
     calls: list[dict[str, Any]], required: Iterable[str] = ()
 ) -> dict[str, int]:
-    """How agents use keepsake_read's links. A link-only read opens a path no search, grep or list
+    """How agents use read's links. A link-only read opens a path no search, grep or list
     had shown; a missed link is a required path the agent was linked to and never read."""
     searched: set[str] = set()
     read: set[str] = set()
@@ -203,7 +203,7 @@ def link_metrics(
             out = json.loads(c.get("output") or "null")
         except ValueError:
             out = None
-        if c["tool"] == "keepsake_read":
+        if c["tool"] == "read":
             if c.get("error"):
                 continue
             path = concept_path(c["input"].get("path", ""))
@@ -239,7 +239,7 @@ def metrics(
         "tool_errors": sum(c["error"] for c in calls),
         "first_tool": calls[0]["tool"] if calls else None,
         "search_queries": [
-            c["input"].get("query", "") for c in calls if c["tool"] == "keepsake_search"
+            c["input"].get("query", "") for c in calls if c["tool"] == "search"
         ],
         "turns": result.get("num_turns") or 0,
         "cost_usd": result.get("total_cost_usd") or 0.0,

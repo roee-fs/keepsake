@@ -18,10 +18,10 @@ func TestToolCallsAreCountedByOutcome(t *testing.T) {
 		tool, outcome string
 		args          map[string]any
 	}{
-		{"keepsake_create", "ok", map[string]any{"path": "a", "type": "Concept"}},
-		{"keepsake_update", "conflict", map[string]any{"path": "a", "expected_version": 9, "body": "x"}},
-		{"keepsake_create", "tool_error", map[string]any{"path": "a", "type": "Concept"}},
-		{"keepsake_read", "tool_error", map[string]any{}},
+		{"create", "ok", map[string]any{"path": "a", "type": "Concept"}},
+		{"update", "conflict", map[string]any{"path": "a", "expected_version": 9, "body": "x"}},
+		{"create", "tool_error", map[string]any{"path": "a", "type": "Concept"}},
+		{"read", "tool_error", map[string]any{}},
 	}
 	for _, c := range calls {
 		counter := toolCalls.WithLabelValues(c.tool, c.outcome)
@@ -46,7 +46,7 @@ func TestMetricsAreServedOnlyByTheMetricsHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body, _ := io.ReadAll(rec.Body)
-	for _, want := range []string{`keepsake_tool_calls_total{outcome="ok",tool="keepsake_read"}`, "keepsake_db_pool_max_connections", "go_goroutines"} {
+	for _, want := range []string{`keepsake_tool_calls_total{outcome="ok",tool="read"}`, "keepsake_db_pool_max_connections", "go_goroutines"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("metrics lack %s", want)
 		}

@@ -1,12 +1,12 @@
 {
-  "description": "Reads through Claude Code's Read, Grep and Glob over an exported snapshot of the tenant, writes through the keepsake_* tools. The instructions are baseline's, reworded for files.",
+  "description": "Reads through Claude Code's Read, Grep and Glob over an exported snapshot of the tenant, writes through the keepsake tools. The instructions are baseline's, reworded for files.",
   "files": true,
   "instructions": null,
-  "system_prompt": "You have a persistent memory: the markdown files in the current directory, one concept per file, with YAML frontmatter. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with Grep for a few distinctive keywords, read the most relevant files with Read, and follow links until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. To record something, use the keepsake_* tools; before creating a concept, check for an existing one and update it instead if it exists. Name the paths you relied on.",
+  "system_prompt": "You have a persistent memory: the markdown files in the current directory, one concept per file, with YAML frontmatter. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with Grep for a few distinctive keywords, read the most relevant files with Read, and follow links until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. To record something, use the keepsake tools; before creating a concept, check for an existing one and update it instead if it exists. Name the paths you relied on.",
   "tools": {
-    "keepsake_list": null,
-    "keepsake_search": null,
-    "keepsake_grep": null,
-    "keepsake_read": null
+    "list": null,
+    "search": null,
+    "grep": null,
+    "read": null
   }
 }

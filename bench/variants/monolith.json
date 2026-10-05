@@ -3,12 +3,12 @@
   "bundle_in_prompt": true,
   "instructions": null,
   "tools": {
-    "keepsake_list": null,
-    "keepsake_search": null,
-    "keepsake_grep": null,
-    "keepsake_read": null,
-    "keepsake_create": null,
-    "keepsake_update": null,
-    "keepsake_relate": null
+    "list": null,
+    "search": null,
+    "grep": null,
+    "read": null,
+    "create": null,
+    "update": null,
+    "relate": null
   }
 }

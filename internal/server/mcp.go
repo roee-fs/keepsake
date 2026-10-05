@@ -41,11 +41,11 @@ func number(v any) int {
 }
 
 var handlers = map[string]handler{
-	"keepsake_list": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"list": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		prefix, _ := a["prefix"].(string)
 		return t.List(ctx, prefix)
 	},
-	"keepsake_search": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"search": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		var prefix *string
 		if p, ok := a["prefix"].(string); ok {
 			prefix = &p
@@ -53,21 +53,21 @@ var handlers = map[string]handler{
 		hits, err := t.Search(ctx, a["query"].(string), number(a["limit"]), prefix)
 		return envelope{hits}, err
 	},
-	"keepsake_grep": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"grep": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		hits, err := t.Grep(ctx, a["pattern"].(string), number(a["limit"]))
 		return envelope{hits}, err
 	},
-	"keepsake_read": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"read": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		c, err := t.Read(ctx, a["path"].(string))
 		if c == nil {
 			return nil, err
 		}
 		return c, err
 	},
-	"keepsake_create": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"create": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		return t.Create(ctx, a["path"].(string), a)
 	},
-	"keepsake_update": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"update": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		var expected *int
 		if v, ok := a["expected_version"]; ok {
 			n := number(v)
@@ -75,7 +75,7 @@ var handlers = map[string]handler{
 		}
 		return t.Update(ctx, a["path"].(string), expected, a)
 	},
-	"keepsake_relate": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"relate": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		return t.Relate(ctx, a["from_path"].(string), a["to_path"].(string))
 	},
 }

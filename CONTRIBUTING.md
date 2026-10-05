@@ -60,7 +60,7 @@ tool rather than a gate.
 `bench/benchmarks.pdf` holds the current results. A change that moves them MUST
 update it.
 
-- `python3 bench/beir.py` scores `keepsake_search` on BEIR over MCP. A change to
+- `python3 bench/beir.py` scores `search` on BEIR over MCP. A change to
   search MUST keep SciFact nDCG@10 at 0.66 or above.
 - `python3 bench/rankers.py` compares rankers on BEIR and LongMemEval, and times
   them in a 100k-concept tenant.

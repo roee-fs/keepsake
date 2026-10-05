@@ -73,7 +73,7 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 			return nil, fmt.Errorf("%s: %v", file, err)
 		}
 		if strict {
-			// A stored invalid concept would fail a later keepsake_update on a field nobody touched.
+			// A stored invalid concept would fail a later update on a field nobody touched.
 			if err := okf.Storable(concept); err != nil {
 				return nil, fmt.Errorf("%s: %v", file, err)
 			}
