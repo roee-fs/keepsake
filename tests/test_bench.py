@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -86,6 +88,23 @@ def test_parse_keeps_keepsake_calls_in_order_and_marks_errors() -> None:
     assert [c["tool"] for c in calls] == ["search", "read", "create"]
     assert [c["error"] for c in calls] == [False, False, True]
     assert result["result"] == "Run pg_ctl promote."
+
+
+def test_parse_names_a_pre_rename_servers_tools_as_the_current_ones() -> None:
+    old = [line.replace("mcp__keepsake__", "mcp__keepsake__okf_") for line in TRANSCRIPT]
+    assert [c["tool"] for c in grade.parse(old)[0]] == ["search", "read", "create"]
+
+
+def test_only_a_quiet_agent_that_wrote_nothing_counts_as_stalled(tmp_path: Path) -> None:
+    reads, writes = tmp_path / "reads.jsonl", tmp_path / "writes.jsonl"
+    reads.write_text("\n".join(TRANSCRIPT[:5]))
+    writes.write_text("\n".join(TRANSCRIPT))
+    assert not run.stalled(reads)
+    old = time.time() - run.STALL_S - 1
+    for p in (reads, writes):
+        os.utime(p, (old, old))
+    assert run.stalled(reads)
+    assert not run.stalled(writes)
 
 
 def test_parse_counts_file_tools_over_the_exported_memory() -> None:
@@ -203,8 +222,17 @@ def test_metrics_and_summary() -> None:
         }
     ]
     report = grade.summarize(rows)
-    assert "| v | 0/1 | 1/1 |" in report
+    assert "| v | 0/1 | 0 | 1/1 |" in report
     assert "- v / t #1: judge" in report
+
+
+def test_summary_shows_passes_per_trial() -> None:
+    m = grade.metrics([], {})
+    rows = [
+        {"variant": "v", "task": t, "trial": n, "passed": ok, "checks": {}, **m}
+        for t, n, ok in [("a", 1, True), ("b", 1, True), ("a", 2, True), ("b", 2, False)]
+    ]
+    assert "| v | 3/4 | 2 / 1 |" in grade.summarize(rows)
 
 
 def test_a_longmemeval_task_carries_the_official_judge_prompt() -> None:
@@ -468,7 +496,7 @@ def test_summary_tolerates_rows_without_link_metrics() -> None:
            **grade.metrics([], {})}
     for key in ("reads", "offered", "followed", "link_only_reads", "missed_links"):
         row.pop(key, None)
-    assert "| v | 1/1 |" in grade.summarize([row])
+    assert "| v | 1/1 | 1 |" in grade.summarize([row])
 
 
 BEAM_ROW = {

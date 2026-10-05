@@ -85,7 +85,8 @@ def parse(
                     continue
                 name, args = block["name"], block.get("input") or {}
                 if name.startswith(TOOL_PREFIX):
-                    name = name.removeprefix(TOOL_PREFIX)
+                    # A server from before the rename names its tools okf_*.
+                    name = name.removeprefix(TOOL_PREFIX).removeprefix("okf_")
                 elif name in FILE_TOOLS:
                     # Claude Code lets Read, Grep and Glob reach outside the working directory.
                     target = args.get("file_path") or args.get("path") or "."
@@ -267,16 +268,19 @@ def summarize(rows: list[dict[str, Any]]) -> str:
     tasks = list(dict.fromkeys(r["task"] for r in rows))
     out = [
         (
-            "| variant | pass | used tools | calls | searches | words/query | cost $ | turns | seconds "
+            "| variant | pass | pass by trial | used tools | calls | searches | words/query | cost $ | turns | seconds "
             "| input tokens | reads | link-only reads | missed links |"
         ),
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for v in variants:
         rs = [r for r in rows if r["variant"] == v]
         queries = [q for r in rs for q in r["search_queries"]]
+        # Passes in each trial, so run-to-run noise sits beside the total.
+        trials = sorted({r["trial"] for r in rs})
+        by_trial = " / ".join(str(sum(r["passed"] for r in rs if r["trial"] == n)) for n in trials)
         out.append(
-            f"| {v} | {sum(r['passed'] for r in rs)}/{len(rs)} "
+            f"| {v} | {sum(r['passed'] for r in rs)}/{len(rs)} | {by_trial} "
             f"| {sum(r['calls'] > 0 for r in rs)}/{len(rs)} "
             f"| {_avg([r['calls'] for r in rs])} "
             f"| {_avg([len(r['search_queries']) for r in rs])} "

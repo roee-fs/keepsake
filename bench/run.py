@@ -259,6 +259,17 @@ def serve(
     raise AssertionError("unreachable")
 
 
+STALL_S = 120
+
+
+def stalled(transcript: Path) -> bool:
+    """Whether a timed-out agent was stuck on the API rather than working, and wrote nothing.
+    Such a run says nothing about the variant, so it MAY run again."""
+    calls, _ = grade.parse(transcript.read_text().splitlines())
+    quiet = time.time() - transcript.stat().st_mtime > STALL_S
+    return quiet and not any(c["tool"] in grade.WRITES for c in calls)
+
+
 def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -414,20 +425,26 @@ def trial(
                 (work / "prompt.md").write_text(prompt.strip())
                 cmd += ["--append-system-prompt-file", str(work / "prompt.md")]
             transcript = out / f"{variant['name']}.{task['id']}.{n}.jsonl"
-            with transcript.open("w") as f:
-                agent = subprocess.Popen(
-                    cmd,
-                    stdout=f,
-                    stderr=subprocess.STDOUT,
-                    cwd=cwd,
-                    env=isolated_env(work),
-                )
-                try:
-                    agent.wait(timeout=args.timeout)
-                except subprocess.TimeoutExpired:
-                    agent.kill()
-                    agent.wait()
-                    row["error"] = f"timed out after {args.timeout}s"
+            for attempt in (1, 2):
+                with transcript.open("w") as f:
+                    agent = subprocess.Popen(
+                        cmd,
+                        stdout=f,
+                        stderr=subprocess.STDOUT,
+                        cwd=cwd,
+                        env=isolated_env(work),
+                    )
+                    try:
+                        agent.wait(timeout=args.timeout)
+                        break
+                    except subprocess.TimeoutExpired:
+                        agent.kill()
+                        agent.wait()
+                        row["error"] = f"timed out after {args.timeout}s"
+                if attempt == 1 and "error" in row and stalled(transcript):
+                    row["retried"] = row.pop("error")
+                else:
+                    break
             # A read-only trial changed nothing, and its tenant can be millions of tokens.
             after: dict[str, str] = {}
             if not read_only:
