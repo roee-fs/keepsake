@@ -43,7 +43,7 @@ Out of scope, because they are documented behaviour rather than defects:
   an agent on `/mcp` still names no tenant and still reads only its own. A
   cross-tenant read reached without a console session is in scope.
 - The round-trip fidelity ceilings, each pinned by a test.
-- `okf_grep` accepting a regular expression. It is a deliberate capability,
+- `keepsake_grep` accepting a regular expression. It is a deliberate capability,
   bounded by a 5s statement timeout.
 - The absence of authentication in `auth.mode: none`. That mode serves one
   tenant to anything that reaches the Service, and is meant to sit behind

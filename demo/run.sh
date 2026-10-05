@@ -92,7 +92,7 @@ agent() {
 
 QUESTION="Who do I page before a Postgres failover?"
 # Agent A only answers, so it cannot fix what it reads instead of answering.
-READ_ONLY=(--disallowedTools mcp__keepsake__okf_create mcp__keepsake__okf_update mcp__keepsake__okf_relate)
+READ_ONLY=(--disallowedTools mcp__keepsake__keepsake_create mcp__keepsake__keepsake_update mcp__keepsake__keepsake_relate)
 
 beat "Stand up keepsake on kind"
 kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true

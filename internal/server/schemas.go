@@ -57,7 +57,7 @@ func withConceptFields(kv ...any) *okf.Map {
 // instructions go into the agent's system prompt. On LongMemEval's holdout they pass 49 of 56
 // against 44 for bench/variants/team-instructions.json, which cast keepsake as a team knowledge base.
 // Change them only with a bench/run.py result: tuned on tune.json, reported on holdout.json.
-const instructions = "You have a persistent memory through the okf_* tools. It holds what has been recorded " +
+const instructions = "You have a persistent memory through the keepsake_* tools. It holds what has been recorded " +
 	"before: facts, decisions, history, preferences and past conversations. Before answering anything that may " +
 	"depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links " +
 	"and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more " +
@@ -68,7 +68,7 @@ const instructions = "You have a persistent memory through the okf_* tools. It h
 func toolDefinitions() []*mcp.Tool {
 	tools := []*mcp.Tool{
 		{
-			Name: "okf_list",
+			Name: "keepsake_list",
 			Description: "List the concepts stored here, with a count of each type. Pass `prefix` " +
 				"to scope to one part of the tree (`detect/` lists everything beneath " +
 				"`detect`); omit it to see everything. This is the cheapest way to learn " +
@@ -76,10 +76,10 @@ func toolDefinitions() []*mcp.Tool {
 			InputSchema: schema(obj("prefix", str())),
 		},
 		{
-			Name: "okf_search",
+			Name: "keepsake_search",
 			Description: "Find concepts by keyword, ranked by relevance. Returns cards — path, " +
 				"type, title, description, score, status, stale, trust, generated_at — and " +
-				"never a body; read a promising path with okf_read.\n\n" +
+				"never a body; read a promising path with keepsake_read.\n\n" +
 				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
 				"stale_after date has passed. `trust` is unverified, machine-confirmed or " +
 				"human-reviewed. `generated_at` is when the content last changed, or empty.\n\n" +
@@ -100,38 +100,38 @@ func toolDefinitions() []*mcp.Tool {
 			)),
 		},
 		{
-			Name: "okf_grep",
+			Name: "keepsake_grep",
 			Description: "Search concept text with a POSIX regular expression, case-insensitively. " +
 				"Returns each matching path with a short snippet around the match. Use it " +
 				"when you know the exact string or shape you want — an identifier, a " +
-				"config key, a URL — and okf_search's word matching is too loose. " +
+				"config key, a URL — and keepsake_search's word matching is too loose. " +
 				"`limit` is required.",
 			InputSchema:  schema(obj("pattern", str(), "limit", limit()), "pattern", "limit"),
 			OutputSchema: results(schema(obj("path", str(), "snippet", str()), "path", "snippet")),
 		},
 		{
-			Name: "okf_read",
+			Name: "keepsake_read",
 			Description: "Read one concept in full: body, frontmatter, the concepts it links to, " +
 				"and the concepts that link back to it, with the same status, stale, trust " +
-				"and generated_at as okf_search. Returns null if nothing is stored " +
-				"at that path. Take paths from okf_list, okf_search or okf_grep.",
+				"and generated_at as keepsake_search. Returns null if nothing is stored " +
+				"at that path. Take paths from keepsake_list, keepsake_search or keepsake_grep.",
 			InputSchema: schema(obj("path", str()), "path"),
 		},
 		{
-			Name: "okf_create",
+			Name: "keepsake_create",
 			Description: "Store a new concept. `path` is relative and carries no `.md` suffix " +
 				"(`detect/dormant-rules`). `type` is required and says what kind of thing " +
 				"this is — Concept, Runbook, Decision. Fails if the path is taken; change " +
-				"an existing concept with okf_update.\n\n" +
+				"an existing concept with keepsake_update.\n\n" +
 				"Links are read out of `body`, never declared separately, so relate a " +
 				"concept by linking to it inline: `[dormant rules](/detect/dormant-" +
 				"rules.md)`.",
 			InputSchema: schema(withConceptFields("path", str()), "path", "type"),
 		},
 		{
-			Name: "okf_update",
+			Name: "keepsake_update",
 			Description: "Change an existing concept. Fields you leave out keep the values they " +
-				"have. Pass `expected_version` (from okf_read) to make the write a " +
+				"have. Pass `expected_version` (from keepsake_read) to make the write a " +
 				"compare-and-swap: if anything has been written since, nothing changes and " +
 				"you get back the current version and body to merge against. Leave it out " +
 				"only when overwriting whatever is there is acceptable.",
@@ -141,7 +141,7 @@ func toolDefinitions() []*mcp.Tool {
 			),
 		},
 		{
-			Name: "okf_relate",
+			Name: "keepsake_relate",
 			Description: "Record that one concept relates to another by appending a link from " +
 				"`from_path` to `to_path`. The edge then shows up as an outbound link on " +
 				"the source and as a backlink on the target.",

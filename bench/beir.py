@@ -1,7 +1,7 @@
-"""Score okf_search's ranking on BEIR datasets, with no agent in the loop.
+"""Score keepsake_search's ranking on BEIR datasets, with no agent in the loop.
 
 Imports each corpus as one concept per document, sends every test query through the
-okf_search MCP tool, and reports nDCG@10 and recall beside BEIR's published BM25.
+keepsake_search MCP tool, and reports nDCG@10 and recall beside BEIR's published BM25.
 
     python3 bench/beir.py                  # scifact and nfcorpus
     python3 bench/beir.py --datasets scifact
@@ -112,7 +112,7 @@ def search(url: str, query: str) -> list[str]:
         "jsonrpc": "2.0",
         "id": 1,
         "method": "tools/call",
-        "params": {"name": "okf_search", "arguments": {"query": query, "limit": K}},
+        "params": {"name": "keepsake_search", "arguments": {"query": query, "limit": K}},
     }
     req = urllib.request.Request(
         url,

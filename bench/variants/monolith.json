@@ -3,12 +3,12 @@
   "bundle_in_prompt": true,
   "instructions": null,
   "tools": {
-    "okf_list": null,
-    "okf_search": null,
-    "okf_grep": null,
-    "okf_read": null,
-    "okf_create": null,
-    "okf_update": null,
-    "okf_relate": null
+    "keepsake_list": null,
+    "keepsake_search": null,
+    "keepsake_grep": null,
+    "keepsake_read": null,
+    "keepsake_create": null,
+    "keepsake_update": null,
+    "keepsake_relate": null
   }
 }

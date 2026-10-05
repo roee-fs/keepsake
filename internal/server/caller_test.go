@@ -277,15 +277,15 @@ func TestOneServerKeepsConcurrentTenantsApart(t *testing.T) {
 				return res.Content[0].(*mcp.TextContent).Text
 			}
 			body := fmt.Sprintf("owned by %s", tenant)
-			say(&mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{"path": "shared/note", "type": "Concept", "body": body}})
-			if got := say(&mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "shared/note"}}); !strings.Contains(got, body) {
+			say(&mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{"path": "shared/note", "type": "Concept", "body": body}})
+			if got := say(&mcp.CallToolParams{Name: "keepsake_read", Arguments: map[string]any{"path": "shared/note"}}); !strings.Contains(got, body) {
 				t.Errorf("tenant %d read %s", i, got)
 			}
 			other := tenants[1-i].String()
 			for _, tool := range []mcp.CallToolParams{
-				{Name: "okf_search", Arguments: map[string]any{"query": "owned", "limit": 10}},
-				{Name: "okf_grep", Arguments: map[string]any{"pattern": "owned", "limit": 10}},
-				{Name: "okf_list", Arguments: map[string]any{}},
+				{Name: "keepsake_search", Arguments: map[string]any{"query": "owned", "limit": 10}},
+				{Name: "keepsake_grep", Arguments: map[string]any{"pattern": "owned", "limit": 10}},
+				{Name: "keepsake_list", Arguments: map[string]any{}},
 			} {
 				if got := say(&tool); strings.Contains(got, other) {
 					t.Errorf("tenant %d saw the other tenant through %s: %s", i, tool.Name, got)
@@ -311,7 +311,7 @@ func TestAToolCallWithNoTenantWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	if _, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{"path": "orphan", "type": "Concept"}}); err == nil {
+	if _, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{"path": "orphan", "type": "Concept"}}); err == nil {
 		t.Fatal("a tool ran with no tenant")
 	}
 }

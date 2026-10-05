@@ -38,7 +38,7 @@ TRANSCRIPT = [
         {
             "type": "tool_use",
             "id": "1",
-            "name": "mcp__keepsake__okf_search",
+            "name": "mcp__keepsake__keepsake_search",
             "input": {"query": "failover runbook", "limit": 5},
         },
     ),
@@ -48,7 +48,7 @@ TRANSCRIPT = [
         {
             "type": "tool_use",
             "id": "2",
-            "name": "mcp__keepsake__okf_read",
+            "name": "mcp__keepsake__keepsake_read",
             "input": {"path": "/runbooks/db-failover.md"},
         },
     ),
@@ -58,7 +58,7 @@ TRANSCRIPT = [
         {
             "type": "tool_use",
             "id": "3",
-            "name": "mcp__keepsake__okf_create",
+            "name": "mcp__keepsake__keepsake_create",
             "input": {"path": "incidents/x"},
         },
     ),
@@ -83,7 +83,7 @@ TRANSCRIPT = [
 
 def test_parse_keeps_keepsake_calls_in_order_and_marks_errors() -> None:
     calls, result = grade.parse(TRANSCRIPT)
-    assert [c["tool"] for c in calls] == ["okf_search", "okf_read", "okf_create"]
+    assert [c["tool"] for c in calls] == ["keepsake_search", "keepsake_read", "keepsake_create"]
     assert [c["error"] for c in calls] == [False, False, True]
     assert result["result"] == "Run pg_ctl promote."
 
@@ -109,7 +109,7 @@ def test_parse_counts_file_tools_over_the_exported_memory() -> None:
             ),
         ]
     )
-    assert [c["tool"] for c in calls] == ["okf_grep", "okf_read"]
+    assert [c["tool"] for c in calls] == ["keepsake_grep", "keepsake_read"]
     checks = grade.grade({"reads": ["runbooks/db-failover"]}, calls, "", {}, {})
     assert checks == {"used keepsake": True, "read runbooks/db-failover": True}
 
@@ -128,7 +128,7 @@ def test_parse_skips_file_tools_outside_the_exported_memory(tmp_path: Path) -> N
         ],
         root,
     )
-    assert [c["tool"] for c in calls] == ["okf_grep", "okf_read"]
+    assert [c["tool"] for c in calls] == ["keepsake_grep", "keepsake_read"]
     assert calls[1]["input"]["path"] == "a.md"
 
 
@@ -178,8 +178,8 @@ def test_load_bundle_skips_the_files_export_generates(tmp_path: Path) -> None:
 
 def test_a_write_first_fails_the_look_before_writing_check() -> None:
     calls = [
-        {"tool": "okf_create", "input": {}, "error": False},
-        {"tool": "okf_search", "input": {}, "error": False},
+        {"tool": "keepsake_create", "input": {}, "error": False},
+        {"tool": "keepsake_search", "input": {}, "error": False},
     ]
     assert grade.grade({"search_before_write": True}, calls, "", {}, {}) == {
         "used keepsake": True,
@@ -438,13 +438,13 @@ def test_serve_gives_up_after_three_starts(tmp_path: Path) -> None:
 
 
 def _read(path: str, links: list, backlinks: list) -> dict:
-    return {"tool": "okf_read", "input": {"path": path}, "error": False,
+    return {"tool": "keepsake_read", "input": {"path": path}, "error": False,
             "output": json.dumps({"path": path, "links": links, "backlinks": backlinks})}
 
 
 def test_link_metrics_count_link_only_reads_and_missed_links() -> None:
     calls = [
-        {"tool": "okf_search", "input": {"query": "q"}, "error": False,
+        {"tool": "keepsake_search", "input": {"query": "q"}, "error": False,
          "output": json.dumps({"results": [{"path": "a"}, {"path": "b"}]})},
         _read("a", ["b", "c"], ["d"]),
         # b came from search too, so reading it is not link-only.

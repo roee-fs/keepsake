@@ -77,7 +77,7 @@ kubectl port-forward svc/keepsake 8000:8000 &
 token=$(kubectl exec deploy/keepsake -- keepsake token --tenant <uuid> --sub process:smoke --ttl 5m)
 curl -s localhost:8000/mcp -H "Authorization: Bearer $token" \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":{}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"keepsake_list","arguments":{}}}'
 ```
 
 A request without a token MUST get a 401. A token for another tenant MUST NOT

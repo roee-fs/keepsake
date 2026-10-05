@@ -43,10 +43,10 @@ before you run anything. The exact commands for both paths are below.
 An on-call team's knowledge base is imported into keepsake.
 
 1. Agent A asks who to page before a Postgres failover. It calls
-   `okf_search` with `query: "postgres failover page"` and `okf_read` on
+   `keepsake_search` with `query: "postgres failover page"` and `keepsake_read` on
    `runbooks/db-failover`. The answer is stale.
 2. Agent B has just run a failover drill. It reads the same concept, then calls
-   `okf_update` with the `version` it read as `expected_version` and the
+   `keepsake_update` with the `version` it read as `expected_version` and the
    corrected body.
 3. Agent A starts a new session and asks again. Its only memory is keepsake. It
    gets the right answer and the reason.
@@ -57,15 +57,15 @@ throwaway kind cluster.
 ## Properties
 
 - **MCP over streamable HTTP** at `/mcp`. A fleet of pods shares one endpoint.
-- **Safe concurrent writes.** `okf_update` with `expected_version` is a
+- **Safe concurrent writes.** `keepsake_update` with `expected_version` is a
   compare-and-swap. A stale version changes nothing and returns the current
   version and body to merge against. Writes to different concepts never contend.
 - **Database-enforced tenancy.** The tenant comes from the request, never from
   the agent. Postgres row-level security enforces it. The server refuses to
   start as a superuser or as the schema owner.
-- **Provenance.** Every change appends a revision. `okf_create` and
-  `okf_update` also stamp frontmatter `generated: { by, at }` with the caller
-  and the time. `okf_relate` keeps the existing stamp.
+- **Provenance.** Every change appends a revision. `keepsake_create` and
+  `keepsake_update` also stamp frontmatter `generated: { by, at }` with the caller
+  and the time. `keepsake_relate` keeps the existing stamp.
 - **Open format.** `keepsake import` and `keepsake export` move a tenant's memory
   as a directory of markdown files with YAML frontmatter.
 - **Console.** A read-only admin UI on the same port as `/mcp`.
@@ -74,18 +74,18 @@ throwaway kind cluster.
 
 A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 
-- `okf_list(prefix?)`: every path under `prefix`, with a count per type. Call it
+- `keepsake_list(prefix?)`: every path under `prefix`, with a count per type. Call it
   first to learn the shape of the tree.
-- `okf_search(query, limit, prefix?)`: cards ranked by BM25. Terms are OR-ed.
+- `keepsake_search(query, limit, prefix?)`: cards ranked by BM25. Terms are OR-ed.
   Distinctive keywords find more than a question does.
-- `okf_grep(pattern, limit)`: paths whose text matches a POSIX regex. Use it for
+- `keepsake_grep(pattern, limit)`: paths whose text matches a POSIX regex. Use it for
   exact identifiers.
-- `okf_read(path)`: the full concept, its version, links and backlinks.
-- `okf_create(path, type, title?, description?, body?, frontmatter?)`: a new
+- `keepsake_read(path)`: the full concept, its version, links and backlinks.
+- `keepsake_create(path, type, title?, description?, body?, frontmatter?)`: a new
   concept. Fails if the path is taken.
-- `okf_update(path, expected_version?, ...)`: changes the given fields.
+- `keepsake_update(path, expected_version?, ...)`: changes the given fields.
   Omitted fields keep their values.
-- `okf_relate(from_path, to_path)`: appends a link between two concepts.
+- `keepsake_relate(from_path, to_path)`: appends a link between two concepts.
 
 Full reference: https://github.com/roee-fs/keepsake/blob/main/docs/tools.md
 
@@ -131,9 +131,9 @@ step. It needs two database roles created first.
 
 ## Verify
 
-- Through the MCP client, call `okf_list`. It returns paths, or an empty list
+- Through the MCP client, call `keepsake_list`. It returns paths, or an empty list
   before an import.
-- Call `okf_search` with a word from an imported concept. It returns a card.
+- Call `keepsake_search` with a word from an imported concept. It returns a card.
 - Open the console on port 8000 and log in.
 - In `jwt` mode, a request without a token MUST get a 401, and a token for
   another tenant MUST NOT list this tenant's concepts.

@@ -25,7 +25,7 @@
           "listChanged": false
         }
       },
-      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
+      "instructions": "You have a persistent memory through the keepsake_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "protocolVersion": "2025-11-25",
       "serverInfo": {
         "name": "keepsake",
@@ -59,7 +59,7 @@
           "listChanged": false
         }
       },
-      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
+      "instructions": "You have a persistent memory through the keepsake_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "protocolVersion": "2025-06-18",
       "serverInfo": {
         "name": "keepsake",
@@ -93,10 +93,10 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_list"
+          "name": "keepsake_list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, status, stale, trust, generated_at — and never a body; read a promising path with okf_read.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, status, stale, trust, generated_at — and never a body; read a promising path with keepsake_read.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -118,7 +118,7 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_search",
+          "name": "keepsake_search",
           "outputSchema": {
             "properties": {
               "results": {
@@ -182,7 +182,7 @@
           }
         },
         {
-          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and okf_search's word matching is too loose. `limit` is required.",
+          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and keepsake_search's word matching is too loose. `limit` is required.",
           "inputSchema": {
             "properties": {
               "pattern": {
@@ -201,7 +201,7 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_grep",
+          "name": "keepsake_grep",
           "outputSchema": {
             "properties": {
               "results": {
@@ -232,7 +232,7 @@
           }
         },
         {
-          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as okf_search. Returns null if nothing is stored at that path. Take paths from okf_list, okf_search or okf_grep.",
+          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as keepsake_search. Returns null if nothing is stored at that path. Take paths from keepsake_list, keepsake_search or keepsake_grep.",
           "inputSchema": {
             "properties": {
               "path": {
@@ -245,10 +245,10 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_read"
+          "name": "keepsake_read"
         },
         {
-          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with okf_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
+          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with keepsake_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
           "inputSchema": {
             "properties": {
               "path": {
@@ -277,10 +277,10 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_create"
+          "name": "keepsake_create"
         },
         {
-          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from keepsake_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
           "inputSchema": {
             "properties": {
               "path": {
@@ -313,7 +313,7 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_update"
+          "name": "keepsake_update"
         },
         {
           "description": "Record that one concept relates to another by appending a link from `from_path` to `to_path`. The edge then shows up as an outbound link on the source and as a backlink on the target.",
@@ -333,7 +333,7 @@
             "type": "object",
             "additionalProperties": false
           },
-          "name": "okf_relate"
+          "name": "keepsake_relate"
         }
       ]
     }
@@ -350,7 +350,7 @@
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_list",
+        "name": "keepsake_list",
         "arguments": {}
       }
     },
@@ -380,14 +380,14 @@
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_nope",
+        "name": "keepsake_nope",
         "arguments": {}
       }
     },
     "result": {
       "content": [
         {
-          "text": "no such tool: okf_nope",
+          "text": "no such tool: keepsake_nope",
           "type": "text"
         }
       ],
@@ -406,7 +406,7 @@
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_read",
+        "name": "keepsake_read",
         "arguments": {
           "path": "x"
         }
@@ -448,7 +448,7 @@
           "listChanged": false
         }
       },
-      "instructions": "You have a persistent memory through the okf_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
+      "instructions": "You have a persistent memory through the keepsake_* tools. It holds what has been recorded before: facts, decisions, history, preferences and past conversations. Before answering anything that may depend on it, search it with a few distinctive keywords, read the most relevant results, and follow links and backlinks until the answer is grounded. When two memories disagree, prefer the more specific or more recent one, and say so. If the memory does not hold the answer, say so rather than guess. Before creating a concept, search for an existing one and update it instead if it exists. Name the paths you relied on.",
       "resultType": "complete",
       "supportedVersions": [
         "2026-07-28"
@@ -497,10 +497,10 @@
             "required": [],
             "additionalProperties": false
           },
-          "name": "okf_list"
+          "name": "keepsake_list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, status, stale, trust, generated_at — and never a body; read a promising path with okf_read.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, status, stale, trust, generated_at — and never a body; read a promising path with keepsake_read.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -522,7 +522,7 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_search",
+          "name": "keepsake_search",
           "outputSchema": {
             "type": "object",
             "properties": {
@@ -586,7 +586,7 @@
           }
         },
         {
-          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and okf_search's word matching is too loose. `limit` is required.",
+          "description": "Search concept text with a POSIX regular expression, case-insensitively. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and keepsake_search's word matching is too loose. `limit` is required.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -605,7 +605,7 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_grep",
+          "name": "keepsake_grep",
           "outputSchema": {
             "type": "object",
             "properties": {
@@ -636,7 +636,7 @@
           }
         },
         {
-          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as okf_search. Returns null if nothing is stored at that path. Take paths from okf_list, okf_search or okf_grep.",
+          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as keepsake_search. Returns null if nothing is stored at that path. Take paths from keepsake_list, keepsake_search or keepsake_grep.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -649,10 +649,10 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_read"
+          "name": "keepsake_read"
         },
         {
-          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with okf_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
+          "description": "Store a new concept. `path` is relative and carries no `.md` suffix (`detect/dormant-rules`). `type` is required and says what kind of thing this is — Concept, Runbook, Decision. Fails if the path is taken; change an existing concept with keepsake_update.\n\nLinks are read out of `body`, never declared separately, so relate a concept by linking to it inline: `[dormant rules](/detect/dormant-rules.md)`.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -681,10 +681,10 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_create"
+          "name": "keepsake_create"
         },
         {
-          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from okf_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
+          "description": "Change an existing concept. Fields you leave out keep the values they have. Pass `expected_version` (from keepsake_read) to make the write a compare-and-swap: if anything has been written since, nothing changes and you get back the current version and body to merge against. Leave it out only when overwriting whatever is there is acceptable.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -717,7 +717,7 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_update"
+          "name": "keepsake_update"
         },
         {
           "description": "Record that one concept relates to another by appending a link from `from_path` to `to_path`. The edge then shows up as an outbound link on the source and as a backlink on the target.",
@@ -737,7 +737,7 @@
             ],
             "additionalProperties": false
           },
-          "name": "okf_relate"
+          "name": "keepsake_relate"
         }
       ],
       "ttlMs": 0,
@@ -756,14 +756,14 @@
       "accept": "application/json, text/event-stream",
       "mcp-protocol-version": "2026-07-28",
       "mcp-method": "tools/call",
-      "mcp-name": "okf_list"
+      "mcp-name": "keepsake_list"
     },
     "request": {
       "jsonrpc": "2.0",
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_list",
+        "name": "keepsake_list",
         "arguments": {},
         "_meta": {
           "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -799,14 +799,14 @@
       "accept": "application/json, text/event-stream",
       "mcp-protocol-version": "2026-07-28",
       "mcp-method": "tools/call",
-      "mcp-name": "okf_nope"
+      "mcp-name": "keepsake_nope"
     },
     "request": {
       "jsonrpc": "2.0",
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_nope",
+        "name": "keepsake_nope",
         "arguments": {},
         "_meta": {
           "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -817,7 +817,7 @@
     "result": {
       "content": [
         {
-          "text": "no such tool: okf_nope",
+          "text": "no such tool: keepsake_nope",
           "type": "text"
         }
       ],
@@ -838,14 +838,14 @@
       "accept": "application/json, text/event-stream",
       "mcp-protocol-version": "2026-07-28",
       "mcp-method": "tools/call",
-      "mcp-name": "okf_read"
+      "mcp-name": "keepsake_read"
     },
     "request": {
       "jsonrpc": "2.0",
       "id": 1,
       "method": "tools/call",
       "params": {
-        "name": "okf_read",
+        "name": "keepsake_read",
         "arguments": {
           "path": "x"
         },

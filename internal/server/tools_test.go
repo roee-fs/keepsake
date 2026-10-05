@@ -39,7 +39,7 @@ var (
 // secret is distinctive enough that its appearance anywhere is proof, not coincidence.
 const secret = "zqxjkbody"
 
-var toolNames = []string{"okf_create", "okf_grep", "okf_list", "okf_read", "okf_relate", "okf_search", "okf_update"}
+var toolNames = []string{"keepsake_create", "keepsake_grep", "keepsake_list", "keepsake_read", "keepsake_relate", "keepsake_search", "keepsake_update"}
 
 func TestMain(m *testing.M) {
 	pgtest.Main(m, func(d *pgtest.DB) error {
@@ -530,7 +530,7 @@ func TestTheServerAdvertisesExactlyTheSevenTools(t *testing.T) {
 
 func TestSearchAndGrepAdvertiseLimitAsRequired(t *testing.T) {
 	advertised := listTools(t)
-	for _, name := range []string{"okf_search", "okf_grep"} {
+	for _, name := range []string{"keepsake_search", "keepsake_grep"} {
 		required := field(advertised[name].InputSchema, "required").([]any)
 		if !slices.Contains(required, any("limit")) {
 			t.Fatalf("%s required = %v", name, required)
@@ -540,7 +540,7 @@ func TestSearchAndGrepAdvertiseLimitAsRequired(t *testing.T) {
 
 func TestSearchAndGrepAdvertiseTheEnvelopeTheyAnswerIn(t *testing.T) {
 	advertised := listTools(t)
-	for _, name := range []string{"okf_search", "okf_grep"} {
+	for _, name := range []string{"keepsake_search", "keepsake_grep"} {
 		results := field(field(advertised[name].OutputSchema, "properties"), "results")
 		if field(results, "type") != "array" {
 			t.Fatalf("%s results = %v", name, results)
@@ -555,26 +555,26 @@ func TestEveryToolIsDescribedAndSearchExplainsItsMatching(t *testing.T) {
 			t.Fatalf("%s has no description", name)
 		}
 	}
-	search := strings.ToLower(advertised["okf_search"].Description)
+	search := strings.ToLower(advertised["keepsake_search"].Description)
 	for _, word := range []string{"lexical", "or-ed", "distinctive"} {
 		if !strings.Contains(search, word) {
-			t.Fatalf("okf_search description lacks %q", word)
+			t.Fatalf("keepsake_search description lacks %q", word)
 		}
 	}
 }
 
 func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 	session := connect(t, newTools(t))
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
+	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{
 		"path": "e2e/smoke", "type": "Concept", "title": "Smoke", "body": secret,
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_search", Arguments: map[string]any{"query": "smoke", "limit": 5}})
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_search", Arguments: map[string]any{"query": "smoke", "limit": 5}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	matched, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_grep", Arguments: map[string]any{"pattern": "smoke", "limit": 5}})
+	matched, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_grep", Arguments: map[string]any{"pattern": "smoke", "limit": 5}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +588,7 @@ func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 	if field(hits[0], "trust") != okf.Unverified || field(hits[0], "status") != "stable" {
 		t.Fatalf("card = %v", hits[0])
 	}
-	if err := compile(listTools(t)["okf_search"].OutputSchema).Validate(result.StructuredContent); err != nil {
+	if err := compile(listTools(t)["keepsake_search"].OutputSchema).Validate(result.StructuredContent); err != nil {
 		t.Fatalf("result breaks the advertised output schema: %v", err)
 	}
 	structured, _ := json.Marshal(result.StructuredContent)
@@ -602,7 +602,7 @@ func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 }
 
 func TestARejectedCallIsAnErrorResultNotAProtocolError(t *testing.T) {
-	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{"path": "a/b", "type": ""}})
+	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{"path": "a/b", "type": ""}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestARejectedCallIsAnErrorResultNotAProtocolError(t *testing.T) {
 }
 
 func TestACallMissingARequiredArgumentIsAnErrorResult(t *testing.T) {
-	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "okf_search", Arguments: map[string]any{"query": "smoke"}})
+	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_search", Arguments: map[string]any{"query": "smoke"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -627,7 +627,7 @@ func TestAnInternalErrorIsNotDressedUpAsTheAgentsMistake(t *testing.T) {
 	session := connect(t, newTools(t))
 	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM keepsake_app`)
 	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO keepsake_app`) })
-	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err == nil {
+	if res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_list", Arguments: map[string]any{}}); err == nil {
 		t.Fatalf("got a result, want a protocol error: %+v", res)
 	}
 }
@@ -640,7 +640,7 @@ func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(orig) })
 	session := connect(t, newTools(t))
 
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "../x"}}); err != nil {
+	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_read", Arguments: map[string]any{"path": "../x"}}); err != nil {
 		t.Fatal(err)
 	}
 	if logs.Len() != 0 {
@@ -648,8 +648,8 @@ func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 	}
 	pgtest.Exec(t, db.AdminDSN, `REVOKE SELECT ON okf.concept FROM keepsake_app`)
 	t.Cleanup(func() { pgtest.Exec(t, db.AdminDSN, `GRANT SELECT ON okf.concept TO keepsake_app`) })
-	session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
-	if !strings.Contains(logs.String(), "okf_list") || !strings.Contains(logs.String(), "permission denied") {
+	session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_list", Arguments: map[string]any{}})
+	if !strings.Contains(logs.String(), "keepsake_list") || !strings.Contains(logs.String(), "permission denied") {
 		t.Fatalf("the defect was not logged: %q", logs.String())
 	}
 }
@@ -677,7 +677,7 @@ func TestABurstPastThePoolQueuesInsteadOfTimingOut(t *testing.T) {
 	errs := make(chan string, 6)
 	for range 6 {
 		wg.Go(func() {
-			res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
+			res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_list", Arguments: map[string]any{}})
 			switch {
 			case err != nil:
 				errs <- err.Error()
@@ -699,7 +699,7 @@ func TestABurstPastThePoolQueuesInsteadOfTimingOut(t *testing.T) {
 
 // Plausible from an LLM, and a protocol error would give it nothing to act on.
 func TestAnArgumentOfTheWrongShapeIsAnErrorResult(t *testing.T) {
-	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
+	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{
 		"path": "a/b", "type": "Concept", "frontmatter": "owner: sec",
 	}})
 	if err != nil {
@@ -714,14 +714,14 @@ func TestAnArgumentOfTheWrongShapeIsAnErrorResult(t *testing.T) {
 }
 
 func TestSchemaErrorsAreSortedAndNameTheTool(t *testing.T) {
-	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "okf_search", Arguments: map[string]any{
+	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_search", Arguments: map[string]any{
 		"query": 1, "limit": 201, "links": []any{},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	msg := text(t, res)
-	if !res.IsError || !strings.HasPrefix(msg, "okf_search: $: ") ||
+	if !res.IsError || !strings.HasPrefix(msg, "keepsake_search: $: ") ||
 		strings.Index(msg, "; limit: ") > strings.Index(msg, "; query: ") {
 		t.Fatalf("got IsError=%v %q", res.IsError, msg)
 	}
@@ -729,11 +729,11 @@ func TestSchemaErrorsAreSortedAndNameTheTool(t *testing.T) {
 
 // New: tools.py answers an unknown name with an error result, not a protocol error.
 func TestAnUnknownToolIsAnErrorResult(t *testing.T) {
-	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "okf_delete", Arguments: map[string]any{}})
+	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_delete", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.IsError || text(t, res) != "no such tool: okf_delete" {
+	if !res.IsError || text(t, res) != "no such tool: keepsake_delete" {
 		t.Fatalf("got IsError=%v %q", res.IsError, text(t, res))
 	}
 }
@@ -741,13 +741,13 @@ func TestAnUnknownToolIsAnErrorResult(t *testing.T) {
 // New: the text content is json.dumps of the structured content, byte for byte.
 func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	session := connect(t, newTools(t))
-	created, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{
 		"path": "a/b", "type": "Concept", "body": "café \"<&>\"\n", "frontmatter": map[string]any{"n": 1},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "a/b"}})
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_read", Arguments: map[string]any{"path": "a/b"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +759,7 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	if got := text(t, res); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
-	res, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_read", Arguments: map[string]any{"path": "no/such"}})
+	res, err = session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_read", Arguments: map[string]any{"path": "no/such"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -819,7 +819,7 @@ func TestTheWireToolListingIsPythons(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"okf_list", "okf_search", "okf_grep", "okf_read", "okf_create", "okf_update", "okf_relate"}
+	want := []string{"keepsake_list", "keepsake_search", "keepsake_grep", "keepsake_read", "keepsake_create", "keepsake_update", "keepsake_relate"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("advertised %v, want %v", names, want)
 	}
@@ -834,7 +834,7 @@ func TestUnavailableIsAToolError(t *testing.T) {
 	// Terminating backends alone is not enough: the pre-acquire ping would reconnect.
 	db.LockOut(t)
 
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}})
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_list", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatalf("a database that is down MUST be a tool result, not a protocol error: %v", err)
 	}
@@ -1005,7 +1005,7 @@ func TestProtocolErrorsArePythons(t *testing.T) {
 		{"legacy logging/setLevel", legacy, `{"jsonrpc":"2.0","id":1,"method":"logging/setLevel","params":{"level":"info"}}`, 200, -32601},
 		{"legacy initialize without params", legacy, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`, 200, -32602},
 		{"legacy tools/call without name", legacy, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`, 200, -32602},
-		{"legacy tools/call arguments array", legacy, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":[1]}}`, 200, -32602},
+		{"legacy tools/call arguments array", legacy, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"keepsake_list","arguments":[1]}}`, 200, -32602},
 		{"legacy ping", legacy, `{"jsonrpc":"2.0","id":1,"method":"ping"}`, 200, -1},
 		{"text content type", map[string]string{"Content-Type": "text/plain"}, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, 400, 0},
 		{"modern parse", modern("tools/list"), `{`, 400, -32700},
@@ -1013,7 +1013,7 @@ func TestProtocolErrorsArePythons(t *testing.T) {
 		{"modern batch", modern("tools/list"), `[{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{` + meta + `}}]`, 400, -32600},
 		{"modern jsonrpc 1.0", modern("tools/list"), `{"jsonrpc":"1.0","id":1,"method":"tools/list","params":{` + meta + `}}`, 400, -32600},
 		{"modern tools/call without name", modern("tools/call"), `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{` + meta + `}}`, 400, -32602},
-		{"modern tools/call arguments array", modern("tools/call", "Mcp-Name", "okf_list"), `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"okf_list","arguments":[1],` + meta + `}}`, 400, -32602},
+		{"modern tools/call arguments array", modern("tools/call", "Mcp-Name", "keepsake_list"), `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"keepsake_list","arguments":[1],` + meta + `}}`, 400, -32602},
 		{"modern resources/list", modern("resources/list"), `{"jsonrpc":"2.0","id":1,"method":"resources/list","params":{` + meta + `}}`, 404, -32601},
 		{"modern unknown method", modern("foo/bar"), `{"jsonrpc":"2.0","id":1,"method":"foo/bar","params":{` + meta + `}}`, 404, -32601},
 		{"modern ping", modern("ping"), `{"jsonrpc":"2.0","id":1,"method":"ping","params":{` + meta + `}}`, 404, -32601},

@@ -12,30 +12,30 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `okf_list` | `prefix?` | Every path under `prefix`, with a count per type. The cheapest way to learn the shape of the tree. |
-| `okf_search` | `query`, `limit`, `prefix?` | Cards ranked by BM25 alone. Each card holds `path`, `type`, `title`, `description`, `score`, and the OKF signals `status`, `stale`, `trust`, `generated_at`, which label the card but do not change its rank. Never a body. |
-| `okf_grep` | `pattern`, `limit` | Paths whose title, description or body match a POSIX regex, case-insensitively, each with a snippet. |
-| `okf_read` | `path` | The full concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
-| `okf_create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
-| `okf_update` | `path`, `expected_version?`, and any field `okf_create` takes | The new version. Omitted fields keep their values. |
-| `okf_relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |
+| `keepsake_list` | `prefix?` | Every path under `prefix`, with a count per type. The cheapest way to learn the shape of the tree. |
+| `keepsake_search` | `query`, `limit`, `prefix?` | Cards ranked by BM25 alone. Each card holds `path`, `type`, `title`, `description`, `score`, and the OKF signals `status`, `stale`, `trust`, `generated_at`, which label the card but do not change its rank. Never a body. |
+| `keepsake_grep` | `pattern`, `limit` | Paths whose title, description or body match a POSIX regex, case-insensitively, each with a snippet. |
+| `keepsake_read` | `path` | The full concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
+| `keepsake_create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
+| `keepsake_update` | `path`, `expected_version?`, and any field `keepsake_create` takes | The new version. Omitted fields keep their values. |
+| `keepsake_relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |
 
 ## Search
 
 Matching is lexical. Terms are OR-ed, so each extra term broadens the result.
 Distinctive keywords find more than a question does. `limit` is required, at most
-200. Use `okf_grep` for an exact identifier such as
+200. Use `keepsake_grep` for an exact identifier such as
 `purge_tenant`, because search splits it at the `_`.
 
 ## Links
 
 Links are read out of `body`. Nothing declares them separately. Write them as
 markdown links to the target's bundle path: `[failover](/runbooks/db-failover.md)`.
-`okf_relate` appends such a link for you.
+`keepsake_relate` appends such a link for you.
 
 ## Concurrent writes
 
-`okf_update` with `expected_version` is a compare-and-swap. If anything was
+`keepsake_update` with `expected_version` is a compare-and-swap. If anything was
 written since that version, nothing changes. The response carries the current
 version and body to merge against. Writes to different concepts never contend.
 
@@ -44,9 +44,9 @@ and skips numbers. A path deleted and created again gets a new version, so a
 stale `expected_version` never matches it.
 
 Every write that changes a concept appends a revision, attributed to the
-caller: the JWT `sub`, or the fixed actor in `none` mode. `okf_create` and
-`okf_update` also stamp frontmatter `generated: { by, at }` with that caller and
-the time, replacing any `generated` the caller sent. `okf_relate` keeps the
+caller: the JWT `sub`, or the fixed actor in `none` mode. `keepsake_create` and
+`keepsake_update` also stamp frontmatter `generated: { by, at }` with that caller and
+the time, replacing any `generated` the caller sent. `keepsake_relate` keeps the
 existing stamp. An update that changes nothing writes nothing and returns the
 current version, even when `expected_version` is stale.
 

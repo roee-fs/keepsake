@@ -37,13 +37,13 @@ HEAD = max(
 )
 
 TOOL_NAMES = {
-    "okf_list",
-    "okf_search",
-    "okf_grep",
-    "okf_read",
-    "okf_create",
-    "okf_update",
-    "okf_relate",
+    "keepsake_list",
+    "keepsake_search",
+    "keepsake_grep",
+    "keepsake_read",
+    "keepsake_create",
+    "keepsake_update",
+    "keepsake_relate",
 }
 
 # The release `run.sh` installs. Named rather than left implicit: the upgrade test
@@ -240,13 +240,13 @@ def test_mcp_endpoint_advertises_the_tool_surface() -> None:
 
 def test_search_and_grep_require_a_limit() -> None:
     tools = _advertised()
-    for name in ("okf_search", "okf_grep"):
+    for name in ("keepsake_search", "keepsake_grep"):
         assert "limit" in tools[name]["inputSchema"]["required"]
 
 
 def test_a_concept_round_trips_through_the_deployed_server() -> None:
     _call(
-        "okf_create",
+        "keepsake_create",
         {
             "path": "e2e/smoke",
             "type": "Concept",
@@ -255,7 +255,7 @@ def test_a_concept_round_trips_through_the_deployed_server() -> None:
             "body": "deployed",
         },
     )
-    hits = _call("okf_search", {"query": "smoke", "limit": 5})
+    hits = _call("keepsake_search", {"query": "smoke", "limit": 5})
     assert any(h["path"] == "e2e/smoke" for h in hits["results"])
 
 
@@ -286,7 +286,7 @@ def test_the_generated_password_logs_in_and_reads_the_seeded_totals() -> None:
     assert status == 200
 
     _call(
-        "okf_create",
+        "keepsake_create",
         {
             "path": "e2e/console-login",
             "type": "Concept",
@@ -516,17 +516,17 @@ def test_jwt_mode_serves_each_tenant_only_its_own_concepts(jwt_release: str) -> 
     created = _as(
         jwt_release,
         token_a,
-        "okf_create",
+        "keepsake_create",
         {"path": "e2e/private", "type": "Concept", "body": "only tenant a"},
     )
     assert not created.get("isError"), created
 
-    read_a = _as(jwt_release, token_a, "okf_read", {"path": "e2e/private"})
+    read_a = _as(jwt_release, token_a, "keepsake_read", {"path": "e2e/private"})
     assert read_a["structuredContent"]["body"] == "only tenant a"
-    read_b = _as(jwt_release, token_b, "okf_read", {"path": "e2e/private"})
-    # okf_read answers null for a path the caller's tenant does not hold.
+    read_b = _as(jwt_release, token_b, "keepsake_read", {"path": "e2e/private"})
+    # keepsake_read answers null for a path the caller's tenant does not hold.
     assert read_b["content"][0]["text"] == "null", f"tenant b read it: {read_b}"
-    listed_b = _as(jwt_release, token_b, "okf_list", {})
+    listed_b = _as(jwt_release, token_b, "keepsake_list", {})
     assert "e2e/private" not in listed_b["structuredContent"]["paths"]
 
     stored = _psql(

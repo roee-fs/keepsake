@@ -67,7 +67,7 @@ func hitOf(h store.Hit) searchHit {
 	return searchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
 }
 
-// card is an okf_search result: a searchHit plus the OKF §5 signals.
+// card is an keepsake_search result: a searchHit plus the OKF §5 signals.
 type card struct {
 	searchHit
 	okf.Signals

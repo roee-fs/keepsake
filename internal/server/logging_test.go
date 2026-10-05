@@ -46,13 +46,13 @@ func TestEachToolCallIsLoggedWithoutItsArguments(t *testing.T) {
 	logs := captureLogs(t)
 	tools := newTools(t)
 	session := connect(t, tools)
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_create", Arguments: map[string]any{
+	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_create", Arguments: map[string]any{
 		"path": "a", "type": "Concept", "body": secret,
 	}}); err != nil {
 		t.Fatal(err)
 	}
 	line := logLine(t, logs, "tool call", map[string]any{
-		"level": "INFO", "tool": "okf_create", "outcome": "ok", "tenant": tools.t.String(), "actor": "mcp",
+		"level": "INFO", "tool": "keepsake_create", "outcome": "ok", "tenant": tools.t.String(), "actor": "mcp",
 	})
 	if _, ok := line["duration_ms"].(float64); !ok {
 		t.Errorf("no duration_ms in %v", line)
@@ -66,10 +66,10 @@ func TestAnUnavailableDatabaseIsLogged(t *testing.T) {
 	logs := captureLogs(t)
 	session := connect(t, newTools(t))
 	db.LockOut(t)
-	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "okf_list", Arguments: map[string]any{}}); err != nil {
+	if _, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "keepsake_list", Arguments: map[string]any{}}); err != nil {
 		t.Fatal(err)
 	}
-	logLine(t, logs, "database unavailable", map[string]any{"level": "WARN", "tool": "okf_list"})
+	logLine(t, logs, "database unavailable", map[string]any{"level": "WARN", "tool": "keepsake_list"})
 }
 
 func TestConsoleLoginsAreLoggedWithoutThePassword(t *testing.T) {
