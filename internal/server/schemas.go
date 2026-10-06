@@ -81,7 +81,9 @@ func toolDefinitions() []*mcp.Tool {
 				"type, title, description, score, snippet, status, stale, trust, generated_at — and " +
 				"never a whole body; read a promising path with `read`.\n\n" +
 				"`snippet` holds the passages of the body that match the query, or is empty " +
-				"when only the title or description matched. Use it to choose which paths to read.\n\n" +
+				"when only the title or description matched. Use it to choose which paths to read, " +
+				"not to answer from: a snippet is cut from its context, so read a path before " +
+				"relying on it.\n\n" +
 				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
 				"stale_after date has passed. `trust` is unverified, machine-confirmed or " +
 				"human-reviewed. `generated_at` is when the content last changed, or empty.\n\n" +
