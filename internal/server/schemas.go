@@ -78,8 +78,8 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "search",
 			Description: "Find concepts by keyword, ranked by relevance. Returns cards — path, " +
-				"type, title, description, score, snippet, status, stale, trust, generated_at — and " +
-				"never a whole body; read a promising path with `read`.\n\n" +
+				"type, title, description, score, snippet, status, stale, trust, generated_at — " +
+				"not full concepts; read a promising path with `read`.\n\n" +
 				"`snippet` holds the passages of the body that match the query, or is empty " +
 				"when only the title or description matched. Use it to choose which paths to read, " +
 				"not to answer from: a snippet is cut from its context, so read a path before " +
