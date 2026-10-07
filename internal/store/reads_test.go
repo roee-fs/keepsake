@@ -421,6 +421,18 @@ func TestGrepMatchesTitlesAsWellAsBodies(t *testing.T) {
 	}
 }
 
+func TestGrepReadsBackslashBAsAWordBoundary(t *testing.T) {
+	seed(t)
+	cs, tenant := fixture(t)
+	hits, err := cs.Grep(ctx, tenant, `\bdormant\b`, 10)
+	if err != nil || !slices.Equal(paths(hits), []string{"detect/dormant", "splunk/cursor"}) {
+		t.Fatalf(`Grep(\bdormant\b) = %v, err %v`, hits, err)
+	}
+	if hits, err := cs.Grep(ctx, tenant, `\bdorman\b`, 10); err != nil || len(hits) != 0 {
+		t.Fatalf(`Grep(\bdorman\b) = %v, err %v, want none`, hits, err)
+	}
+}
+
 func TestGrepSnippetCarriesSurroundingContext(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)

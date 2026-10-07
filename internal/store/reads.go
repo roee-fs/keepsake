@@ -426,6 +426,58 @@ ORDER BY c.path
 LIMIT $2
 `
 
+// pgRegex rewrites the PCRE word boundaries \b and \B into Postgres's \y and \Y.
+// In Postgres \b is a backspace, so an untranslated \bword\b silently matches nothing.
+func pgRegex(pattern string) string {
+	// The ***= director makes the rest a literal string.
+	if strings.HasPrefix(pattern, "***=") {
+		return pattern
+	}
+	var b strings.Builder
+	inBracket := false
+	for i := 0; i < len(pattern); i++ {
+		c := pattern[i]
+		switch {
+		case c == '\\' && i+1 < len(pattern):
+			i++
+			switch next := pattern[i]; {
+			case !inBracket && next == 'b':
+				b.WriteString(`\y`)
+			case !inBracket && next == 'B':
+				b.WriteString(`\Y`)
+			default:
+				b.WriteByte(c)
+				b.WriteByte(next)
+			}
+			continue
+		case !inBracket && c == '[':
+			inBracket = true
+			b.WriteByte(c)
+			// A ] that opens the bracket, after an optional ^, is a literal.
+			if i+1 < len(pattern) && pattern[i+1] == '^' {
+				i++
+				b.WriteByte('^')
+			}
+			if i+1 < len(pattern) && pattern[i+1] == ']' {
+				i++
+				b.WriteByte(']')
+			}
+			continue
+		case inBracket && c == '[' && i+1 < len(pattern) && strings.IndexByte(":.=", pattern[i+1]) >= 0:
+			// [:alpha:], [.x.] and [=x=] end with their own delimiter, not the bracket's ].
+			if end := strings.Index(pattern[i+2:], string(pattern[i+1])+"]"); end >= 0 {
+				b.WriteString(pattern[i : i+end+4])
+				i += end + 3
+				continue
+			}
+		case inBracket && c == ']':
+			inBracket = false
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
 // Grep returns (path, snippet) matches of a POSIX regex, or a *GrepError for a bad or slow one.
 func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
 	if limit <= 0 {
@@ -437,7 +489,7 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", grepTimeoutMS)); err != nil {
 			return err
 		}
-		out, err = collect[GrepHit](ctx, tx, grepSQL, pattern, limit)
+		out, err = collect[GrepHit](ctx, tx, grepSQL, pgRegex(pattern), limit)
 		return err
 	})
 	if err != nil {
