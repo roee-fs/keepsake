@@ -175,6 +175,12 @@ func ValidateBundle(root string) ([]string, error) {
 		for _, e := range okf.Validate(c) {
 			errs = append(errs, c.Path+": "+e)
 		}
+		problems := okf.Families(c)
+		for _, k := range slices.Sorted(maps.Keys(problems)) {
+			for _, e := range problems[k] {
+				errs = append(errs, c.Path+": "+e)
+			}
+		}
 		for _, l := range c.Links {
 			if !known[l] {
 				errs = append(errs, c.Path+": link to unknown concept "+l)
