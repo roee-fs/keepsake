@@ -529,6 +529,29 @@ func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
 	}
 }
 
+func TestAnEditAfterVerificationIsDueForReview(t *testing.T) {
+	tools := newTools(t)
+	// A stamp from the past, so the edit's stamp lands strictly after the verification.
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("generated", obj("by", "process:import", "at", "2026-01-01T00:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("stale right after verifying")
+	}
+	// Stamps are whole seconds, so the edit waits out the verification's second.
+	time.Sleep(1100 * time.Millisecond)
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	if !read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("not stale after an edit")
+	}
+}
+
 func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
 	_, err := newTools(t).Verify(ctx, "a/none", 1)
 	wantToolError(t, err, "no concept at a/none")
@@ -896,7 +919,7 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	at := field(field(field(res.StructuredContent, "frontmatter"), "generated"), "at")
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
 		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "version": %v, "links": [], "backlinks": [], `+
-			`"status": "stable", "stale": false, "trust": "unverified", "generated_at": %q}`,
+			`"status": "stable", "stale": false, "trust": "unverified", "verified_stale": false, "generated_at": %q}`,
 			at, field(created.StructuredContent, "version"), at)
 	if got := text(t, res); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)

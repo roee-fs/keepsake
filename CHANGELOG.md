@@ -16,6 +16,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - A `verify` tool appends `{ by, at }` to OKF `verified` for the caller.
   `create` and `update` keep the stored `verified` and ignore the caller's, so
   an agent can no longer claim a human review.
+- `search` cards and `read` results carry `verified_stale`. It is true when the
+  content changed after the verification that sets `trust`. Ranking is unchanged.
 
 ### Changed
 
