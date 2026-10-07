@@ -734,3 +734,25 @@ func TestImportRecordsTheOKFImportActor(t *testing.T) {
 		t.Fatalf("revisions = %+v, %v", revs, err)
 	}
 }
+
+func TestValidateReportsAMalformedTrustField(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, src, "a/stale.md", "---\ntype: Concept\nstale_after: 2026-09-23\n---\nx\n")
+	errs, err := ValidateBundle(src)
+	if err != nil || len(errs) != 1 || !strings.HasPrefix(errs[0], "a/stale: stale_after must be an ISO 8601 datetime") {
+		t.Fatal(errs, err)
+	}
+}
+
+func TestImportKeepsAMalformedTrustFieldAsWritten(t *testing.T) {
+	cs, tenant, src := conceptStore(t), uuid.New(), t.TempDir()
+	writeFile(t, src, "a/stale.md", "---\ntype: Concept\nstale_after: 2026-09-23\n---\nx\n")
+	mustImport(t, cs, tenant, src)
+	c, err := cs.Read(ctx, tenant, "a/stale")
+	if err != nil || c == nil {
+		t.Fatal(c, err)
+	}
+	if v, _ := c.Frontmatter.Get("stale_after"); v != "2026-09-23" {
+		t.Fatalf("stale_after = %v", v)
+	}
+}

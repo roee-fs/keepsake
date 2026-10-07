@@ -9,6 +9,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## Unreleased
 
+### Added
+
+- `create` and `update` refuse malformed OKF §5 and §10 frontmatter on the keys
+  they change. `keepsake validate` reports it. Import and upload still accept it.
+
 ### Changed
 
 - Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.

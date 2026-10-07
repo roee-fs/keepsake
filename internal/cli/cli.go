@@ -401,9 +401,6 @@ func callerTenant(value string) (uuid.UUID, error) {
 	return id, err
 }
 
-// okfActor is an OKF §7 actor: <producer>/<version>, human:<id> or process:<id>.
-var okfActor = regexp.MustCompile(`^([^\s/:]+/[^\s/]+|(human|process):\S+)$`)
-
 // runToken prints a token for one tenant, signed with the first secret jwt mode verifies.
 func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
 	id, err := callerTenant(o.tenant)
@@ -413,7 +410,7 @@ func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
 	if o.sub == "" {
 		return 0, errors.New("--sub is required")
 	}
-	if !okfActor.MatchString(o.sub) {
+	if !okf.IsActor(o.sub) {
 		return 0, fmt.Errorf("--sub must be <producer>/<version> for an agent, human:<id> for a person or process:<id> for a process, not %s", okf.PyReprString(o.sub))
 	}
 	// exp is whole seconds, so a shorter ttl would mint a token that is already expired.
