@@ -152,7 +152,7 @@ not its hex-decoded bytes:
 keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
 concept the token writes through `/mcp`. It MUST be an OKF §7 actor: `<producer>/<version>`
 for an agent, `human:<id>` for a person or `process:<id>` for a process.
-`keepsake token` refuses anything else.
+`keepsake token` and the server refuse anything else.
 A token whose space-separated `scope` claim includes `read`, such as
 `"scope": "read"`, is read-only: `create`, `update`, `relate` and `PUT /bundle`
 refuse it. A token without `read` keeps every write. An orchestrator SHOULD
