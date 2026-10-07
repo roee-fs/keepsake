@@ -166,9 +166,6 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 	return c, nil
 }
 
-// contractFields are the Attested Computation fields OKF §10.3 forbids an agent to author.
-var contractFields = []string{"computation", "runtime", "parameters", "executor", "attester"}
-
 // computationChanges names what a write changes of an Attested Computation's type, body and contract.
 // existing is nil on a create; c with an empty Path means the stored concept is deleted.
 // ponytail: the whole body is guarded, not just its # Computation fence; parse the fence if agents need to edit prose.
@@ -190,7 +187,7 @@ func computationChanges(existing *okf.Concept, c okf.Concept) []string {
 	if existing.Body != c.Body {
 		touched = append(touched, "body")
 	}
-	for _, k := range contractFields {
+	for _, k := range okf.ContractFields {
 		if changed(existing, c, k) {
 			touched = append(touched, k)
 		}
