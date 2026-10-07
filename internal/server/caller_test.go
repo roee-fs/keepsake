@@ -99,6 +99,30 @@ func TestANonStringScopeVerifiesWithoutGrantingUpload(t *testing.T) {
 	}
 }
 
+func TestTheComputationsScopeIsItsOwnGrant(t *testing.T) {
+	for scope, want := range map[string][2]bool{
+		"bundle":              {true, false},
+		"computations":        {false, true},
+		"bundle computations": {true, true},
+		"":                    {false, false},
+	} {
+		c, err := issuer.verify(issuer.Mint(uuid.New(), "human:ann", time.Minute, strings.Fields(scope)...))
+		if err != nil || c.upload != want[0] || c.computations != want[1] {
+			t.Errorf("scope %q: %+v, %v", scope, c, err)
+		}
+	}
+}
+
+func TestModeNoneGrantsEveryScope(t *testing.T) {
+	var got caller
+	FixedTenant(uuid.New())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, _ = r.Context().Value(callerKey{}).(caller)
+	})).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	if !got.upload || !got.computations {
+		t.Fatalf("caller = %+v", got)
+	}
+}
+
 func TestAMinterClockAFewSecondsOffIsTolerated(t *testing.T) {
 	now := time.Now().Unix()
 	for name, mutate := range map[string]func(map[string]any){

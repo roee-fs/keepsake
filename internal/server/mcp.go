@@ -176,7 +176,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		tools := t
 		if c, ok := ctx.Value(callerKey{}).(caller); ok {
 			scoped := *t
-			scoped.t, scoped.actor = c.tenant, c.actor
+			scoped.t, scoped.actor, scoped.computations = c.tenant, c.actor, c.computations
 			tools = &scoped
 		}
 		start, outcome := time.Now(), "error"

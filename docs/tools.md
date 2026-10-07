@@ -66,6 +66,13 @@ changes one of these MUST follow OKF §5 and §10, or it is refused. Timestamps
 MUST carry an offset, such as `2026-06-30T14:00:00Z`. A field that was already
 stored is not rechecked, so an imported concept stays editable.
 
+Only a caller whose token carries the `computations` scope MAY create an
+`Attested Computation`, retype a concept into or out of one, or change its body
+or contract fields. That includes `relate`, which appends to the body. A
+`human:` actor without the scope gets no more than an agent. Any caller MAY
+change its title, description, tags, status and sources, and MAY `verify` it.
+Auth mode `none` grants the scope.
+
 ## Errors
 
 An argument that fails the advertised schema comes back as a tool error the
