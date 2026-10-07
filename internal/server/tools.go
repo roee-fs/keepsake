@@ -18,7 +18,7 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's retries past concurrent writers; each round has one winner.
+// relateAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
 const relateAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
@@ -224,14 +224,21 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
 func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	existing, err := t.c.Read(ctx, t.t, path)
-	if err != nil {
-		return nil, err
+	for range relateAttempts {
+		existing, err := t.c.Read(ctx, t.t, path)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			return nil, toolErr("no concept at " + path)
+		}
+		result, err := t.write(ctx, *existing, path, expectedVersion, kw, true)
+		// Without a version the caller accepts any overwrite, so a conflict only means the read went stale.
+		if _, conflict := result.(conflictResult); !conflict || expectedVersion != nil || err != nil {
+			return result, err
+		}
 	}
-	if existing == nil {
-		return nil, toolErr("no concept at " + path)
-	}
-	return t.write(ctx, *existing, path, expectedVersion, kw, true)
+	return nil, toolErr(path + " is being rewritten faster than the update could be applied")
 }
 
 // write writes kw over the concept the caller already read. Unless stamp is set it keeps the authorship stamp.
@@ -246,6 +253,10 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	c, err := t.concept(&existing, path, merged, stamp)
 	if err != nil {
 		return nil, err
+	}
+	// The checks and the kept verified hold for the version read, so the write MUST NOT land on any other.
+	if expectedVersion == nil {
+		expectedVersion = &existing.Version
 	}
 	return t.save(ctx, c, expectedVersion)
 }

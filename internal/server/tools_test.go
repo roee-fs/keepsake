@@ -552,6 +552,36 @@ func TestAnEditAfterVerificationIsDueForReview(t *testing.T) {
 	}
 }
 
+// An update read before a verify landed MUST NOT write back the older verified list.
+func TestAnUpdateRacingAVerifyKeepsTheVerification(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	before := *read(t, tools, "a/b")
+	stale := okf.Concept{Path: before.Path, Type: before.Type, Body: before.Body, Frontmatter: before.Frontmatter, Version: before.Version}
+	if _, err := tools.Verify(ctx, "a/b", before.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.write(ctx, stale, "a/b", nil, map[string]any{"body": "edited"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := verifiedEvents(t, tools, "a/b"); len(got) != 1 {
+		t.Fatalf("verified = %v", got)
+	}
+}
+
+func TestAnUpdateWithoutAVersionStillOverwritesAConcurrentEdit(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "second"}); err != nil {
+		t.Fatal(err)
+	} else if _, conflict := res.(conflictResult); conflict || read(t, tools, "a/b").Body != "second" {
+		t.Fatalf("got %+v", res)
+	}
+}
+
 func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
 	_, err := newTools(t).Verify(ctx, "a/none", 1)
 	wantToolError(t, err, "no concept at a/none")
