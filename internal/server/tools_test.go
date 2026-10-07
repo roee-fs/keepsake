@@ -39,7 +39,7 @@ var (
 // secret is distinctive enough that its appearance anywhere is proof, not coincidence.
 const secret = "zqxjkbody"
 
-var toolNames = []string{"create", "grep", "list", "read", "relate", "search", "update"}
+var toolNames = []string{"create", "grep", "list", "read", "relate", "search", "update", "verify"}
 
 func TestMain(m *testing.M) {
 	pgtest.Main(m, func(d *pgtest.DB) error {
@@ -457,6 +457,94 @@ func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	wantToolError(t, err, "runtime is required")
 }
 
+func verifiedEvents(t *testing.T, tools *Tools, path string) []any {
+	t.Helper()
+	v, _ := read(t, tools, path).Frontmatter.Get("verified")
+	list, _ := v.([]any)
+	return list
+}
+
+func TestAWriteKeepsTheStoredVerifiedWhateverTheCallerSent(t *testing.T) {
+	tools := newTools(t)
+	forged := obj("verified", obj("by", "human:forged", "at", "2026-06-25T09:00:00Z"))
+	seed(t, tools, "a/b", map[string]any{"frontmatter": forged})
+	if c := read(t, tools, "a/b"); c.Trust != okf.Unverified {
+		t.Fatalf("create: %+v", c.Signals)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	for _, fm := range []*okf.Map{forged, obj("status", "draft"), read(t, tools, "a/b").Frontmatter} {
+		if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": fm}); err != nil {
+			t.Fatal(err)
+		}
+		if got := verifiedEvents(t, tools, "a/b"); len(got) != 1 || read(t, tools, "a/b").Trust != okf.MachineConfirmed {
+			t.Fatalf("after %v: %v", fm, got)
+		}
+	}
+}
+
+func TestVerifyAppendsTheCallerAndKeepsAuthorship(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	agent, human := NewTools(cs, tenant, "support-agent/1.4"), NewTools(cs, tenant, "human:ann")
+	seed(t, agent, "a/b", map[string]any{})
+	by, at := generated(t, agent, "a/b")
+	for _, tools := range []*Tools{agent, human} {
+		if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := verifiedEvents(t, human, "a/b"); len(got) != 2 || read(t, human, "a/b").Trust != okf.HumanReviewed {
+		t.Fatalf("verified = %v", got)
+	}
+	if b, a := generated(t, human, "a/b"); b != by || a != at {
+		t.Fatalf("generated changed to %q %q", b, a)
+	}
+}
+
+func TestVerifyTurnsABareMappingIntoAList(t *testing.T) {
+	tools := newTools(t)
+	bare := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("verified", obj("by", "process:nightly", "at", "2026-06-25T09:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, bare, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := verifiedEvents(t, tools, "a/b"); len(got) != 2 {
+		t.Fatalf("verified = %v", got)
+	}
+}
+
+func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	stale := read(t, tools, "a/b").Version
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := tools.Verify(ctx, "a/b", stale)
+	if _, ok := res.(conflictResult); err != nil || !ok || read(t, tools, "a/b").Trust != okf.Unverified {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
+func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
+	_, err := newTools(t).Verify(ctx, "a/none", 1)
+	wantToolError(t, err, "no concept at a/none")
+}
+
+func TestVerifyIsCallableOverTheProtocol(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	res, err := connect(t, tools).CallTool(ctx, &mcp.CallToolParams{
+		Name: "verify", Arguments: map[string]any{"path": "a/b", "expected_version": read(t, tools, "a/b").Version},
+	})
+	if err != nil || res.IsError || read(t, tools, "a/b").Trust != okf.MachineConfirmed {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here")
 	if err != nil || c != nil {
@@ -576,7 +664,7 @@ func listTools(t *testing.T) map[string]*mcp.Tool {
 // field reads one key out of a schema the client decoded as a generic JSON value.
 func field(schema any, key string) any { return schema.(map[string]any)[key] }
 
-func TestTheServerAdvertisesExactlyTheSevenTools(t *testing.T) {
+func TestTheServerAdvertisesExactlyTheEightTools(t *testing.T) {
 	if names := slices.Sorted(maps.Keys(listTools(t))); !reflect.DeepEqual(names, toolNames) {
 		t.Fatalf("advertised %v", names)
 	}
@@ -873,7 +961,7 @@ func TestTheWireToolListingIsPythons(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"list", "search", "grep", "read", "create", "update", "relate"}
+	want := []string{"list", "search", "grep", "read", "create", "update", "relate", "verify"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("advertised %v, want %v", names, want)
 	}

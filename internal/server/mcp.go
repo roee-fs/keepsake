@@ -78,6 +78,9 @@ var handlers = map[string]handler{
 	"relate": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		return t.Relate(ctx, a["from_path"].(string), a["to_path"].(string))
 	},
+	"verify": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+		return t.Verify(ctx, a["path"].(string), number(a["expected_version"]))
+	},
 }
 
 // toolList is tools/list without the cacheScope and ttlMs go-sdk's ListToolsResult always sends.

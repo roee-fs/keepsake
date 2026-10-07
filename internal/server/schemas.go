@@ -129,7 +129,8 @@ func toolDefinitions() []*mcp.Tool {
 				"an existing concept with `update`.\n\n" +
 				"Links are read out of `body`, never declared separately, so relate a " +
 				"concept by linking to it inline: `[dormant rules](/detect/dormant-" +
-				"rules.md)`.",
+				"rules.md)`. The server sets frontmatter `generated` and `verified` " +
+				"itself and ignores yours.",
 			InputSchema: schema(withConceptFields("path", str()), "path", "type"),
 		},
 		{
@@ -150,6 +151,18 @@ func toolDefinitions() []*mcp.Tool {
 				"`from_path` to `to_path`. The edge then shows up as an outbound link on " +
 				"the source and as a backlink on the target.",
 			InputSchema: schema(obj("from_path", str(), "to_path", str()), "from_path", "to_path"),
+		},
+		{
+			Name: "verify",
+			Description: "Record that you checked a concept against its sources and it holds. " +
+				"Pass the `expected_version` you read: if anything has been written since, " +
+				"nothing is recorded and you get back the current version and body. Adds " +
+				"`{ by: you, at: now }` to frontmatter `verified`, which is the only way " +
+				"`verified` changes.",
+			InputSchema: schema(
+				obj("path", str(), "expected_version", obj("type", "integer", "minimum", 1, "maximum", MaxVersion)),
+				"path", "expected_version",
+			),
 		},
 	}
 	// Properties, required and type lead a top-level schema, as mcp_types serialises it.

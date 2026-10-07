@@ -1,4 +1,4 @@
-// The seven tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant comes from
+// The eight tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant comes from
 // the request's caller, so no tool takes one, and no tool returns a body the agent could not read.
 package server
 
@@ -144,6 +144,16 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 	if stamp {
 		c.Frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
 	}
+	// The server owns verified as it owns generated: only `verify` adds to it.
+	var stored *okf.Map
+	if existing != nil {
+		stored = existing.Frontmatter
+	}
+	if v := get(stored, "verified"); v != nil {
+		c.Frontmatter.Set("verified", v)
+	} else {
+		c.Frontmatter.Delete("verified")
+	}
 	if errs := append(okf.Validate(c), familyErrors(existing, c)...); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
@@ -237,10 +247,15 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	if err != nil {
 		return nil, err
 	}
+	return t.save(ctx, c, expectedVersion)
+}
+
+// save overwrites the stored concept, answering a stale expectedVersion with a conflictResult.
+func (t *Tools) save(ctx context.Context, c okf.Concept, expectedVersion *int) (any, error) {
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)
 	if errors.Is(err, store.ErrNotFound) {
 		// Another tenant's row gets the same answer, or this would be a cross-tenant existence oracle.
-		return nil, toolErr("no concept at " + path)
+		return nil, toolErr("no concept at " + c.Path)
 	}
 	if err != nil {
 		return nil, err
@@ -248,7 +263,33 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 	if conflict != nil {
 		return conflictResult{true, conflict.CurrentVersion, conflict.CurrentBody}, nil
 	}
-	return writeResult{path, version}, nil
+	return writeResult{c.Path, version}, nil
+}
+
+// Verify appends an OKF §5.2 event for the caller, confirming the version they read. It keeps the authorship stamp.
+func (t *Tools) Verify(ctx context.Context, path string, expectedVersion int) (any, error) {
+	existing, err := t.c.Read(ctx, t.t, path)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, toolErr("no concept at " + path)
+	}
+	c := *existing
+	c.Frontmatter = okf.NewMap()
+	if existing.Frontmatter != nil {
+		c.Frontmatter = existing.Frontmatter.Clone()
+	}
+	var events []any
+	switch v := get(c.Frontmatter, "verified").(type) {
+	case nil:
+	case []any:
+		events = slices.Clone(v)
+	default:
+		events = []any{v}
+	}
+	c.Frontmatter.Set("verified", append(events, obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339))))
+	return t.save(ctx, c, &expectedVersion)
 }
 
 func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *string) ([]card, error) {

@@ -13,6 +13,9 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 - `create` and `update` refuse malformed OKF §5 and §10 frontmatter on the keys
   they change. `keepsake validate` reports it. Import and upload still accept it.
+- A `verify` tool appends `{ by, at }` to OKF `verified` for the caller.
+  `create` and `update` keep the stored `verified` and ignore the caller's, so
+  an agent can no longer claim a human review.
 
 ### Changed
 
