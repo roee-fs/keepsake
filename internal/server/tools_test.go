@@ -403,6 +403,30 @@ func TestGrepReportsAnUnusablePatternWithoutABody(t *testing.T) {
 	}
 }
 
+func TestAWriteIsRefusedForAMalformedFamilyItChanges(t *testing.T) {
+	_, err := newTools(t).Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": obj("stale_after", "2026-09-23")})
+	wantToolError(t, err, "stale_after must be an ISO 8601 datetime")
+}
+
+func TestAMalformedFamilyAlreadyStoredDoesNotBlockAnUnrelatedEdit(t *testing.T) {
+	tools := newTools(t)
+	// Written through the store, as an import of an older bundle would.
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("stale_after", "2026-09-23")}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"type": okf.AttestedComputation})
+	wantToolError(t, err, "runtime is required")
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here")
 	if err != nil || c != nil {
