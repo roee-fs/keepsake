@@ -11,6 +11,9 @@ import (
 // AttestedComputation is the OKF §10 type whose contract Families checks.
 const AttestedComputation = "Attested Computation"
 
+// ContractFields are the frontmatter keys of an Attested Computation's §10.2 contract.
+var ContractFields = []string{"computation", "runtime", "parameters", "executor", "attester"}
+
 var actor = regexp.MustCompile(`^([^\s/:]+/[^\s/]+|(human|process):\S+)$`)
 
 // IsActor reports whether s is an OKF §7 actor: <producer>/<version>, human:<id> or process:<id>.
@@ -135,6 +138,13 @@ func window(v any, name string) []string {
 	for _, k := range []string{"from", "to"} {
 		if !isInstant(field(m, k)) {
 			errs = append(errs, name+"."+k+" "+notInstant)
+		}
+	}
+	if len(errs) == 0 {
+		from, _ := time.Parse(time.RFC3339, field(m, "from").(string))
+		to, _ := time.Parse(time.RFC3339, field(m, "to").(string))
+		if to.Before(from) {
+			errs = append(errs, name+".to must not precede its from")
 		}
 	}
 	return errs

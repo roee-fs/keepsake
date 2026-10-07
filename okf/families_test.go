@@ -62,6 +62,13 @@ func TestEachMalformedFamilyIsReportedUnderItsKey(t *testing.T) {
 	}
 }
 
+func TestAReversedUsageWindowIsReported(t *testing.T) {
+	got := families(t, "---\ntype: Concept\nusage_window: {from: 2026-06-30T00:00:00Z, to: 2026-06-01T00:00:00Z}\n---\n")
+	if len(got["usage_window"]) == 0 {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestAnAttestedComputationNeedsARuntimeAndWellFormedContract(t *testing.T) {
 	got := families(t, "---\ntype: Attested Computation\nparameters: [{type: integer}]\nexecutor: {receipt: [job_id]}\n---\n")
 	for _, k := range []string{"runtime", "parameters", "executor"} {
