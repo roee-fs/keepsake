@@ -434,6 +434,22 @@ func TestAFamilyRewrittenInAnotherKeyOrderIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestACallerSentVerificationIsChecked(t *testing.T) {
+	_, err := newTools(t).Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": obj("verified", obj("by", "human:ann"))})
+	wantToolError(t, err, "verified[0].at")
+}
+
+func TestRetypingDoesNotRecheckAnUnrelatedStoredField(t *testing.T) {
+	tools := newTools(t)
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("stale_after", "2026-09-23")}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"type": "Metric"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/b", map[string]any{})

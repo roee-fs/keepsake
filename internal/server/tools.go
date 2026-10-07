@@ -151,16 +151,18 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 }
 
 // serverOwned are the frontmatter keys the server writes itself, so no caller's value is checked.
-var serverOwned = []string{"generated", "verified"}
+var serverOwned = []string{"generated"}
 
 // familyErrors returns the OKF §5 and §10 rules broken by the keys a write changes.
 // A stored concept from an older bundle can break a rule on a key nobody touched, and that MUST NOT block the write.
+// A retype into an Attested Computation also checks the contract it now owes.
 func familyErrors(existing *okf.Concept, c okf.Concept) []string {
 	problems := okf.Families(c)
-	retyped := existing == nil || existing.Type != c.Type
+	retyped := existing != nil && existing.Type != c.Type
 	var errs []string
 	for _, k := range slices.Sorted(maps.Keys(problems)) {
-		if !slices.Contains(serverOwned, k) && (retyped || changed(existing, c, k)) {
+		owed := retyped && slices.Contains(okf.ContractFields, k)
+		if !slices.Contains(serverOwned, k) && (owed || changed(existing, c, k)) {
 			errs = append(errs, problems[k]...)
 		}
 	}
