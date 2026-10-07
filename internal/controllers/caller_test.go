@@ -311,11 +311,11 @@ func TestAReadScopedTokenReadsButCannotWrite(t *testing.T) {
 	t.Cleanup(srv.Close)
 	text := func(res *mcp.CallToolResult) string { return res.Content[0].(*mcp.TextContent).Text }
 	// A token without the scope keeps every write it had.
-	writer := asTenant(t, srv.URL, tenant, "run:writer")
+	writer := asTenant(t, srv.URL, tenant, "process:writer")
 	if res, err := writer.CallTool(ctx, &mcp.CallToolParams{Name: "create", Arguments: map[string]any{"path": "notes/a", "type": "Concept", "body": "kept"}}); err != nil || res.IsError {
 		t.Fatalf("a token without the read scope could not create: %v %+v", err, res)
 	}
-	reader := asTenant(t, srv.URL, tenant, "run:reader", readScope)
+	reader := asTenant(t, srv.URL, tenant, "process:reader", readScope)
 	if res, err := reader.CallTool(ctx, &mcp.CallToolParams{Name: "read", Arguments: map[string]any{"path": "notes/a"}}); err != nil || res.IsError || !strings.Contains(text(res), "kept") {
 		t.Fatalf("read = %v %+v", err, res)
 	}
@@ -323,13 +323,14 @@ func TestAReadScopedTokenReadsButCannotWrite(t *testing.T) {
 		{Name: "create", Arguments: map[string]any{"path": "notes/b", "type": "Concept", "body": "new"}},
 		{Name: "update", Arguments: map[string]any{"path": "notes/a", "body": "overwritten"}},
 		{Name: "relate", Arguments: map[string]any{"from_path": "notes/a", "to_path": "notes/a"}},
+		{Name: "verify", Arguments: map[string]any{"path": "notes/a", "expected_version": 1}},
 	} {
 		if res, err := reader.CallTool(ctx, &p); err != nil || !res.IsError || !strings.Contains(text(res), "read-only") {
 			t.Errorf("%s = %v %+v, want a read-only refusal", p.Name, err, res)
 		}
 	}
 	revs, err := cs.Activity(ctx, &tenant, 10)
-	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != "run:writer" {
+	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != "process:writer" {
 		t.Fatalf("revisions %+v, %v: the read-scoped token wrote", revs, err)
 	}
 }

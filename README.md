@@ -154,7 +154,7 @@ concept the token writes through `/mcp`. It MUST be an OKF §7 actor: `<producer
 for an agent, `human:<id>` for a person or `process:<id>` for a process.
 `keepsake token` and the server refuse anything else.
 A token whose space-separated `scope` claim includes `read`, such as
-`"scope": "read"`, is read-only: `create`, `update`, `relate` and `PUT /bundle`
+`"scope": "read"`, is read-only: `create`, `update`, `relate`, `verify` and `PUT /bundle`
 refuse it. A token without `read` keeps every write. An orchestrator SHOULD
 mint `read` tokens for agents that only consult keepsake.
 The secret MUST NOT be readable by anything an LLM drives.

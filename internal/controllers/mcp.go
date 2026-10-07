@@ -79,10 +79,13 @@ var handlers = map[string]handler{
 	"relate": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		return t.Relate(ctx, a["from_path"].(string), a["to_path"].(string))
 	},
+	"verify": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
+		return t.Verify(ctx, a["path"].(string), number(a["expected_version"]))
+	},
 }
 
 // writes are the tools a read-scoped token is refused.
-var writes = map[string]bool{"create": true, "update": true, "relate": true}
+var writes = map[string]bool{"create": true, "update": true, "relate": true, "verify": true}
 
 // toolList is tools/list without the cacheScope and ttlMs go-sdk's ListToolsResult always sends.
 type toolList struct {

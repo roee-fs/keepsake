@@ -467,6 +467,83 @@ func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	wantToolError(t, err, "runtime is required")
 }
 
+func verifiedEvents(t *testing.T, tools *ConceptService, path string) []any {
+	t.Helper()
+	v, _ := read(t, tools, path).Frontmatter.Get("verified")
+	list, _ := v.([]any)
+	return list
+}
+
+func TestAWriteKeepsTheStoredVerifiedWhateverTheCallerSent(t *testing.T) {
+	tools := newTools(t)
+	forged := obj("verified", obj("by", "human:forged", "at", "2026-06-25T09:00:00Z"))
+	seed(t, tools, "a/b", map[string]any{"frontmatter": forged})
+	if c := read(t, tools, "a/b"); c.Trust != okf.Unverified {
+		t.Fatalf("create: %+v", c.Signals)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	for _, fm := range []*okf.Map{forged, obj("status", "draft"), read(t, tools, "a/b").Frontmatter} {
+		if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": fm}); err != nil {
+			t.Fatal(err)
+		}
+		if got := verifiedEvents(t, tools, "a/b"); len(got) != 1 || read(t, tools, "a/b").Trust != okf.MachineConfirmed {
+			t.Fatalf("after %v: %v", fm, got)
+		}
+	}
+}
+
+func TestVerifyAppendsTheCallerAndKeepsAuthorship(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	agent, human := NewConceptService(cs, tenant, "support-agent/1.4"), NewConceptService(cs, tenant, "human:ann")
+	seed(t, agent, "a/b", map[string]any{})
+	by, at := generated(t, agent, "a/b")
+	for _, tools := range []*ConceptService{agent, human} {
+		if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := verifiedEvents(t, human, "a/b"); len(got) != 2 || read(t, human, "a/b").Trust != okf.HumanReviewed {
+		t.Fatalf("verified = %v", got)
+	}
+	if b, a := generated(t, human, "a/b"); b != by || a != at {
+		t.Fatalf("generated changed to %q %q", b, a)
+	}
+}
+
+func TestVerifyTurnsABareMappingIntoAList(t *testing.T) {
+	tools := newTools(t)
+	bare := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("verified", obj("by", "process:nightly", "at", "2026-06-25T09:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, bare, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := verifiedEvents(t, tools, "a/b"); len(got) != 2 {
+		t.Fatalf("verified = %v", got)
+	}
+}
+
+func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	stale := read(t, tools, "a/b").Version
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := tools.Verify(ctx, "a/b", stale)
+	if _, ok := res.(ConflictResult); err != nil || !ok || read(t, tools, "a/b").Trust != okf.Unverified {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
+func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
+	_, err := newTools(t).Verify(ctx, "a/none", 1)
+	wantToolError(t, err, "no concept at a/none")
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here")
 	if err != nil || c != nil {

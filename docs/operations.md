@@ -98,7 +98,7 @@ tile and the writes chart. Docker Compose runs no scheduler. Run
 - In `jwt` mode, see [Tenancy and authority](../README.md#tenancy-and-authority).
   The signing secret MUST NOT be readable by anything an LLM drives.
 - A token carrying the `read` scope can only read: `create`, `update`,
-  `relate` and `PUT /bundle` refuse it, even alongside `bundle`. A refused
+  `relate`, `verify` and `PUT /bundle` refuse it, even alongside `bundle`. A refused
   tool call counts as `tool_error`. `keepsake token --scope read` mints one.
 - The console is on its own port, 8001, and has its own password in
   `<release>-admin`. A GitOps install MUST set `admin.existingSecret`, or the

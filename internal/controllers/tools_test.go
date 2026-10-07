@@ -39,7 +39,7 @@ var (
 // secret is distinctive enough that its appearance anywhere is proof, not coincidence.
 const secret = "zqxjkbody"
 
-var toolNames = []string{"create", "grep", "list", "read", "relate", "search", "update"}
+var toolNames = []string{"create", "grep", "list", "read", "relate", "search", "update", "verify"}
 
 func TestMain(m *testing.M) {
 	pgtest.Main(m, func(d *pgtest.DB) error {
@@ -91,7 +91,7 @@ func listTools(t *testing.T) map[string]*mcp.Tool {
 // field reads one key out of a schema the client decoded as a generic JSON value.
 func field(schema any, key string) any { return schema.(map[string]any)[key] }
 
-func TestTheServerAdvertisesExactlyTheSevenTools(t *testing.T) {
+func TestTheServerAdvertisesExactlyTheEightTools(t *testing.T) {
 	if names := slices.Sorted(maps.Keys(listTools(t))); !reflect.DeepEqual(names, toolNames) {
 		t.Fatalf("advertised %v", names)
 	}
@@ -375,6 +375,23 @@ func TestTheEndpointAnswersAPlainJSONPost(t *testing.T) {
 
 // The legacy wire, not what toolDefinitions returns: go-sdk alone would sort the
 // tools by name and add cache fields that Python's legacy listing does not carry.
+func TestVerifyIsCallableOverTheProtocol(t *testing.T) {
+	tools := newTools(t)
+	created, err := tools.Create(ctx, "a/b", map[string]any{"type": "Concept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := connect(t, tools).CallTool(ctx, &mcp.CallToolParams{
+		Name: "verify", Arguments: map[string]any{"path": "a/b", "expected_version": created.Version},
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+	if c, err := tools.Read(ctx, "a/b"); err != nil || c.Trust != okf.MachineConfirmed {
+		t.Fatalf("read %+v, %v", c, err)
+	}
+}
+
 func TestTheWireToolListingIsPythons(t *testing.T) {
 	result := postToolsList(t)
 	if keys := slices.Sorted(maps.Keys(result)); !reflect.DeepEqual(keys, []string{"tools"}) {
@@ -388,7 +405,7 @@ func TestTheWireToolListingIsPythons(t *testing.T) {
 	for _, tool := range tools {
 		names = append(names, tool.Name)
 	}
-	want := []string{"list", "search", "grep", "read", "create", "update", "relate"}
+	want := []string{"list", "search", "grep", "read", "create", "update", "relate", "verify"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("advertised %v, want %v", names, want)
 	}

@@ -19,6 +19,7 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 | `create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
 | `update` | `path`, `expected_version?`, and any field `create` takes | The new version. Omitted fields keep their values. |
 | `relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |
+| `verify` | `path`, `expected_version` | Appends `{ by, at }` for the caller to frontmatter `verified`. A stale version is a conflict. |
 
 ## Search
 
@@ -49,6 +50,10 @@ caller: the JWT `sub`, or the fixed actor in `none` mode. `create` and
 the time, replacing any `generated` the caller sent. `relate` keeps the
 existing stamp. An update that changes nothing writes nothing and returns the
 current version, even when `expected_version` is stale.
+
+`verified` belongs to the server too. A write keeps the stored list, whatever
+the caller sent, and only `verify` adds to it. A `human:` caller's event makes
+the concept human-reviewed. Any other caller's makes it machine-confirmed.
 
 ## OKF frontmatter
 
