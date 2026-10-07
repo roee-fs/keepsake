@@ -13,12 +13,13 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `list` | `prefix?` | Every path under `prefix`, with a count per type. The cheapest way to learn the shape of the tree. |
-| `search` | `query`, `limit`, `prefix?` | Cards ranked by BM25 alone. Each card holds `path`, `type`, `title`, `description`, `score`, `snippet`, and the OKF signals `status`, `stale`, `trust`, `generated_at`, which label the card but do not change its rank. `snippet` holds the body's passages that match the query, or is empty when only the title or description matched. |
+| `search` | `query`, `limit`, `prefix?` | Cards ranked by BM25 alone. Each card holds `path`, `type`, `title`, `description`, `score`, `snippet`, and the OKF signals `status`, `stale`, `trust`, `verified_stale`, `generated_at`, which label the card but do not change its rank. `snippet` holds the body's passages that match the query, or is empty when only the title or description matched. |
 | `grep` | `pattern`, `limit` | Paths whose title, description or body match a POSIX regex, case-insensitively, each with a snippet. |
 | `read` | `path` | The full concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
 | `create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
 | `update` | `path`, `expected_version?`, and any field `create` takes | The new version. Omitted fields keep their values. |
 | `relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |
+| `verify` | `path`, `expected_version` | Appends `{ by, at }` for the caller to frontmatter `verified`. A stale version is a conflict. |
 
 ## Search
 
@@ -49,6 +50,12 @@ caller: the JWT `sub`, or the fixed actor in `none` mode. `create` and
 the time, replacing any `generated` the caller sent. `relate` keeps the
 existing stamp. An update that changes nothing writes nothing and returns the
 current version, even when `expected_version` is stale.
+
+`verified` belongs to the server too. A write keeps the stored list, whatever
+the caller sent, and only `verify` adds to it. A `human:` caller's event makes
+the concept human-reviewed. Any other caller's makes it machine-confirmed.
+`verified_stale` turns true when `generated.at` is later than the latest event
+that sets that tier, so the content is due for review again.
 
 ## OKF frontmatter
 

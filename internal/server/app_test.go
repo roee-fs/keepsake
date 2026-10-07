@@ -80,7 +80,7 @@ func wantMCP(t *testing.T, base string) {
 		t.Fatalf("POST /mcp = %d %s: %s", resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 	var reply struct{ Result struct{ Tools []any } }
-	if err := json.Unmarshal([]byte(body), &reply); err != nil || len(reply.Result.Tools) != 7 {
+	if err := json.Unmarshal([]byte(body), &reply); err != nil || len(reply.Result.Tools) != 8 {
 		t.Fatalf("POST /mcp answered %s", body)
 	}
 }

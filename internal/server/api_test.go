@@ -418,6 +418,26 @@ func TestSearchFindsASeededConcept(t *testing.T) {
 	}
 }
 
+func TestDetailAndSearchCarryTheTrustSignals(t *testing.T) {
+	c := newConsole(t).login()
+	tenant := uuid.New()
+	fm := obj("generated", obj("by", "a/1", "at", "2026-06-26T00:00:00Z"), "verified", obj("by", "human:ann", "at", "2026-06-25T00:00:00Z"))
+	if _, _, err := c.cs.Create(ctx, tenant, okf.Concept{Path: "a/b", Type: "Concept", Title: "Zqxsignal", Frontmatter: fm}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"status": "stable", "stale": false, "trust": "human-reviewed", "verified_stale": true, "generated_at": "2026-06-26T00:00:00Z"}
+	detail := decode[map[string]any](t, c.get("/concepts/a/b", "tenant", tenant.String()))
+	hits := decode[[]map[string]any](t, c.get("/search", "tenant", tenant.String(), "q", "zqxsignal"))
+	if len(hits) != 1 {
+		t.Fatalf("hits = %v", hits)
+	}
+	for k, v := range want {
+		if detail[k] != v || hits[0][k] != v {
+			t.Errorf("%s: detail %v, search %v, want %v", k, detail[k], hits[0][k], v)
+		}
+	}
+}
+
 func TestSearchAndGrepRequireTheirQuery(t *testing.T) {
 	c := newConsole(t).login()
 	tenant := c.seeded().String()

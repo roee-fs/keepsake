@@ -87,6 +87,8 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 - `update(path, expected_version?, ...)`: changes the given fields.
   Omitted fields keep their values.
 - `relate(from_path, to_path)`: appends a link between two concepts.
+- `verify(path, expected_version)`: records that the caller confirmed the
+  version it read, in frontmatter `verified`.
 
 Full reference: https://github.com/roee-fs/keepsake/blob/main/docs/tools.md
 

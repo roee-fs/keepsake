@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/roee-fs/keepsake/okf"
 )
 
 // minSecret is HS256's key size; a shorter secret is guessable offline from any one token.
@@ -160,8 +162,8 @@ func (j *JWT) verify(token string) (caller, error) {
 		return caller{}, errors.New("expired or no exp")
 	case c.Nbf != nil && now < *c.Nbf-leeway:
 		return caller{}, errors.New("not yet valid")
-	case c.Sub == "":
-		return caller{}, errors.New("no sub")
+	case !okf.IsActor(c.Sub):
+		return caller{}, errors.New("sub is not an OKF actor")
 	}
 	var tctx struct{ Tenant string }
 	if json.Unmarshal(c.Tctx, &tctx) != nil {

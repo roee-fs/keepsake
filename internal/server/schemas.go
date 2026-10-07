@@ -78,7 +78,8 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "search",
 			Description: "Find concepts by keyword, ranked by relevance. Returns cards — path, " +
-				"type, title, description, score, snippet, status, stale, trust, generated_at — " +
+				"type, title, description, score, snippet, status, stale, trust, verified_stale, " +
+				"generated_at — " +
 				"not full concepts; read a promising path with `read`.\n\n" +
 				"`snippet` holds the passages of the body that match the query, or is empty " +
 				"when only the title or description matched. Use it to choose which paths to read, " +
@@ -86,7 +87,9 @@ func toolDefinitions() []*mcp.Tool {
 				"relying on it.\n\n" +
 				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
 				"stale_after date has passed. `trust` is unverified, machine-confirmed or " +
-				"human-reviewed. `generated_at` is when the content last changed, or empty.\n\n" +
+				"human-reviewed. `verified_stale` is true when the content changed after the " +
+				"verification that sets `trust`, so it is due for review again. `generated_at` " +
+				"is when the content last changed, or empty.\n\n" +
 				"Matching is lexical, not semantic: the index holds the words that were " +
 				"actually written, so distinctive keywords ('dormant', 'PKCE', " +
 				"'indextime') find far more than a natural-language question does. Terms " +
@@ -99,8 +102,9 @@ func toolDefinitions() []*mcp.Tool {
 				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
 					"snippet", str(), "status", str(), "stale", obj("type", "boolean"),
 					"trust", obj("type", "string", "enum", []string{okf.Unverified, okf.MachineConfirmed, okf.HumanReviewed}),
-					"generated_at", str()),
-				"path", "type", "title", "description", "score", "snippet", "status", "stale", "trust", "generated_at",
+					"verified_stale", obj("type", "boolean"), "generated_at", str()),
+				"path", "type", "title", "description", "score", "snippet", "status", "stale", "trust", "verified_stale",
+				"generated_at",
 			)),
 		},
 		{
@@ -116,8 +120,8 @@ func toolDefinitions() []*mcp.Tool {
 		{
 			Name: "read",
 			Description: "Read one concept in full: body, frontmatter, the concepts it links to, " +
-				"and the concepts that link back to it, with the same status, stale, trust " +
-				"and generated_at as `search`. Returns null if nothing is stored " +
+				"and the concepts that link back to it, with the same status, stale, trust, " +
+				"verified_stale and generated_at as `search`. Returns null if nothing is stored " +
 				"at that path. Take paths from `list`, `search` or `grep`.",
 			InputSchema: schema(obj("path", str()), "path"),
 		},
@@ -129,7 +133,8 @@ func toolDefinitions() []*mcp.Tool {
 				"an existing concept with `update`.\n\n" +
 				"Links are read out of `body`, never declared separately, so relate a " +
 				"concept by linking to it inline: `[dormant rules](/detect/dormant-" +
-				"rules.md)`.",
+				"rules.md)`. The server sets frontmatter `generated` and `verified` " +
+				"itself and ignores yours.",
 			InputSchema: schema(withConceptFields("path", str()), "path", "type"),
 		},
 		{
@@ -150,6 +155,18 @@ func toolDefinitions() []*mcp.Tool {
 				"`from_path` to `to_path`. The edge then shows up as an outbound link on " +
 				"the source and as a backlink on the target.",
 			InputSchema: schema(obj("from_path", str(), "to_path", str()), "from_path", "to_path"),
+		},
+		{
+			Name: "verify",
+			Description: "Record that you checked a concept against its sources and it holds. " +
+				"Pass the `expected_version` you read: if anything has been written since, " +
+				"nothing is recorded and you get back the current version and body. Adds " +
+				"`{ by: you, at: now }` to frontmatter `verified`, which is the only way " +
+				"`verified` changes.",
+			InputSchema: schema(
+				obj("path", str(), "expected_version", obj("type", "integer", "minimum", 1, "maximum", MaxVersion)),
+				"path", "expected_version",
+			),
 		},
 	}
 	// Properties, required and type lead a top-level schema, as mcp_types serialises it.
