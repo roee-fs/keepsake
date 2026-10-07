@@ -349,28 +349,34 @@ func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
 	return out, err
 }
 
-// searchSQL is BM25 (k1=0.9, b=0.4) over posting. Document frequency is exact: OR-ed terms
-// make every concept holding a term a hit. avgdl is over the hits, which BEIR scores the
-// same as over the tenant. $1 is terms, $2 prefix, $3 limit, $4 the tenant, which RLS
-// enforces anyway; naming it lets the planner lead with it. snippet is up to two short
-// passages around the matched terms, unmarked as grep's are, and empty for a title-only hit.
+// searchSQL is BM25 (k1=0.9, b=0.4) over posting alone, whose empty lexeme holds each
+// concept's length. Document frequency is exact: OR-ed terms make every concept holding a
+// term a hit. $1 is terms, $2 prefix, $3 limit, $4 the tenant, which RLS enforces anyway;
+// naming it lets the planner lead with it. snippet is up to two short passages around the
+// matched terms, unmarked as grep's are, and empty for a title-only hit.
 //
-// MATERIALIZED, or the planner inlines docs and avgdl and recounts them once per hit, and
-// repeats the card lookup once per ranked path. Cards come by `path = ANY`, a primary-key
-// index condition under RLS; a join on path was demoted to a filter over the whole tenant.
+// MATERIALIZED, or the planner inlines stats and recounts them once per hit, and repeats
+// the card lookup once per ranked path. Cards come by `path = ANY`, a primary-key index
+// condition under RLS; a join on path was demoted to a filter over the whole tenant.
 const searchSQL = `
 WITH terms AS (SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme),
-docs AS MATERIALIZED (SELECT count(*)::float8 AS n FROM concept WHERE tenant_id = $4),
+stats AS MATERIALIZED (
+  SELECT count(*)::float8 AS n, avg(tf) AS avgdl FROM posting WHERE tenant_id = $4 AND lexeme = ''
+),
 hits AS MATERIALIZED (
-  SELECT p.path, p.lexeme, p.tf::float8 AS tf, p.dl::float8 AS dl
+  SELECT p.path, p.lexeme, p.tf::float8 AS tf
   FROM posting p JOIN terms t ON p.tenant_id = $4 AND p.lexeme = t.lexeme
 ),
 df AS MATERIALIZED (SELECT lexeme, count(*)::float8 AS n FROM hits GROUP BY lexeme),
-avgdl AS MATERIALIZED (SELECT avg(dl) AS a FROM (SELECT DISTINCT path, dl FROM hits) d),
+dl AS MATERIALIZED (
+  SELECT p.path, p.tf::float8 AS dl
+  FROM posting p JOIN (SELECT DISTINCT path FROM hits) h
+    ON p.tenant_id = $4 AND p.lexeme = '' AND p.path = h.path
+),
 ranked AS MATERIALIZED (
-  SELECT h.path, sum(ln(1 + (docs.n - df.n + 0.5) / (df.n + 0.5))
-                     * h.tf * 1.9 / (h.tf + 0.9 * (0.6 + 0.4 * h.dl / avgdl.a))) AS score
-  FROM hits h JOIN df ON df.lexeme = h.lexeme, docs, avgdl
+  SELECT h.path, sum(ln(1 + (s.n - df.n + 0.5) / (df.n + 0.5))
+                     * h.tf * 1.9 / (h.tf + 0.9 * (0.6 + 0.4 * dl.dl / s.avgdl))) AS score
+  FROM hits h JOIN df ON df.lexeme = h.lexeme JOIN dl ON dl.path = h.path, stats s
   WHERE starts_with(h.path, coalesce($2::text, ''))
   GROUP BY h.path
   ORDER BY score DESC, h.path

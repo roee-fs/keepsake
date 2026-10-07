@@ -66,7 +66,9 @@ The chart configures no backups. You MUST set up one of these:
 
 ## Sizing
 
-- The `posting` table takes about 8 times the space of `concept`.
+- The `posting` table takes about 20 times the space of `concept`. An edit
+  leaves one dead row per changed word, and autovacuum clears `posting` at 2%
+  dead rows.
 - Every write appends a revision, a delete included. Nothing prunes revisions yet.
 - The database sees `postgres.poolSize` × `replicaCount` connections.
 

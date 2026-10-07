@@ -501,8 +501,8 @@ func upgradeFrom(t *testing.T, left string) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "0006" {
-		t.Fatalf("version_num = %s, want 0006", version)
+	if version != "0007" {
+		t.Fatalf("version_num = %s, want 0007", version)
 	}
 
 	// The startup check pins admin_read to 0004's exact expression.

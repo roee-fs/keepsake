@@ -1,22 +1,23 @@
 -- Candidate rankers for bench/rankers.py, installed over a migrated schema. Each takes the
 -- tenant explicitly and a query of OR-ed words, as store.Search builds it, and returns
--- paths best first. rankers.py adds okf.rank_shipped, store.Search's own SQL.
+-- paths best first. rankers.py adds okf.rank_shipped, store.Search's own SQL. Since 0007
+-- drops concept.search, the first three compute each concept's tsvector per query.
 
 -- 1. What 0.2.0 shipped.
 CREATE FUNCTION okf.rank_cd(tenant uuid, q text, lim int) RETURNS TABLE (path text, score float8)
 LANGUAGE sql STABLE AS $$
-  SELECT c.path, ts_rank_cd(c.search, to_tsquery('english', q))::float8
-  FROM okf.concept c
-  WHERE c.tenant_id = tenant AND c.search @@ to_tsquery('english', q)
+  SELECT c.path, ts_rank_cd(v, to_tsquery('english', q))::float8
+  FROM okf.concept c, okf.lexemes(c.title, c.description, c.body) v
+  WHERE c.tenant_id = tenant AND v @@ to_tsquery('english', q)
   ORDER BY 2 DESC, 1 LIMIT lim
 $$;
 
 -- 2. ts_rank, divided by 1 + log(document length).
 CREATE FUNCTION okf.rank_ts1(tenant uuid, q text, lim int) RETURNS TABLE (path text, score float8)
 LANGUAGE sql STABLE AS $$
-  SELECT c.path, ts_rank(c.search, to_tsquery('english', q), 1)::float8
-  FROM okf.concept c
-  WHERE c.tenant_id = tenant AND c.search @@ to_tsquery('english', q)
+  SELECT c.path, ts_rank(v, to_tsquery('english', q), 1)::float8
+  FROM okf.concept c, okf.lexemes(c.title, c.description, c.body) v
+  WHERE c.tenant_id = tenant AND v @@ to_tsquery('english', q)
   ORDER BY 2 DESC, 1 LIMIT lim
 $$;
 
@@ -27,8 +28,9 @@ LANGUAGE sql STABLE AS $$
   WITH terms AS (SELECT tsvector_to_array(to_tsvector('english', q)) AS t),
   docs AS (SELECT count(*)::float8 AS n FROM okf.concept c WHERE c.tenant_id = tenant),
   cand AS (
-    SELECT c.path AS p, c.search AS v, length(c.search)::float8 AS dl, avg(length(c.search)) OVER () AS avgdl
-    FROM okf.concept c WHERE c.tenant_id = tenant AND c.search @@ to_tsquery('english', q)
+    SELECT c.path AS p, v, length(v)::float8 AS dl, avg(length(v)) OVER () AS avgdl
+    FROM okf.concept c, okf.lexemes(c.title, c.description, c.body) v
+    WHERE c.tenant_id = tenant AND v @@ to_tsquery('english', q)
   ),
   hits AS (
     SELECT k.p, k.dl, k.avgdl, u.lexeme, coalesce(array_length(u.positions, 1), 1)::float8 AS tf

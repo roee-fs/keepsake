@@ -1,0 +1,86 @@
+-- An edit touches only the postings whose counts changed. A concept's length moves out of
+-- every posting into one row of its own, under the empty lexeme, which no tsvector holds.
+-- concept.search goes too: the trigger computes lexemes, and nothing else read it.
+DROP TRIGGER concept_posting ON {{.SCHEMA}}.concept;
+DROP FUNCTION {{.SCHEMA}}.posting_sync();
+
+-- Dropping dl drops the primary key that includes it.
+ALTER TABLE {{.SCHEMA}}.posting DROP COLUMN dl;
+ALTER TABLE {{.SCHEMA}}.posting ADD PRIMARY KEY (tenant_id, lexeme, path) INCLUDE (tf);
+
+-- The length rows come from every tenant, read through admin_read as in 0005.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = '{{.SCHEMA}}'
+                 AND tablename = 'concept' AND policyname = '{{.ADMIN_POLICY}}') THEN
+    RAISE EXCEPTION '{{.SCHEMA}}.concept has no {{.ADMIN_POLICY}} policy, so the backfill cannot read every tenant';
+  END IF;
+END $$;
+SELECT set_config('{{.ADMIN_GUC}}', 'on', true),
+       set_config('{{.TENANT_GUC}}', '00000000-0000-0000-0000-000000000000', true);
+ALTER TABLE {{.SCHEMA}}.posting NO FORCE ROW LEVEL SECURITY;
+INSERT INTO {{.SCHEMA}}.posting (tenant_id, lexeme, path, tf)
+SELECT tenant_id, '', path, length(search) FROM {{.SCHEMA}}.concept;
+ALTER TABLE {{.SCHEMA}}.posting FORCE ROW LEVEL SECURITY;
+SELECT set_config('{{.ADMIN_GUC}}', 'off', true);
+
+ALTER TABLE {{.SCHEMA}}.concept DROP COLUMN search;
+
+-- 0001's generated column, kept exact so every tf and length stays as it was.
+CREATE FUNCTION {{.SCHEMA}}.lexemes(title text, description text, body text) RETURNS tsvector
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+         setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
+         setweight(to_tsvector('english', coalesce(body, '')), 'C')
+$$;
+
+-- A concept's postings: (lexeme, tf) per lexeme, and ('', length). None for a NULL vector.
+-- It skips lexemes over 1024 bytes: beside a 1024-byte path, their key passes btree's 2704-byte limit.
+CREATE FUNCTION {{.SCHEMA}}.postings(v tsvector) RETURNS TABLE (lexeme text, tf int)
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT u.lexeme, coalesce(array_length(u.positions, 1), 1)
+  FROM unnest(v) u WHERE octet_length(u.lexeme) <= 1024
+  UNION ALL
+  SELECT '', length(v) WHERE v IS NOT NULL
+$$;
+
+-- Runs as the writer, so the policy checks every row it writes. A concept that changes
+-- tenant or path keeps none of its postings.
+CREATE FUNCTION {{.SCHEMA}}.posting_sync() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog AS $$
+DECLARE
+  o tsvector;
+  n tsvector;
+  same boolean := TG_OP = 'UPDATE' AND NEW.tenant_id = OLD.tenant_id AND NEW.path = OLD.path;
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    o := {{.SCHEMA}}.lexemes(OLD.title, OLD.description, OLD.body);
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    n := {{.SCHEMA}}.lexemes(NEW.title, NEW.description, NEW.body);
+  END IF;
+  -- Every update sets the text columns, most often to what they already hold.
+  IF same AND o = n THEN
+    RETURN NULL;
+  END IF;
+  IF TG_OP <> 'INSERT' THEN
+    DELETE FROM {{.SCHEMA}}.posting p
+    USING (SELECT * FROM {{.SCHEMA}}.postings(o)
+           EXCEPT SELECT * FROM {{.SCHEMA}}.postings(CASE WHEN same THEN n END)) d
+    WHERE p.tenant_id = OLD.tenant_id AND p.path = OLD.path AND p.lexeme = d.lexeme;
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    INSERT INTO {{.SCHEMA}}.posting (tenant_id, lexeme, path, tf)
+    SELECT NEW.tenant_id, d.lexeme, NEW.path, d.tf
+    FROM (SELECT * FROM {{.SCHEMA}}.postings(n)
+          EXCEPT SELECT * FROM {{.SCHEMA}}.postings(CASE WHEN same THEN o END)) d;
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER concept_posting
+AFTER INSERT OR UPDATE OF tenant_id, path, title, description, body OR DELETE ON {{.SCHEMA}}.concept
+FOR EACH ROW EXECUTE FUNCTION {{.SCHEMA}}.posting_sync();
+
+-- An edit still leaves a dead row per changed lexeme, so vacuum at 2% rather than 20%.
+ALTER TABLE {{.SCHEMA}}.posting SET (autovacuum_vacuum_scale_factor = 0.02);

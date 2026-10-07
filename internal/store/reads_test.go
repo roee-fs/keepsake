@@ -184,6 +184,54 @@ func TestSearchFollowsAnUpdate(t *testing.T) {
 	}
 }
 
+// An edit rewrites only the postings whose counts changed, and leaves what a rebuild would.
+func TestAnEditRewritesOnlyTheChangedPostings(t *testing.T) {
+	create(t, okf.Concept{Path: "a/edit", Type: "Concept", Body: "alpha bravo bravo charlie"})
+	cs, tenant := fixture(t)
+	conn, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+	ctids := func() map[string]string {
+		rows, _ := conn.Query(ctx,
+			"SELECT lexeme, ctid::text FROM okf.posting WHERE tenant_id = $1 AND path = 'a/edit'", tenant)
+		out := map[string]string{}
+		for rows.Next() {
+			var lexeme, ctid string
+			if err := rows.Scan(&lexeme, &ctid); err != nil {
+				t.Fatal(err)
+			}
+			out[lexeme] = ctid
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	before := ctids()
+	if _, _, err := cs.Update(ctx, tenant, okf.Concept{Path: "a/edit", Type: "Concept", Body: "alpha bravo charlie charlie delta"}, "t", nil); err != nil {
+		t.Fatal(err)
+	}
+	after := ctids()
+	// bravo and charlie changed counts, and the length went from 3 to 4.
+	for lexeme, kept := range map[string]bool{"alpha": true, "bravo": false, "charli": false, "": false} {
+		if (before[lexeme] == after[lexeme]) != kept {
+			t.Errorf("posting %q: before %s, after %s, want kept=%v", lexeme, before[lexeme], after[lexeme], kept)
+		}
+	}
+	var drift int
+	err = conn.QueryRow(ctx, `
+WITH stored AS (SELECT lexeme, tf FROM okf.posting WHERE tenant_id = $1 AND path = 'a/edit'),
+rebuilt AS (SELECT p.* FROM okf.concept c, okf.postings(okf.lexemes(c.title, c.description, c.body)) p
+            WHERE c.tenant_id = $1 AND c.path = 'a/edit')
+SELECT count(*) FROM ((TABLE stored EXCEPT TABLE rebuilt) UNION ALL (TABLE rebuilt EXCEPT TABLE stored)) d`,
+		tenant).Scan(&drift)
+	if err != nil || drift != 0 {
+		t.Fatalf("postings differ from a rebuild in %d rows, %v", drift, err)
+	}
+}
+
 // Only a role that bypasses RLS can move a concept, and its postings MUST move with it.
 func TestSearchFollowsAConceptToAnotherTenant(t *testing.T) {
 	create(t, okf.Concept{Path: "a/moved", Type: "Concept", Body: "zqxmoved"})

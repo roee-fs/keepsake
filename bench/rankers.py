@@ -266,9 +266,10 @@ def scale(db: DB) -> dict:
     db.psql("ALTER TABLE okf.concept ENABLE TRIGGER concept_posting;")
     # Postings for the concepts written without the trigger, so the sizes below cover every concept.
     db.psql(
-        "INSERT INTO okf.posting (tenant_id, lexeme, path, tf, dl) "
-        "SELECT c.tenant_id, u.lexeme, c.path, coalesce(array_length(u.positions, 1), 1), length(c.search) "
-        f"FROM okf.concept c, unnest(c.search) u WHERE c.tenant_id = {untriggered}::uuid;"
+        "INSERT INTO okf.posting (tenant_id, lexeme, path, tf) "
+        "SELECT c.tenant_id, p.lexeme, c.path, p.tf "
+        "FROM okf.concept c, okf.postings(okf.lexemes(c.title, c.description, c.body)) p "
+        f"WHERE c.tenant_id = {untriggered}::uuid;"
     )
     with_trigger = timed(db, SYNTHETIC.format(tenant=lit(str(uuid.uuid4())), n=n))
     big, small = str(uuid.uuid4()), str(uuid.uuid4())

@@ -7,6 +7,17 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Changed
+
+- Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.
+  An edit rewrites only the postings whose counts changed. Each concept's length
+  moves out of every posting into one row of its own. On SciFact, three
+  one-sentence edits per concept leave 37k dead postings instead of 527k.
+- `concept.search` is gone. A query that read it MUST call
+  `okf.lexemes(title, description, body)` instead.
+
 ## 0.5.0 — 2026-10-05
 
 ### Added
