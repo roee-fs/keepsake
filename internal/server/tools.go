@@ -3,11 +3,11 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -172,9 +172,19 @@ func changed(existing *okf.Concept, c okf.Concept, key string) bool {
 	if existing == nil {
 		return true
 	}
-	a, errA := json.Marshal(get(existing.Frontmatter, key))
-	b, errB := json.Marshal(get(c.Frontmatter, key))
-	return errA != nil || errB != nil || !bytes.Equal(a, b)
+	a, errA := asJSON(get(existing.Frontmatter, key))
+	b, errB := asJSON(get(c.Frontmatter, key))
+	return errA != nil || errB != nil || !reflect.DeepEqual(a, b)
+}
+
+// asJSON is v as a plain JSON value, since jsonb reorders object keys and respells numbers.
+func asJSON(v any) (any, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var out any
+	return out, json.Unmarshal(b, &out)
 }
 
 func get(m *okf.Map, k string) any {

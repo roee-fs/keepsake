@@ -420,6 +420,20 @@ func TestAMalformedFamilyAlreadyStoredDoesNotBlockAnUnrelatedEdit(t *testing.T) 
 	}
 }
 
+// jsonb stores object keys shortest first, so a caller's own key order MUST NOT read as a change.
+func TestAFamilyRewrittenInAnotherKeyOrderIsUnchanged(t *testing.T) {
+	tools := newTools(t)
+	stored := obj("sources", []any{obj("resource", "r", "id", "s", "usage_count", -1)})
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: stored}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	echoed := obj("sources", []any{obj("usage_count", -1, "resource", "r", "id", "s")})
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited", "frontmatter": echoed}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/b", map[string]any{})
