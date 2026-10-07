@@ -352,6 +352,7 @@ type conceptDetail struct {
 	Version     int           `json:"version"`
 	Backlinks   []string      `json:"backlinks"`
 	Revisions   []revisionOut `json:"revisions"`
+	okf.Signals
 }
 
 type bucketOut struct {
@@ -590,6 +591,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, r, conceptDetail{
 		c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Links, c.Version, backlinks, revisions(history),
+		okf.Derive(c.Frontmatter, time.Now()),
 	}, err)
 }
 

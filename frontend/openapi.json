@@ -628,6 +628,31 @@
             },
             "type": "array",
             "title": "Revisions"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "trust": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "machine-confirmed",
+              "human-reviewed"
+            ],
+            "title": "Trust"
+          },
+          "verified_stale": {
+            "type": "boolean",
+            "title": "Verified Stale"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
           }
         },
         "type": "object",
@@ -641,7 +666,12 @@
           "links",
           "version",
           "backlinks",
-          "revisions"
+          "revisions",
+          "status",
+          "stale",
+          "trust",
+          "verified_stale",
+          "generated_at"
         ],
         "title": "ConceptDetail"
       },
@@ -822,6 +852,31 @@
           "score": {
             "type": "number",
             "title": "Score"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          },
+          "trust": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "machine-confirmed",
+              "human-reviewed"
+            ],
+            "title": "Trust"
+          },
+          "verified_stale": {
+            "type": "boolean",
+            "title": "Verified Stale"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
           }
         },
         "type": "object",
@@ -830,7 +885,12 @@
           "type",
           "title",
           "description",
-          "score"
+          "score",
+          "status",
+          "stale",
+          "trust",
+          "verified_stale",
+          "generated_at"
         ],
         "title": "HitOut"
       },

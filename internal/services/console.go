@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -58,9 +59,16 @@ func (s *ConsoleService) Detail(ctx context.Context, tenant uuid.UUID, path stri
 	return s.r.Detail(ctx, tenant, path, limit)
 }
 
-func (s *ConsoleService) Search(ctx context.Context, tenant uuid.UUID, query string, limit int) ([]SearchHit, error) {
+// LabeledHit is a console search result: a SearchHit and the OKF §5 signals that label it.
+type LabeledHit struct {
+	SearchHit
+	okf.Signals
+}
+
+func (s *ConsoleService) Search(ctx context.Context, tenant uuid.UUID, query string, limit int) ([]LabeledHit, error) {
 	hits, err := s.r.Search(ctx, tenant, query, limit, nil)
-	return convert(hits, hitOf), err
+	now := time.Now()
+	return convert(hits, func(h models.Hit) LabeledHit { return LabeledHit{hitOf(h), okf.Derive(h.Frontmatter, now)} }), err
 }
 
 func (s *ConsoleService) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {

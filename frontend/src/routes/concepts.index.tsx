@@ -4,6 +4,7 @@ import type { ConceptPage, GrepHit, HitOut } from '../client'
 import { grepGrepGet, listConceptsConceptsGet, searchSearchGet } from '../client'
 import { PathTree } from '../components/PathTree'
 import { SearchBox } from '../components/SearchBox'
+import { SignalBadges } from '../components/Signals'
 import { TenantId } from '../components/TenantId'
 import { TenantSwitcher } from '../components/TenantSwitcher'
 
@@ -264,6 +265,7 @@ function SearchTable({
             <th>Type</th>
             <th>Title</th>
             <th>Description</th>
+            <th>Signals</th>
             <th>Score</th>
           </tr>
         </thead>
@@ -283,6 +285,9 @@ function SearchTable({
               <td className="text-fg-muted">{hit.type}</td>
               <td>{hit.title}</td>
               <td className="text-fg-muted">{hit.description}</td>
+              <td>
+                <SignalBadges {...hit} />
+              </td>
               <td className="tabular-nums text-fg-muted">{hit.score.toFixed(2)}</td>
             </tr>
           ))}
