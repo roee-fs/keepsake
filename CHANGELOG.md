@@ -9,6 +9,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## Unreleased
 
+### Fixed
+
+- `grep` reads `\b` and `\B` as word boundaries. Postgres reads them as a
+  backspace, so `\bword\b` used to match nothing.
+
 ### Changed
 
 - Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.

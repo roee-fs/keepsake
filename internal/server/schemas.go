@@ -105,7 +105,8 @@ func toolDefinitions() []*mcp.Tool {
 		},
 		{
 			Name: "grep",
-			Description: "Search concept text with a POSIX regular expression, case-insensitively. " +
+			Description: "Search concept text with a Postgres regular expression, case-insensitively: " +
+				"`\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. " +
 				"Returns each matching path with a short snippet around the match. Use it " +
 				"when you know the exact string or shape you want — an identifier, a " +
 				"config key, a URL — and `search`'s word matching is too loose. " +
