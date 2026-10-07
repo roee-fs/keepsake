@@ -135,7 +135,8 @@ FROM (SELECT *, nextval('version_seq') AS v FROM d) d`
 
 // storedComputationsSQL reads what a replace could change of an Attested Computation:
 // those under $1, and the concepts at the paths in $3, where the bundle holds one.
-var storedComputationsSQL = "SELECT " + readCols + " FROM concept WHERE starts_with(path, $1) AND (type = $2 OR path = ANY($3::text[]))"
+// FOR UPDATE holds off a tool write between the guard's read and the replace.
+var storedComputationsSQL = "SELECT " + readCols + " FROM concept WHERE starts_with(path, $1) AND (type = $2 OR path = ANY($3::text[])) FOR UPDATE"
 
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
 // A non-nil guard sees the stored Attested Computations the replace could change, by path, and may refuse it.

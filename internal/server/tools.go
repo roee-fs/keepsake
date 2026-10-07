@@ -18,8 +18,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
-const relateAttempts = 20
+// writeAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
+const writeAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
 type ToolError struct{ Msg string }
@@ -262,7 +262,7 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
 func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		existing, err := t.c.Read(ctx, t.t, path)
 		if err != nil {
 			return nil, err
@@ -329,14 +329,7 @@ func (t *Tools) Verify(ctx context.Context, path string, expectedVersion int) (a
 	if existing.Frontmatter != nil {
 		c.Frontmatter = existing.Frontmatter.Clone()
 	}
-	var events []any
-	switch v := get(c.Frontmatter, "verified").(type) {
-	case nil:
-	case []any:
-		events = slices.Clone(v)
-	default:
-		events = []any{v}
-	}
+	events := slices.Clone(okf.Events(get(c.Frontmatter, "verified")))
 	c.Frontmatter.Set("verified", append(events, obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339))))
 	return t.save(ctx, c, &expectedVersion)
 }
@@ -391,7 +384,7 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
 			return nil, err
