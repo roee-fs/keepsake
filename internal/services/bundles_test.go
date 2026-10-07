@@ -30,7 +30,7 @@ func writeFile(t *testing.T, dir, name, text string) {
 }
 
 func TestReplaceRefusesAnEmptyBundle(t *testing.T) {
-	_, _, err := NewBundleService(conceptStore(t)).Replace(ctx, uuid.New(), "docs", nil, "human:x")
+	_, _, err := NewBundleService(conceptStore(t)).Replace(ctx, uuid.New(), "docs", nil, "human:x", false)
 	var te *ToolError
 	if !errors.As(err, &te) || te.Msg != "bundle holds no concepts" {
 		t.Fatalf("err = %v, want the empty-bundle ToolError", err)
