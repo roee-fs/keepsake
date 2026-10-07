@@ -32,6 +32,21 @@ func TestDerive(t *testing.T) {
 		{"generated", "generated: {by: agent/v1, at: 2026-06-20T22:53:05Z}", Signals{Status: "stable", Trust: Unverified, GeneratedAt: "2026-06-20T22:53:05+00:00"}},
 		{"legacy timestamp", "timestamp: '2026-01-01T00:00:00Z'", Signals{Status: "stable", Trust: Unverified, GeneratedAt: "2026-01-01T00:00:00Z"}},
 		{"generated wins", "timestamp: old\ngenerated: {by: a/1, at: new}", Signals{Status: "stable", Trust: Unverified, GeneratedAt: "new"}},
+		{"changed after review", "generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified: {by: 'human:ann', at: 2026-06-25T00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, VerifiedStale: true, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
+		{"reviewed after change", "generated: {by: a/1, at: 2026-06-24T00:00:00Z}\nverified: {by: 'human:ann', at: 2026-06-25T00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, GeneratedAt: "2026-06-24T00:00:00+00:00"}},
+		{"reviewed at the change", "generated: {by: a/1, at: 2026-06-25T00:00:00Z}\nverified: {by: 'human:ann', at: 2026-06-25T00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, GeneratedAt: "2026-06-25T00:00:00+00:00"}},
+		{"a later machine does not refresh a human review",
+			"generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified:\n  - {by: 'human:ann', at: 2026-06-25T00:00:00Z}\n  - {by: process:nightly, at: 2026-06-27T00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, VerifiedStale: true, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
+		{"machine confirmed after change", "generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified: {by: process:nightly, at: 2026-06-27T00:00:00Z}",
+			Signals{Status: "stable", Trust: MachineConfirmed, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
+		{"naive generated is unknown", "generated: {by: a/1, at: 2026-06-26 00:00:00}\nverified: {by: 'human:ann', at: 2026-06-25T00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, GeneratedAt: "2026-06-26 00:00:00"}},
+		{"verified without at is unknown", "generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified: {by: 'human:ann'}",
+			Signals{Status: "stable", Trust: HumanReviewed, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, err := Parse("---\ntype: T\n"+tc.frontmatter+"\n---\n", "p")

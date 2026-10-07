@@ -539,6 +539,29 @@ func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
 	}
 }
 
+func TestAnEditAfterVerificationIsDueForReview(t *testing.T) {
+	tools := newTools(t)
+	// A stamp from the past, so the edit's stamp lands strictly after the verification.
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("generated", obj("by", "process:import", "at", "2026-01-01T00:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("stale right after verifying")
+	}
+	// Stamps are whole seconds, so the edit waits out the verification's second.
+	time.Sleep(1100 * time.Millisecond)
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	if !read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("not stale after an edit")
+	}
+}
+
 func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
 	_, err := newTools(t).Verify(ctx, "a/none", 1)
 	wantToolError(t, err, "no concept at a/none")

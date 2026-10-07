@@ -323,7 +323,7 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	at := field(field(field(res.StructuredContent, "frontmatter"), "generated"), "at")
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
 		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "version": %v, "links": [], "backlinks": [], `+
-			`"status": "stable", "stale": false, "trust": "unverified", "generated_at": %q}`,
+			`"status": "stable", "stale": false, "trust": "unverified", "verified_stale": false, "generated_at": %q}`,
 			at, field(created.StructuredContent, "version"), at)
 	if got := text(t, res); got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)

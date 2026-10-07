@@ -7,10 +7,12 @@ import (
 
 // Signals are the trust and lifecycle facts a consumer derives from OKF v0.2 §5 frontmatter.
 type Signals struct {
-	Status      string `json:"status"`
-	Stale       bool   `json:"stale"`
-	Trust       string `json:"trust"`
-	GeneratedAt string `json:"generated_at"`
+	Status string `json:"status"`
+	Stale  bool   `json:"stale"`
+	Trust  string `json:"trust"`
+	// VerifiedStale is true when the content changed after the latest verification that sets Trust.
+	VerifiedStale bool   `json:"verified_stale"`
+	GeneratedAt   string `json:"generated_at"`
 }
 
 // The §5.3 trust tiers, lowest first.
@@ -25,7 +27,9 @@ func Derive(fm *Map, now time.Time) Signals {
 	if fm == nil {
 		fm = NewMap()
 	}
-	s := Signals{Status: "stable", Trust: trust(field(fm, "verified"))}
+	s := Signals{Status: "stable"}
+	var reviewed time.Time
+	s.Trust, reviewed = trust(field(fm, "verified"))
 	if status, _ := field(fm, "status").(string); status != "" {
 		s.Status = status
 	}
@@ -39,6 +43,10 @@ func Derive(fm *Map, now time.Time) Signals {
 		// §13.1: a v0.1 concept records its last change as `timestamp`.
 		s.GeneratedAt, _ = field(fm, "timestamp").(string)
 	}
+	// Unlike stale_after, an instant without an offset reads as unknown here, so it never claims staleness.
+	if changed, err := time.Parse(time.RFC3339, s.GeneratedAt); err == nil && !reviewed.IsZero() {
+		s.VerifiedStale = changed.After(reviewed)
+	}
 	return s
 }
 
@@ -47,27 +55,42 @@ func field(m *Map, k string) any {
 	return v
 }
 
-// trust reads a bare mapping as a one-element list, as §5.2 requires.
-func trust(verified any) string {
+// trust returns the tier and the latest instant among the events that set it, zero if none parses.
+// It reads a bare mapping as a one-element list, as §5.2 requires.
+func trust(verified any) (string, time.Time) {
 	events, ok := verified.([]any)
 	if !ok {
 		events = []any{verified}
 	}
 	tier := Unverified
+	var human, machine time.Time
 	for _, e := range events {
 		m, _ := e.(*Map)
 		if m == nil {
 			continue
 		}
 		by, _ := field(m, "by").(string)
+		at, _ := field(m, "at").(string)
+		t, _ := time.Parse(time.RFC3339, at)
 		switch {
 		case strings.HasPrefix(by, "human:"):
-			return HumanReviewed
+			tier = HumanReviewed
+			if t.After(human) {
+				human = t
+			}
 		case by != "":
-			tier = MachineConfirmed
+			if tier == Unverified {
+				tier = MachineConfirmed
+			}
+			if t.After(machine) {
+				machine = t
+			}
 		}
 	}
-	return tier
+	if tier == HumanReviewed {
+		return tier, human
+	}
+	return tier, machine
 }
 
 // instant reads an OKF timestamp as the YAML parser or a tool call stores it. No offset reads as UTC.
