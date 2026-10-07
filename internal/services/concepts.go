@@ -42,6 +42,8 @@ type ConceptService struct {
 	c     *repositories.ConceptRepository
 	t     uuid.UUID
 	actor string
+	// computations is the caller's computations scope.
+	computations bool
 }
 
 func NewConceptService(cs *repositories.ConceptRepository, tenant uuid.UUID, actor string) *ConceptService {
@@ -49,10 +51,10 @@ func NewConceptService(cs *repositories.ConceptRepository, tenant uuid.UUID, act
 	return &ConceptService{c: cs.WithReadLog(), t: tenant, actor: actor}
 }
 
-// As returns a copy acting for tenant as actor.
-func (t *ConceptService) As(tenant uuid.UUID, actor string) *ConceptService {
+// As returns a copy acting for tenant as actor, with or without the computations scope.
+func (t *ConceptService) As(tenant uuid.UUID, actor string, computations bool) *ConceptService {
 	scoped := *t
-	scoped.t, scoped.actor = tenant, actor
+	scoped.t, scoped.actor, scoped.computations = tenant, actor, computations
 	return &scoped
 }
 
@@ -176,7 +178,43 @@ func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[stri
 	if errs := append(okf.Validate(c), familyErrors(existing, c)...); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
+	if touched := computationChanges(existing, c); len(touched) > 0 && !t.computations {
+		return okf.Concept{}, toolErr("only a caller with the computations scope may change an Attested Computation's " +
+			strings.Join(touched, ", ") + "; you may change its title, description, tags, status and sources")
+	}
 	return c, nil
+}
+
+// contractFields are the Attested Computation fields OKF §10.3 forbids an agent to author.
+var contractFields = []string{"computation", "runtime", "parameters", "executor", "attester"}
+
+// computationChanges names what a write changes of an Attested Computation's type, body and contract.
+// existing is nil on a create; c with an empty Path means the stored concept is deleted.
+// ponytail: the whole body is guarded, not just its # Computation fence; parse the fence if agents need to edit prose.
+func computationChanges(existing *okf.Concept, c okf.Concept) []string {
+	was := existing != nil && existing.Type == okf.AttestedComputation
+	if !was && c.Type != okf.AttestedComputation {
+		return nil
+	}
+	switch {
+	case existing == nil:
+		return []string{"created"}
+	case c.Path == "":
+		return []string{"deleted"}
+	}
+	var touched []string
+	if existing.Type != c.Type {
+		touched = append(touched, "type")
+	}
+	if existing.Body != c.Body {
+		touched = append(touched, "body")
+	}
+	for _, k := range contractFields {
+		if changed(existing, c, k) {
+			touched = append(touched, k)
+		}
+	}
+	return touched
 }
 
 // familyErrors returns the OKF §5 and §10 rules broken by the keys a write changes.

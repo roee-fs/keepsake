@@ -32,8 +32,10 @@ type caller struct {
 	actor  string
 	// upload lets the caller replace a prefix through /bundle, which deletes concepts.
 	upload bool
-	// readOnly refuses every write: create, update, relate and /bundle.
+	// readOnly refuses every write: create, update, relate, verify and /bundle.
 	readOnly bool
+	// computations lets the caller author an OKF Attested Computation.
+	computations bool
 	// anonymous is auth mode none, where actor names this server, not the caller.
 	anonymous bool
 }
@@ -44,6 +46,9 @@ const uploadScope = "bundle"
 // readScope makes a token read-only, so an agent holding it cannot change what later reads see.
 // It is a restriction, not a grant: a token without it keeps every write it had.
 const readScope = "read"
+
+// computationsScope is the token scope that may author an Attested Computation, which OKF §10.3 forbids an agent.
+const computationsScope = "computations"
 
 type callerKey struct{}
 
@@ -57,7 +62,7 @@ func withCaller(next http.Handler, c caller) http.Handler {
 func FixedTenant(tenant uuid.UUID) func(http.Handler) http.Handler {
 	// Mode none already trusts every client that reaches it, so it keeps /bundle.
 	return func(next http.Handler) http.Handler {
-		return withCaller(next, caller{tenant: tenant, actor: Actor, upload: true, anonymous: true})
+		return withCaller(next, caller{tenant: tenant, actor: Actor, upload: true, computations: true, anonymous: true})
 	}
 }
 
@@ -185,7 +190,7 @@ func (j *JWT) verify(token string) (caller, error) {
 	json.Unmarshal(c.Scope, &scope)
 	scopes := strings.Fields(scope)
 	return caller{tenant: tenant, actor: c.Sub, upload: slices.Contains(scopes, uploadScope),
-		readOnly: slices.Contains(scopes, readScope)}, nil
+		readOnly: slices.Contains(scopes, readScope), computations: slices.Contains(scopes, computationsScope)}, nil
 }
 
 // Middleware binds the verified caller, or answers 401 for a bad token and 403 for a token naming no tenant.
