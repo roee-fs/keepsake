@@ -18,6 +18,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   when `KEEPSAKE_REVISION_RETENTION_DAYS` is set, revisions older than that,
   keeping each path's newest `KEEPSAKE_REVISION_KEEP` (50). The chart runs it
   nightly as a CronJob. Set `retention.enabled: false` to turn it off.
+- `create` and `update` refuse malformed OKF §5 and §10 frontmatter on the keys
+  they change. `keepsake validate` reports it. Import and upload still accept it.
 
 ### Changed
 

@@ -3,8 +3,11 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -126,7 +129,7 @@ func textField(kw map[string]any, name string) (string, error) {
 	return s, nil
 }
 
-func (t *ConceptService) concept(path string, kw map[string]any, stamp bool) (okf.Concept, error) {
+func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[string]any, stamp bool) (okf.Concept, error) {
 	body, err := textField(kw, "body")
 	if err != nil {
 		return okf.Concept{}, err
@@ -151,23 +154,58 @@ func (t *ConceptService) concept(path string, kw map[string]any, stamp bool) (ok
 	}
 	// Derived, never taken from the caller: a `links` argument is deliberately ignored.
 	c.Links = okf.ExtractLinks(body, path)
+	// A copy, so the caller's map is left as it was.
+	c.Frontmatter = frontmatter.Clone()
 	// The server knows who wrote through it, so its stamp replaces any the caller sent.
 	if stamp {
-		// A copy, so the caller's map is left as it was.
-		c.Frontmatter = frontmatter.Clone()
 		generated := okf.NewMap()
 		generated.Set("by", t.actor)
 		generated.Set("at", time.Now().UTC().Format(time.RFC3339))
 		c.Frontmatter.Set("generated", generated)
 	}
-	if errs := okf.Validate(c); len(errs) > 0 {
+	if errs := append(okf.Validate(c), familyErrors(existing, c)...); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
 	return c, nil
 }
 
+// serverOwned are the frontmatter keys the server writes itself, so no caller's value is checked.
+var serverOwned = []string{"generated", "verified"}
+
+// familyErrors returns the OKF §5 and §10 rules broken by the keys a write changes.
+// A stored concept from an older bundle can break a rule on a key nobody touched, and that MUST NOT block the write.
+func familyErrors(existing *okf.Concept, c okf.Concept) []string {
+	problems := okf.Families(c)
+	retyped := existing == nil || existing.Type != c.Type
+	var errs []string
+	for _, k := range slices.Sorted(maps.Keys(problems)) {
+		if !slices.Contains(serverOwned, k) && (retyped || changed(existing, c, k)) {
+			errs = append(errs, problems[k]...)
+		}
+	}
+	return errs
+}
+
+// changed reports whether c's frontmatter key differs from the stored concept's. Every key is new on a create.
+func changed(existing *okf.Concept, c okf.Concept, key string) bool {
+	if existing == nil {
+		return true
+	}
+	a, errA := json.Marshal(get(existing.Frontmatter, key))
+	b, errB := json.Marshal(get(c.Frontmatter, key))
+	return errA != nil || errB != nil || !bytes.Equal(a, b)
+}
+
+func get(m *okf.Map, k string) any {
+	if m == nil {
+		return nil
+	}
+	v, _ := m.Get(k)
+	return v
+}
+
 func (t *ConceptService) Create(ctx context.Context, path string, kw map[string]any) (WriteResult, error) {
-	c, err := t.concept(path, kw, true)
+	c, err := t.concept(nil, path, kw, true)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -202,7 +240,7 @@ func (t *ConceptService) write(ctx context.Context, existing okf.Concept, path s
 	for k, v := range kw {
 		merged[k] = v
 	}
-	c, err := t.concept(path, merged, stamp)
+	c, err := t.concept(&existing, path, merged, stamp)
 	if err != nil {
 		return nil, err
 	}

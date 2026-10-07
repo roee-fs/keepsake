@@ -739,7 +739,7 @@ func TestImportRecordsTheOKFImportActor(t *testing.T) {
 func TestValidateReportsAMalformedTrustField(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, src, "a/stale.md", "---\ntype: Concept\nstale_after: 2026-09-23\n---\nx\n")
-	errs, err := ValidateBundle(src)
+	errs, err := services.ValidateBundle(src)
 	if err != nil || len(errs) != 1 || !strings.HasPrefix(errs[0], "a/stale: stale_after must be an ISO 8601 datetime") {
 		t.Fatal(errs, err)
 	}
