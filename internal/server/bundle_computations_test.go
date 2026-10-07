@@ -75,6 +75,23 @@ func TestAnUploadThatLeavesComputationsAloneNeedsOnlyTheBundleScope(t *testing.T
 	}
 }
 
+// The spec's own contract shape, whose keys jsonb stores in another order than the file.
+func TestReuploadingAnUnchangedSpecShapedComputationNeedsOnlyTheBundleScope(t *testing.T) {
+	cs := conceptStore(t)
+	h := issuer.Middleware(replaceBundle(cs))
+	rev := "---\ntype: Attested Computation\nruntime: bigquery\n" +
+		"parameters:\n  - { name: year, type: integer, required: true }\n" +
+		"executor:\n  resource: references/skills/run-on-bq.md\n  receipt: [job_id, executed_sql, result]\n" +
+		"---\nSELECT 1\n"
+	tenant := uuid.New()
+	if code, body := putWith(t, h, "docs", tarball(t, entry{name: "rev.md", body: rev}), tenant, uploadScope, computationsScope); code != http.StatusOK {
+		t.Fatalf("first PUT = %d %s", code, body)
+	}
+	if code, body := put(t, h, "docs", tarball(t, entry{name: "rev.md", body: rev}), tenant); code != http.StatusOK {
+		t.Fatalf("re-upload = %d %s", code, body)
+	}
+}
+
 func TestAnUploadWithBothScopesMayChangeAComputation(t *testing.T) {
 	cs := conceptStore(t)
 	tenant := storedComputation(t, cs)
