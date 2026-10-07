@@ -364,6 +364,13 @@ type conceptDetail struct {
 	Version     int           `json:"version"`
 	Backlinks   []string      `json:"backlinks"`
 	Revisions   []revisionOut `json:"revisions"`
+	okf.Signals
+}
+
+// hitOut is a console search result: a searchHit and the OKF §5 signals that label it.
+type hitOut struct {
+	searchHit
+	okf.Signals
 }
 
 type graphNode struct {
@@ -608,6 +615,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, r, conceptDetail{
 		c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Links, c.Version, backlinks, revisions(history),
+		okf.Derive(c.Frontmatter, time.Now()),
 	}, err)
 }
 
@@ -620,7 +628,8 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Search(r.Context(), *tenant, q, limit, nil)
-	reply(w, r, convert(hits, hitOf), err)
+	now := time.Now()
+	reply(w, r, convert(hits, func(h store.Hit) hitOut { return hitOut{hitOf(h), okf.Derive(h.Frontmatter, now)} }), err)
 }
 
 func (a *api) grep(w http.ResponseWriter, r *http.Request) {

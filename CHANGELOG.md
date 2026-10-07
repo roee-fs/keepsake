@@ -18,6 +18,9 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   an agent can no longer claim a human review.
 - `search` cards and `read` results carry `verified_stale`. It is true when the
   content changed after the verification that sets `trust`. Ranking is unchanged.
+- The console labels concept pages and search results with `status`, `trust`,
+  "review due" and `stale`. A concept page lists who generated it and who
+  verified it. `/api/concepts/{path}` and `/api/search` return the signals.
 
 ### Changed
 

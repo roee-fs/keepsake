@@ -5,6 +5,7 @@ import { conceptDetailConceptsPathGet } from '../client'
 import { BodyLink } from '../components/BodyLink'
 import { Frontmatter } from '../components/Frontmatter'
 import { RevisionList } from '../components/RevisionList'
+import { ProvenanceList, SignalBadges } from '../components/Signals'
 import { HttpError } from '../lib/session'
 
 export const Route = createFileRoute('/concepts/$')({
@@ -96,6 +97,9 @@ function Detail() {
         </div>
         <h1 className="mt-1 text-lg font-semibold tracking-tight">{concept.title}</h1>
         <p className="mt-1 text-fg-muted">{concept.description}</p>
+        <div className="mt-2">
+          <SignalBadges {...concept} />
+        </div>
       </div>
 
       {/* Raw HTML stays off: this body is agent-written, so the markdown AST is
@@ -112,6 +116,11 @@ function Detail() {
         >
           {concept.body}
         </Markdown>
+      </div>
+
+      <div>
+        <h2 className={SECTION_HEADING}>Provenance</h2>
+        <ProvenanceList frontmatter={concept.frontmatter} />
       </div>
 
       <div>

@@ -50,6 +50,26 @@ export type ConceptDetail = {
      * Revisions
      */
     revisions: Array<RevisionOut>;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Stale
+     */
+    stale: boolean;
+    /**
+     * Trust
+     */
+    trust: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+    /**
+     * Verified Stale
+     */
+    verified_stale: boolean;
+    /**
+     * Generated At
+     */
+    generated_at: string;
 };
 
 /**
@@ -181,6 +201,26 @@ export type HitOut = {
      * Score
      */
     score: number;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Stale
+     */
+    stale: boolean;
+    /**
+     * Trust
+     */
+    trust: 'unverified' | 'machine-confirmed' | 'human-reviewed';
+    /**
+     * Verified Stale
+     */
+    verified_stale: boolean;
+    /**
+     * Generated At
+     */
+    generated_at: string;
 };
 
 /**
