@@ -436,7 +436,7 @@ func TestReplacePrefixMakesThePrefixExactlyTheBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 	bundle := []okf.Concept{{Path: "docs/keep", Type: "Doc", Body: "new"}, {Path: "docs/sub/added", Type: "Doc"}}
-	if written, deleted, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform"); err != nil || written != 2 || deleted != 1 {
+	if written, deleted, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform", nil); err != nil || written != 2 || deleted != 1 {
 		t.Fatalf("ReplacePrefix = %d, %d, %v, want 2, 1, nil", written, deleted, err)
 	}
 	want := []string{"docs", "docs/keep", "docs/sub/added", "docsx/other", "notes/agent"}
@@ -455,7 +455,7 @@ func TestADeletedPathReturnsAtANewVersionWithItsHistory(t *testing.T) {
 	tenant := uuid.New()
 	replace := func(path, body string) {
 		t.Helper()
-		if _, _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: path, Type: "Doc", Body: body}}, "platform"); err != nil {
+		if _, _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: path, Type: "Doc", Body: body}}, "platform", nil); err != nil {
 			t.Fatalf("ReplacePrefix(%s): %v", path, err)
 		}
 	}
@@ -484,7 +484,7 @@ func TestReplacePrefixIsOneTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	bundle := []okf.Concept{{Path: "docs/new", Type: "Doc", Body: "bad\x00body"}}
-	if _, _, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform"); err == nil {
+	if _, _, err := cs.ReplacePrefix(ctx, tenant, "docs", bundle, "platform", nil); err == nil {
 		t.Fatal("ReplacePrefix = nil error, want one from the NUL byte")
 	}
 	if got := listPaths(t, cs, tenant); !reflect.DeepEqual(got, []string{"docs/old"}) {
@@ -494,7 +494,7 @@ func TestReplacePrefixIsOneTransaction(t *testing.T) {
 
 func TestReplacePrefixRefusesAPathOutsideIt(t *testing.T) {
 	cs := store.NewConceptStore(openApp(t))
-	if _, _, err := cs.ReplacePrefix(ctx, uuid.New(), "docs", []okf.Concept{{Path: "docsx/a", Type: "Doc"}}, "platform"); err == nil {
+	if _, _, err := cs.ReplacePrefix(ctx, uuid.New(), "docs", []okf.Concept{{Path: "docsx/a", Type: "Doc"}}, "platform", nil); err == nil {
 		t.Fatal("ReplacePrefix = nil error")
 	}
 }
@@ -507,7 +507,7 @@ func TestConcurrentReplacesOfNestedPrefixesLeaveOneBundle(t *testing.T) {
 		var wg sync.WaitGroup
 		for _, r := range [][2]string{{"docs", "docs/sub/x"}, {"docs/sub", "docs/sub/y"}} {
 			wg.Go(func() {
-				if _, _, err := cs.ReplacePrefix(ctx, tenant, r[0], []okf.Concept{{Path: r[1], Type: "Doc"}}, "platform"); err != nil {
+				if _, _, err := cs.ReplacePrefix(ctx, tenant, r[0], []okf.Concept{{Path: r[1], Type: "Doc"}}, "platform", nil); err != nil {
 					t.Error(err)
 				}
 			})
@@ -552,7 +552,7 @@ func TestReplacePrefixLogsItsDeleteAfterAnUpdateItWaitedFor(t *testing.T) {
 
 	replaced := make(chan error, 1)
 	go func() {
-		_, _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: "docs/kept", Type: "Doc"}}, "platform")
+		_, _, err := cs.ReplacePrefix(ctx, tenant, "docs", []okf.Concept{{Path: "docs/kept", Type: "Doc"}}, "platform", nil)
 		replaced <- err
 	}()
 	// Commit only once the replace is queued behind the held row lock.

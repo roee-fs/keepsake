@@ -252,8 +252,13 @@ func octalField(field []byte, n int64) {
 
 func put(t *testing.T, h http.Handler, prefix string, body io.Reader, tenant uuid.UUID) (int, string) {
 	t.Helper()
+	return putWith(t, h, prefix, body, tenant, uploadScope)
+}
+
+func putWith(t *testing.T, h http.Handler, prefix string, body io.Reader, tenant uuid.UUID, scopes ...string) (int, string) {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix="+prefix, body)
-	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "process:platform-ingest", time.Minute, uploadScope))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "process:platform-ingest", time.Minute, scopes...))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.String()

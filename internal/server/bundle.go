@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -122,6 +123,39 @@ func readBundle(body io.Reader, prefix string) (concepts []okf.Concept, problems
 	}
 }
 
+// computationsRefused names the Attested Computations an upload would change without the computations scope.
+type computationsRefused struct{ paths []string }
+
+func (e *computationsRefused) Error() string {
+	return "upload changes Attested Computations: " + strings.Join(e.paths, ", ")
+}
+
+// refuseComputationChanges compares an upload with the stored Attested Computations it would replace.
+func refuseComputationChanges(stored map[string]okf.Concept, upload []okf.Concept) error {
+	var paths []string
+	uploaded := map[string]bool{}
+	for _, c := range upload {
+		uploaded[c.Path] = true
+		var before *okf.Concept
+		if s, ok := stored[c.Path]; ok {
+			before = &s
+		}
+		if len(computationChanges(before, c)) > 0 {
+			paths = append(paths, c.Path)
+		}
+	}
+	for path, s := range stored {
+		if !uploaded[path] && len(computationChanges(&s, okf.Concept{})) > 0 {
+			paths = append(paths, path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	slices.Sort(paths)
+	return &computationsRefused{paths}
+}
+
 // zeroTail counts the zero bytes at the end of what has been read through it.
 type zeroTail struct {
 	r io.Reader
@@ -192,8 +226,17 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 		if c.anonymous {
 			by = "process:import"
 		}
-		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by)
+		var guard func(map[string]okf.Concept) error
+		if !c.computations {
+			guard = func(stored map[string]okf.Concept) error { return refuseComputationChanges(stored, concepts) }
+		}
+		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by, guard)
+		var refused *computationsRefused
 		switch {
+		case errors.As(err, &refused):
+			writeJSON(w, r, http.StatusForbidden, detail{"this token cannot change an Attested Computation: it needs the " +
+				computationsScope + " scope for " + strings.Join(refused.paths, ", ")})
+			return
 		case store.IsUnavailable(err):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
 			w.Header().Set("Retry-After", "5")
