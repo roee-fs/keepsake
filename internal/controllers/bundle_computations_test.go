@@ -79,7 +79,7 @@ func TestAnUploadThatLeavesComputationsAloneNeedsOnlyTheBundleScope(t *testing.T
 // The spec's own contract shape, whose keys jsonb stores in another order than the file.
 func TestReuploadingAnUnchangedSpecShapedComputationNeedsOnlyTheBundleScope(t *testing.T) {
 	cs := conceptStore(t)
-	h := issuer.Middleware(replaceBundle(cs))
+	h := issuer.Middleware(ReplaceBundle(services.NewBundleService(cs)))
 	rev := "---\ntype: Attested Computation\nruntime: bigquery\n" +
 		"parameters:\n  - { name: year, type: integer, required: true }\n" +
 		"executor:\n  resource: references/skills/run-on-bq.md\n  receipt: [job_id, executed_sql, result]\n" +
