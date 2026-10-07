@@ -45,6 +45,7 @@ TOOL_NAMES = {
     "create",
     "update",
     "relate",
+    "verify",
 }
 
 # The release `run.sh` installs. Named rather than left implicit: the upgrade test
