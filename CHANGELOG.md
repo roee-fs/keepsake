@@ -16,6 +16,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ### Changed
 
+- Breaking: a JWT whose `sub` is not an OKF §7 actor now gets a 401. The README
+  already said it MUST be one. Mint `process:<id>` instead of a bare id.
 - Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.
   An edit rewrites only the postings whose counts changed. Each concept's length
   moves out of every posting into one row of its own. On SciFact, three

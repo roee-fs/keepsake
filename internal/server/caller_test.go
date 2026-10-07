@@ -48,7 +48,7 @@ func sign(secret []byte, header, claims map[string]any) string {
 
 func claims(tenant string, mutate func(map[string]any)) map[string]any {
 	now := time.Now().Unix()
-	c := map[string]any{"iss": "platform", "aud": "keepsake", "sub": "run:1", "iat": now, "exp": now + 60,
+	c := map[string]any{"iss": "platform", "aud": "keepsake", "sub": "process:run-1", "iat": now, "exp": now + 60,
 		"tctx": map[string]any{"tenant": tenant}}
 	if mutate != nil {
 		mutate(c)
@@ -71,8 +71,8 @@ func call(t *testing.T, authorization ...string) (int, http.Header, string) {
 
 func TestAValidTokenBindsItsTenantAndSubject(t *testing.T) {
 	tenant := uuid.New()
-	code, _, body := call(t, "Bearer "+issuer.Mint(tenant, "run:42", time.Minute))
-	if code != 200 || body != tenant.String()+" run:42" {
+	code, _, body := call(t, "Bearer "+issuer.Mint(tenant, "process:run-42", time.Minute))
+	if code != 200 || body != tenant.String()+" process:run-42" {
 		t.Fatalf("got %d %q", code, body)
 	}
 }
@@ -80,7 +80,7 @@ func TestAValidTokenBindsItsTenantAndSubject(t *testing.T) {
 func TestEverySecretInTheFileVerifies(t *testing.T) {
 	tenant := uuid.New()
 	code, _, body := call(t, "Bearer "+sign(rotated, hs256, claims(tenant.String(), nil)))
-	if code != 200 || body != tenant.String()+" run:1" {
+	if code != 200 || body != tenant.String()+" process:run-1" {
 		t.Fatalf("got %d %q", code, body)
 	}
 }
@@ -138,6 +138,7 @@ func TestAnInvalidTokenIsUnauthorized(t *testing.T) {
 		"not yet valid":         {"Bearer " + sign(key, hs256, claims(tenant, set("nbf", time.Now().Unix()+60)))},
 		"no subject":            {"Bearer " + sign(key, hs256, claims(tenant, without("sub")))},
 		"non-string subject":    {"Bearer " + sign(key, hs256, claims(tenant, set("sub", 7)))},
+		"subject not an actor":  {"Bearer " + sign(key, hs256, claims(tenant, set("sub", "run:1")))},
 		"non-numeric expiry":    {"Bearer " + sign(key, hs256, claims(tenant, set("exp", "tomorrow")))},
 		"payload not an object": {"Bearer " + parts[0] + "." + base64.RawURLEncoding.EncodeToString([]byte(`[]`)) + "." + parts[2]},
 	}
@@ -262,7 +263,7 @@ func TestOneServerKeepsConcurrentTenantsApart(t *testing.T) {
 	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))
 	t.Cleanup(srv.Close)
 	tenants := []uuid.UUID{uuid.New(), uuid.New()}
-	sessions := []*mcp.ClientSession{asTenant(t, srv.URL, tenants[0], "run:0"), asTenant(t, srv.URL, tenants[1], "run:1")}
+	sessions := []*mcp.ClientSession{asTenant(t, srv.URL, tenants[0], "process:run-0"), asTenant(t, srv.URL, tenants[1], "process:run-1")}
 	var wg sync.WaitGroup
 	for i, tenant := range tenants {
 		wg.Add(1)
@@ -296,7 +297,7 @@ func TestOneServerKeepsConcurrentTenantsApart(t *testing.T) {
 	wg.Wait()
 	for i, tenant := range tenants {
 		revs, err := cs.Activity(ctx, &tenant, 10)
-		if err != nil || len(revs) != 1 || revs[0].UpdatedBy != fmt.Sprintf("run:%d", i) {
+		if err != nil || len(revs) != 1 || revs[0].UpdatedBy != fmt.Sprintf("process:run-%d", i) {
 			t.Fatalf("tenant %d revisions %+v, %v", i, revs, err)
 		}
 	}
