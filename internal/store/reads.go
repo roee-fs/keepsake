@@ -426,11 +426,13 @@ ORDER BY c.path
 LIMIT $2
 `
 
+// notARE matches a director or leading options that make the rest a literal (***=, q), an ERE (e) or a BRE (b).
+var notARE = regexp.MustCompile(`^(\*\*\*=|(\*\*\*:)?\(\?[a-z]*[beq])`)
+
 // pgRegex rewrites the PCRE word boundaries \b and \B into Postgres's \y and \Y.
 // In Postgres \b is a backspace, so an untranslated \bword\b silently matches nothing.
 func pgRegex(pattern string) string {
-	// The ***= director makes the rest a literal string.
-	if strings.HasPrefix(pattern, "***=") {
+	if notARE.MatchString(pattern) {
 		return pattern
 	}
 	var b strings.Builder
@@ -478,7 +480,7 @@ func pgRegex(pattern string) string {
 	return b.String()
 }
 
-// Grep returns (path, snippet) matches of a POSIX regex, or a *GrepError for a bad or slow one.
+// Grep returns (path, snippet) matches of a Postgres regex, or a *GrepError for a bad or slow one.
 func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
 	if limit <= 0 {
 		return nil, nil

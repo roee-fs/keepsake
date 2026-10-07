@@ -9,11 +9,6 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ## Unreleased
 
-### Fixed
-
-- `grep` reads `\b` and `\B` as word boundaries. Postgres reads them as a
-  backspace, so `\bword\b` used to match nothing.
-
 ### Changed
 
 - Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.
@@ -22,6 +17,12 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   one-sentence edits per concept leave 37k dead postings instead of 527k.
 - `concept.search` is gone. A query that read it MUST call
   `okf.lexemes(title, description, body)` instead.
+
+### Fixed
+
+- `grep` reads `\b` as a word boundary and `\B` as a non-boundary, as PCRE does.
+  Postgres reads `\b` as a backspace and `\B` as a backslash, so `\bword\b`
+  used to match nothing.
 
 ## 0.5.0 — 2026-10-05
 

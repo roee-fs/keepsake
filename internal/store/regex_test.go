@@ -1,4 +1,4 @@
-// package store, not store_test: pgRegex is unexported, and this test needs no database.
+// package store, not store_test: pgRegex is unexported.
 package store
 
 import "testing"
@@ -15,6 +15,10 @@ func TestPgRegexTranslatesWordBoundariesOnly(t *testing.T) {
 		`[[:alpha:]]\b`: `[[:alpha:]]\y`,
 		`[a[.-.]z]\b`:   `[a[.-.]z]\y`,
 		`***=\b`:        `***=\b`,
+		`(?q)\b`:        `(?q)\b`,
+		`***:(?ie)\b`:   `***:(?ie)\b`,
+		`(?i)\b`:        `(?i)\y`,
+		`(?:a)\b`:       `(?:a)\y`,
 		`日本\b`:          `日本\y`,
 		`trailing\`:     `trailing\`,
 		`no boundaries`: `no boundaries`,

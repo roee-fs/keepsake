@@ -79,7 +79,7 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 - `search(query, limit, prefix?)`: cards ranked by BM25, each with the
   passages that match. Terms are OR-ed.
   Distinctive keywords find more than a question does.
-- `grep(pattern, limit)`: paths whose text matches a POSIX regex. Use it for
+- `grep(pattern, limit)`: paths whose text matches a Postgres regex. Use it for
   exact identifiers.
 - `read(path)`: the full concept, its version, links and backlinks.
 - `create(path, type, title?, description?, body?, frontmatter?)`: a new
