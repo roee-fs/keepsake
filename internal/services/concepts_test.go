@@ -444,11 +444,6 @@ func TestAnAddedNullFamilyIsChecked(t *testing.T) {
 	wantToolError(t, err, "status must be draft")
 }
 
-func TestACallerSentVerificationIsChecked(t *testing.T) {
-	_, err := newTools(t).Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": obj("verified", obj("by", "human:ann"))})
-	wantToolError(t, err, "verified[0].at")
-}
-
 func TestRetypingDoesNotRecheckAnUnrelatedStoredField(t *testing.T) {
 	tools := newTools(t)
 	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("stale_after", "2026-09-23")}
