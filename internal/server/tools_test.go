@@ -20,6 +20,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -78,9 +79,9 @@ func seed(t *testing.T, tools *Tools, path string, kw map[string]any) {
 	}
 }
 
-func read(t *testing.T, tools *Tools, path string) *concept {
+func read(t *testing.T, tools *Tools, path string, include ...string) *concept {
 	t.Helper()
-	c, err := tools.Read(ctx, path)
+	c, err := tools.Read(ctx, path, readOptions{Include: include})
 	if err != nil || c == nil {
 		t.Fatalf("read %s = %v, %v", path, c, err)
 	}
@@ -162,7 +163,7 @@ func TestUpdateKeepsTheFieldsItWasNotGiven(t *testing.T) {
 	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2"}); err != nil {
 		t.Fatal(err)
 	}
-	c := read(t, tools, "a/b")
+	c := read(t, tools, "a/b", "generated")
 	owner, _ := c.Frontmatter.Get("owner")
 	if c.Title != "Original" || c.Description != "D" || c.Body != "v2" || owner != "sec" || !slices.Equal(c.Frontmatter.Keys(), []string{"owner", "generated"}) {
 		t.Fatalf("got %+v", c)
@@ -180,7 +181,7 @@ func TestANullFrontmatterIsRefusedRatherThanErasing(t *testing.T) {
 	seed(t, tools, "a/b", map[string]any{"body": "v1", "frontmatter": obj("owner", "sec")})
 	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2", "frontmatter": nil})
 	wantToolError(t, err, "frontmatter must be an object")
-	if fm := read(t, tools, "a/b").Frontmatter; !slices.Equal(fm.Keys(), []string{"owner", "generated"}) {
+	if fm := read(t, tools, "a/b", "generated").Frontmatter; !slices.Equal(fm.Keys(), []string{"owner", "generated"}) {
 		t.Fatalf("frontmatter keys = %v", fm.Keys())
 	} else if owner, _ := fm.Get("owner"); owner != "sec" {
 		t.Fatalf("owner = %v", owner)
@@ -287,7 +288,7 @@ func TestSearchAndReadCarryTrustSignals(t *testing.T) {
 		if h.Signals != want[h.Path] {
 			t.Errorf("search %s: %+v", h.Path, h.Signals)
 		}
-		c, err := tools.Read(ctx, h.Path)
+		c, err := tools.Read(ctx, h.Path, readOptions{})
 		if err != nil || c == nil || c.Signals != want[h.Path] {
 			t.Errorf("read %s: %+v, %v", h.Path, c, err)
 		}
@@ -308,7 +309,7 @@ func TestSearchRanksADeprecatedConceptLikeAnyOther(t *testing.T) {
 
 func generated(t *testing.T, tools *Tools, path string) (by, at string) {
 	t.Helper()
-	g, _ := read(t, tools, path).Frontmatter.Get("generated")
+	g, _ := read(t, tools, path, "generated").Frontmatter.Get("generated")
 	m, _ := g.(*okf.Map)
 	if m == nil {
 		t.Fatalf("%s has no generated: %v", path, g)
@@ -361,7 +362,7 @@ func TestAnUpdateThatChangesNothingWritesNothing(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	ann, bob := NewTools(cs, tenant, "human:ann"), NewTools(cs, tenant, "human:bob")
 	seed(t, ann, "a/b", map[string]any{"body": "same", "frontmatter": obj("k", 1)})
-	before, err := ann.Read(ctx, "a/b")
+	before, err := ann.Read(ctx, "a/b", readOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,9 +405,164 @@ func TestGrepReportsAnUnusablePatternWithoutABody(t *testing.T) {
 }
 
 func TestReadOfAMissingPathIsNil(t *testing.T) {
-	c, err := newTools(t).Read(ctx, "nothing/here")
+	c, err := newTools(t).Read(ctx, "nothing/here", readOptions{})
 	if err != nil || c != nil {
 		t.Fatalf("got %v, %v", c, err)
+	}
+}
+
+func TestPagingThroughABodyRebuildsItExactly(t *testing.T) {
+	tools := newTools(t)
+	// Multi-byte and astral characters, so a byte-counted page would split one.
+	body := strings.Repeat("aé🙂\n", 10)
+	seed(t, tools, "a/b", map[string]any{"body": body})
+	var got strings.Builder
+	offset := 0
+	for range 20 {
+		c, err := tools.Read(ctx, "a/b", readOptions{Offset: offset, MaxChars: 7})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.BodyChars != 40 {
+			t.Fatalf("body_chars = %d, want 40", c.BodyChars)
+		}
+		got.WriteString(c.Body)
+		if c.NextOffset == nil {
+			break
+		}
+		offset = *c.NextOffset
+	}
+	if got.String() != body {
+		t.Fatalf("pages rebuild %q, want %q", got.String(), body)
+	}
+}
+
+func TestAnOffsetPastTheEndIsAnEmptyLastPage(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"body": "short"})
+	c, err := tools.Read(ctx, "a/b", readOptions{Offset: 99})
+	if err != nil || c.Body != "" || c.NextOffset != nil || c.BodyChars != 5 {
+		t.Fatalf("got %+v, %v", c, err)
+	}
+	if c := read(t, tools, "a/b"); c.Body != "short" || c.NextOffset != nil {
+		t.Fatalf("a whole body = %q, next_offset %v", c.Body, c.NextOffset)
+	}
+}
+
+func TestReadCapsLinksAndBacklinksAndCountsThemAll(t *testing.T) {
+	tools := newTools(t)
+	n := MaxLinks + 3
+	var body strings.Builder
+	var want []string
+	for i := range n {
+		p := fmt.Sprintf("t/%02d", n-i)
+		want = append(want, p)
+		fmt.Fprintf(&body, "[x](/%s.md)\n", p)
+		seed(t, tools, fmt.Sprintf("s/%02d", n-i), map[string]any{"body": "[hub](/hub.md)"})
+	}
+	seed(t, tools, "hub", map[string]any{"body": body.String()})
+	c := read(t, tools, "hub")
+	if !reflect.DeepEqual(c.Links, want[:MaxLinks]) || c.LinksCount != n {
+		t.Fatalf("links = %v (%d), want the first %d of %d in body order", c.Links, c.LinksCount, MaxLinks, n)
+	}
+	if len(c.Backlinks) != MaxLinks || c.Backlinks[0] != "s/01" || !slices.IsSorted(c.Backlinks) || c.BacklinksCount != n {
+		t.Fatalf("backlinks = %v (%d), want the first %d of %d by path", c.Backlinks, c.BacklinksCount, MaxLinks, n)
+	}
+}
+
+func TestProvenanceIsLeftOutUnlessRequested(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("rule_id", "R1", "sources", []any{"s3://x"})})
+	c := read(t, tools, "a/b")
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, []string{"rule_id"}) {
+		t.Fatalf("default frontmatter keys = %v", keys)
+	}
+	if c.GeneratedAt == "" {
+		t.Fatal("generated_at MUST still come from the stamp left out of frontmatter")
+	}
+	c, err := tools.Read(ctx, "a/b", readOptions{Include: []string{"sources", "generated"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, []string{"rule_id", "sources", "generated"}) {
+		t.Fatalf("included frontmatter keys = %v", keys)
+	}
+}
+
+func TestAnUpdateWithoutSourcesKeepsTheStoredSources(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("status", "draft", "sources", []any{"s3://x"})})
+	fm := read(t, tools, "a/b").Frontmatter
+	fm.Set("status", "stable")
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": fm}); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, tools, "a/b", "sources").Frontmatter
+	status, _ := got.Get("status")
+	sources, _ := got.Get("sources")
+	if status != "stable" || !reflect.DeepEqual(sources, []any{"s3://x"}) {
+		t.Fatalf("frontmatter = %v", got)
+	}
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": obj("sources", []any{})}); err != nil {
+		t.Fatal(err)
+	}
+	if sources, _ := read(t, tools, "a/b", "sources").Frontmatter.Get("sources"); !reflect.DeepEqual(sources, []any{}) {
+		t.Fatalf("sources = %v, want them replaced when given", sources)
+	}
+}
+
+func TestIdentifyingKeysSurviveAnOverBudgetFrontmatter(t *testing.T) {
+	tools := newTools(t)
+	big := strings.Repeat("x", FrontmatterBytes)
+	// jsonb orders keys shorter first, so "a" leads, "bb" overruns and "after_the_overrun" follows it.
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj(
+		"a", "kept", "bb", big, "rule_id", "R1", "rule_uids", []any{"u1"}, "alert_names", []any{"A"},
+		"status", "stable", "completeness", "partial", "after_the_overrun", "cut",
+	)})
+	c := read(t, tools, "a/b")
+	want := []string{"a", "status", "rule_id", "rule_uids", "alert_names", "completeness"}
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, want) || !c.FrontmatterTruncated {
+		t.Fatalf("keys = %v, truncated %v; want %v, true", keys, c.FrontmatterTruncated, want)
+	}
+	if id, _ := c.Frontmatter.Get("rule_id"); id != "R1" {
+		t.Fatalf("rule_id = %v", id)
+	}
+}
+
+func TestASmallFrontmatterIsNotMarkedTruncated(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("rule_id", "R1")})
+	if c := read(t, tools, "a/b"); c.FrontmatterTruncated {
+		t.Fatalf("truncated a frontmatter of %v", c.Frontmatter.Keys())
+	}
+}
+
+func TestTheFrontmatterBudgetCountsTheEscapedText(t *testing.T) {
+	tools := newTools(t)
+	// 2 KB as UTF-8, but 6 KB once the text content escapes each é.
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("note", strings.Repeat("é", 1000))})
+	if c := read(t, tools, "a/b"); !c.FrontmatterTruncated {
+		t.Fatalf("kept %v", c.Frontmatter.Keys())
+	}
+}
+
+func TestSnippetsStayWithinTheirCap(t *testing.T) {
+	tools := newTools(t)
+	// Four bytes a character, and no whitespace for either snippet to break at.
+	long := strings.Repeat("🙂", 300)
+	seed(t, tools, "a/b", map[string]any{"body": "dormant " + long + " dormant " + long})
+	hits, err := tools.Grep(ctx, "dormant", 5)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("grep = %v, %v", hits, err)
+	}
+	cards, err := tools.Search(ctx, "dormant", 5, nil)
+	if err != nil || len(cards) != 1 {
+		t.Fatalf("search = %v, %v", cards, err)
+	}
+	for _, s := range []string{hits[0].Snippet, cards[0].Snippet} {
+		if len(s) > SnippetBytes || !utf8.ValidString(s) || !strings.Contains(s, "dormant") {
+			t.Fatalf("snippet of %d bytes (cap %d): %q", len(s), SnippetBytes, s)
+		}
 	}
 }
 
@@ -497,11 +653,25 @@ func TestListReturnsPathsAndCountsByType(t *testing.T) {
 	seed(t, tools, "a/one", map[string]any{})
 	seed(t, tools, "a/two", map[string]any{"type": "Runbook"})
 	seed(t, tools, "b/three", map[string]any{})
-	got, err := tools.List(ctx, "a/")
+	got, err := tools.List(ctx, "a/", DefaultListLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/two"],"counts":{"Concept":1,"Runbook":1}}` {
+	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/two"],"counts":{"Concept":1,"Runbook":1},"total":2,"truncated":false}` {
+		t.Fatalf("got %s", b)
+	}
+}
+
+func TestACappedListingSaysSoAndCountsEverything(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/one", map[string]any{})
+	seed(t, tools, "a/two", map[string]any{"type": "Runbook"})
+	seed(t, tools, "a/three", map[string]any{})
+	got, err := tools.List(ctx, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/three"],"counts":{"Concept":2,"Runbook":1},"total":3,"truncated":true}` {
 		t.Fatalf("got %s", b)
 	}
 }
@@ -598,6 +768,65 @@ func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 	var fromText any
 	if err := json.Unmarshal([]byte(text(t, result)), &fromText); err != nil || !reflect.DeepEqual(fromText, result.StructuredContent) {
 		t.Fatalf("text %q disagrees with structured content", text(t, result))
+	}
+}
+
+func TestReadAndListTakeTheirBoundsOverTheProtocol(t *testing.T) {
+	session := connect(t, newTools(t))
+	call := func(name string, args map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	call("create", map[string]any{"path": "a/b", "type": "Concept", "body": "abcdef", "frontmatter": map[string]any{"sources": []any{"x"}}})
+	// Today's fields, with only new ones added.
+	whole := call("read", map[string]any{"path": "a/b"}).StructuredContent.(map[string]any)
+	for _, k := range []string{"path", "type", "title", "description", "body", "frontmatter", "version", "links", "backlinks",
+		"status", "stale", "trust", "generated_at", "body_chars", "next_offset", "frontmatter_truncated", "links_count", "backlinks_count"} {
+		if _, ok := whole[k]; !ok {
+			t.Errorf("read lacks %s: %v", k, whole)
+		}
+	}
+	if whole["body"] != "abcdef" || whole["next_offset"] != nil {
+		t.Fatalf("whole read = %v", whole)
+	}
+	page := call("read", map[string]any{"path": "a/b", "offset": 2, "max_chars": 3, "include": []any{"sources"}}).StructuredContent.(map[string]any)
+	if page["body"] != "cde" || page["next_offset"] != float64(5) || field(page["frontmatter"], "sources") == nil {
+		t.Fatalf("page = %v", page)
+	}
+	for _, args := range []map[string]any{
+		{"path": "a/b", "max_chars": MaxBodyChars + 1},
+		{"path": "a/b", "max_chars": 0},
+		{"path": "a/b", "offset": -1},
+		{"path": "a/b", "include": []any{"body"}},
+	} {
+		if res := call("read", args); !res.IsError {
+			t.Errorf("read %v = %s, want a tool error", args, text(t, res))
+		}
+	}
+	listed := call("list", map[string]any{"limit": 0}).StructuredContent.(map[string]any)
+	if listed["total"] != float64(1) || listed["truncated"] != true {
+		t.Fatalf("list = %v", listed)
+	}
+	if res := call("list", map[string]any{"limit": MaxListLimit + 1}); !res.IsError {
+		t.Fatalf("list over the maximum = %s", text(t, res))
+	}
+}
+
+func TestReadAndListDescribeHowToPage(t *testing.T) {
+	advertised := listTools(t)
+	for name, words := range map[string][]string{
+		"read": {"offset", "max_chars", "next_offset", "body_chars", "links_count", "include", "frontmatter_truncated"},
+		"list": {"limit", "total", "truncated"},
+	} {
+		for _, w := range words {
+			if !strings.Contains(advertised[name].Description, w) {
+				t.Errorf("%s description lacks %q", name, w)
+			}
+		}
 	}
 }
 
@@ -747,13 +976,15 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read", Arguments: map[string]any{"path": "a/b"}})
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read", Arguments: map[string]any{"path": "a/b", "include": []any{"generated"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := field(field(field(res.StructuredContent, "frontmatter"), "generated"), "at")
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
-		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "version": %v, "links": [], "backlinks": [], `+
+		`"body_chars": 11, "next_offset": null, ` +
+		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "frontmatter_truncated": false, "version": %v, `+
+			`"links": [], "links_count": 0, "backlinks": [], "backlinks_count": 0, `+
 			`"status": "stable", "stale": false, "trust": "unverified", "generated_at": %q}`,
 			at, field(created.StructuredContent, "version"), at)
 	if got := text(t, res); got != want {
@@ -873,7 +1104,7 @@ func TestAnUnacceptableAcceptIsPythons406(t *testing.T) {
 }
 
 // wireCase is one entry of testdata/python_wire.json: requests and the result the Python server
-// (2de90d2) answered them with, on an empty tenant.
+// (2de90d2) answered them with, on an empty tenant. The read and list bounds are keepsake's own.
 type wireCase struct {
 	Name    string
 	Headers map[string]string

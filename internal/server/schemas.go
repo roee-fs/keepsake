@@ -2,6 +2,8 @@
 package server
 
 import (
+	"strconv"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/roee-fs/keepsake/okf"
@@ -12,6 +14,30 @@ const MaxLimit = 200
 
 // MaxVersion is the largest integer a JSON number carries exactly, far below bigint's maximum.
 const MaxVersion = 1<<53 - 1
+
+// The bounds on what one read or list returns, so a single call cannot fill an agent's context.
+const (
+	// DefaultBodyChars is the window the platform's triage agent cut bodies to before keepsake did.
+	DefaultBodyChars = 40_000
+	// MaxBodyChars is about 25k tokens: a deliberate large page that still leaves room to work.
+	MaxBodyChars = 100_000
+	// MaxLinks is the link count the platform's triage agent capped each list to.
+	MaxLinks = 25
+	// FrontmatterBytes is the JSON size past which read drops trailing frontmatter keys.
+	FrontmatterBytes = 4096
+	// DefaultListLimit matches MaxLimit, about 8 KB of paths.
+	DefaultListLimit = MaxLimit
+	// MaxListLimit is about 40 KB of paths, the size of one default body page.
+	MaxListLimit = 1000
+	// SnippetBytes leaves search's two 25-word passages whole and stops one unbroken run.
+	SnippetBytes = 512
+)
+
+// provenanceKeys are left out of read unless included, since every import and write grows them.
+var provenanceKeys = []string{"sources", "generated"}
+
+// identifyingKeys survive the frontmatter budget, since they say which concept this is.
+var identifyingKeys = []string{"rule_id", "rule_uids", "alert_names", "status", "completeness"}
 
 // obj builds an ordered JSON object from key, value pairs.
 func obj(kv ...any) *okf.Map {
@@ -37,7 +63,7 @@ func results(item *okf.Map) *okf.Map {
 	return schema(obj("results", obj("type", "array", "items", item)), "results")
 }
 
-func limit() *okf.Map { return obj("type", "integer", "minimum", 0, "maximum", MaxLimit) }
+func limit(maximum int) *okf.Map { return obj("type", "integer", "minimum", 0, "maximum", maximum) }
 
 // conceptFields are the fields a write sets, in the order tools.py declares them.
 var conceptFields = []string{"type", "title", "description", "body", "frontmatter"}
@@ -72,8 +98,12 @@ func toolDefinitions() []*mcp.Tool {
 			Description: "List the concepts stored here, with a count of each type. Pass `prefix` " +
 				"to scope to one part of the tree (`detect/` lists everything beneath " +
 				"`detect`); omit it to see everything. This is the cheapest way to learn " +
-				"the shape of the knowledge base before searching it.",
-			InputSchema: schema(obj("prefix", str())),
+				"the shape of the knowledge base before searching it.\n\n" +
+				"Returns at most `limit` paths in path order (default " + strconv.Itoa(DefaultListLimit) +
+				", at most " + strconv.Itoa(MaxListLimit) + "). `total` is how many concepts are under " +
+				"the prefix, and `counts` covers all of them. `truncated` is true when `paths` holds " +
+				"fewer than `total`: narrow `prefix` to see the rest.",
+			InputSchema: schema(obj("prefix", str(), "limit", limit(MaxListLimit))),
 		},
 		{
 			Name: "search",
@@ -81,7 +111,8 @@ func toolDefinitions() []*mcp.Tool {
 				"type, title, description, score, snippet, status, stale, trust, generated_at — " +
 				"not full concepts; read a promising path with `read`.\n\n" +
 				"`snippet` holds the passages of the body that match the query, or is empty " +
-				"when only the title or description matched. Use it to choose which paths to read, " +
+				"when only the title or description matched. It is at most " + strconv.Itoa(SnippetBytes) +
+				" bytes. Use it to choose which paths to read, " +
 				"not to answer from: a snippet is cut from its context, so read a path before " +
 				"relying on it.\n\n" +
 				"`status` is draft, stable or deprecated. `stale` is true once the concept's " +
@@ -94,7 +125,7 @@ func toolDefinitions() []*mcp.Tool {
 				"it: add terms to cast wider, drop them to focus. `limit` is required — " +
 				"ask for the fewest results you can use. `prefix` confines the search to " +
 				"one part of the tree.",
-			InputSchema: schema(obj("query", str(), "limit", limit(), "prefix", str()), "query", "limit"),
+			InputSchema: schema(obj("query", str(), "limit", limit(MaxLimit), "prefix", str()), "query", "limit"),
 			OutputSchema: results(schema(
 				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
 					"snippet", str(), "status", str(), "stale", obj("type", "boolean"),
@@ -107,20 +138,38 @@ func toolDefinitions() []*mcp.Tool {
 			Name: "grep",
 			Description: "Search concept text with a Postgres regular expression, case-insensitively: " +
 				"`\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. " +
-				"Returns each matching path with a short snippet around the match. Use it " +
+				"Returns each matching path with a snippet of at most " + strconv.Itoa(SnippetBytes) +
+				" bytes around the match. Use it " +
 				"when you know the exact string or shape you want — an identifier, a " +
 				"config key, a URL — and `search`'s word matching is too loose. " +
 				"`limit` is required.",
-			InputSchema:  schema(obj("pattern", str(), "limit", limit()), "pattern", "limit"),
+			InputSchema:  schema(obj("pattern", str(), "limit", limit(MaxLimit)), "pattern", "limit"),
 			OutputSchema: results(schema(obj("path", str(), "snippet", str()), "path", "snippet")),
 		},
 		{
 			Name: "read",
-			Description: "Read one concept in full: body, frontmatter, the concepts it links to, " +
+			Description: "Read one concept: body, frontmatter, the concepts it links to, " +
 				"and the concepts that link back to it, with the same status, stale, trust " +
 				"and generated_at as `search`. Returns null if nothing is stored " +
-				"at that path. Take paths from `list`, `search` or `grep`.",
-			InputSchema: schema(obj("path", str()), "path"),
+				"at that path. Take paths from `list`, `search` or `grep`.\n\n" +
+				"The body comes in pages of at most `max_chars` characters (default " + strconv.Itoa(DefaultBodyChars) +
+				", at most " + strconv.Itoa(MaxBodyChars) + "), starting at character `offset` (default 0). " +
+				"`body_chars` is the full length. `next_offset` is where the next page starts, or null " +
+				"once the page reaches the end: pass it back as `offset` to read on. `update` replaces " +
+				"the body whole, so a `body` built from one page drops the rest.\n\n" +
+				"`links` (in body order) and `backlinks` (in path order) hold at most " + strconv.Itoa(MaxLinks) +
+				" each. `links_count` and `backlinks_count` are the full totals.\n\n" +
+				"`frontmatter` leaves out the provenance keys `sources` and `generated` unless you " +
+				"name them in `include`. If the rest is too large, only its leading keys come back and " +
+				"`frontmatter_truncated` is true; rule_id, rule_uids, alert_names, status and " +
+				"completeness are always kept. `update` replaces frontmatter whole, except that it keeps " +
+				"`sources` when you pass none, so leave `frontmatter` out of `update` if it was truncated.",
+			InputSchema: schema(obj(
+				"path", str(),
+				"offset", obj("type", "integer", "minimum", 0, "maximum", MaxVersion),
+				"max_chars", obj("type", "integer", "minimum", 1, "maximum", MaxBodyChars),
+				"include", obj("type", "array", "items", obj("type", "string", "enum", provenanceKeys)),
+			), "path"),
 		},
 		{
 			Name: "create",
