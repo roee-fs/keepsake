@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -62,9 +64,9 @@ func seed(t *testing.T, tools *ConceptService, path string, kw map[string]any) {
 	}
 }
 
-func read(t *testing.T, tools *ConceptService, path string) *Concept {
+func read(t *testing.T, tools *ConceptService, path string, include ...string) *Concept {
 	t.Helper()
-	c, err := tools.Read(ctx, path)
+	c, err := tools.Read(ctx, path, ReadOptions{Include: include})
 	if err != nil || c == nil {
 		t.Fatalf("read %s = %v, %v", path, c, err)
 	}
@@ -92,7 +94,7 @@ func TestReadToolsLogOneReadEach(t *testing.T) {
 	if _, err := tools.Grep(ctx, "b", 5); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tools.List(ctx, ""); err != nil {
+	if _, err := tools.List(ctx, "", 200); err != nil {
 		t.Fatal(err)
 	}
 	tenant := tools.Tenant()
@@ -165,7 +167,7 @@ func TestUpdateKeepsTheFieldsItWasNotGiven(t *testing.T) {
 	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2"}); err != nil {
 		t.Fatal(err)
 	}
-	c := read(t, tools, "a/b")
+	c := read(t, tools, "a/b", "generated")
 	owner, _ := c.Frontmatter.Get("owner")
 	if c.Title != "Original" || c.Description != "D" || c.Body != "v2" || owner != "sec" || !slices.Equal(c.Frontmatter.Keys(), []string{"owner", "generated"}) {
 		t.Fatalf("got %+v", c)
@@ -183,7 +185,7 @@ func TestANullFrontmatterIsRefusedRatherThanErasing(t *testing.T) {
 	seed(t, tools, "a/b", map[string]any{"body": "v1", "frontmatter": obj("owner", "sec")})
 	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "v2", "frontmatter": nil})
 	wantToolError(t, err, "frontmatter must be an object")
-	if fm := read(t, tools, "a/b").Frontmatter; !slices.Equal(fm.Keys(), []string{"owner", "generated"}) {
+	if fm := read(t, tools, "a/b", "generated").Frontmatter; !slices.Equal(fm.Keys(), []string{"owner", "generated"}) {
 		t.Fatalf("frontmatter keys = %v", fm.Keys())
 	} else if owner, _ := fm.Get("owner"); owner != "sec" {
 		t.Fatalf("owner = %v", owner)
@@ -290,7 +292,7 @@ func TestSearchAndReadCarryTrustSignals(t *testing.T) {
 		if h.Signals != want[h.Path] {
 			t.Errorf("search %s: %+v", h.Path, h.Signals)
 		}
-		c, err := tools.Read(ctx, h.Path)
+		c, err := tools.Read(ctx, h.Path, ReadOptions{})
 		if err != nil || c == nil || c.Signals != want[h.Path] {
 			t.Errorf("read %s: %+v, %v", h.Path, c, err)
 		}
@@ -311,7 +313,7 @@ func TestSearchRanksADeprecatedConceptLikeAnyOther(t *testing.T) {
 
 func generated(t *testing.T, tools *ConceptService, path string) (by, at string) {
 	t.Helper()
-	g, _ := read(t, tools, path).Frontmatter.Get("generated")
+	g, _ := read(t, tools, path, "generated").Frontmatter.Get("generated")
 	m, _ := g.(*okf.Map)
 	if m == nil {
 		t.Fatalf("%s has no generated: %v", path, g)
@@ -364,7 +366,7 @@ func TestAnUpdateThatChangesNothingWritesNothing(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	ann, bob := NewConceptService(cs, tenant, "human:ann"), NewConceptService(cs, tenant, "human:bob")
 	seed(t, ann, "a/b", map[string]any{"body": "same", "frontmatter": obj("k", 1)})
-	before, err := ann.Read(ctx, "a/b")
+	before, err := ann.Read(ctx, "a/b", ReadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,9 +470,133 @@ func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 }
 
 func TestReadOfAMissingPathIsNil(t *testing.T) {
-	c, err := newTools(t).Read(ctx, "nothing/here")
+	c, err := newTools(t).Read(ctx, "nothing/here", ReadOptions{})
 	if err != nil || c != nil {
 		t.Fatalf("got %v, %v", c, err)
+	}
+}
+
+func TestPagingThroughABodyRebuildsItExactly(t *testing.T) {
+	tools := newTools(t)
+	// Multi-byte and astral characters, so a byte-counted page would split one.
+	body := strings.Repeat("aé🙂\n", 10)
+	seed(t, tools, "a/b", map[string]any{"body": body})
+	var got strings.Builder
+	offset := 0
+	for range 20 {
+		c, err := tools.Read(ctx, "a/b", ReadOptions{Offset: offset, MaxChars: 7})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.BodyChars != 40 {
+			t.Fatalf("body_chars = %d, want 40", c.BodyChars)
+		}
+		got.WriteString(c.Body)
+		if c.NextOffset == nil {
+			break
+		}
+		offset = *c.NextOffset
+	}
+	if got.String() != body {
+		t.Fatalf("pages rebuild %q, want %q", got.String(), body)
+	}
+}
+
+func TestAnOffsetPastTheEndIsAnEmptyLastPage(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"body": "short"})
+	c, err := tools.Read(ctx, "a/b", ReadOptions{Offset: 99})
+	if err != nil || c.Body != "" || c.NextOffset != nil || c.BodyChars != 5 {
+		t.Fatalf("got %+v, %v", c, err)
+	}
+	if c := read(t, tools, "a/b"); c.Body != "short" || c.NextOffset != nil {
+		t.Fatalf("a whole body = %q, next_offset %v", c.Body, c.NextOffset)
+	}
+}
+
+func TestReadCapsLinksAndBacklinksAndCountsThemAll(t *testing.T) {
+	tools := newTools(t)
+	n := MaxLinks + 3
+	var body strings.Builder
+	var want []string
+	for i := range n {
+		p := fmt.Sprintf("t/%02d", n-i)
+		want = append(want, p)
+		fmt.Fprintf(&body, "[x](/%s.md)\n", p)
+		seed(t, tools, fmt.Sprintf("s/%02d", n-i), map[string]any{"body": "[hub](/hub.md)"})
+	}
+	seed(t, tools, "hub", map[string]any{"body": body.String()})
+	c := read(t, tools, "hub")
+	if !reflect.DeepEqual(c.Links, want[:MaxLinks]) || c.LinksCount != n {
+		t.Fatalf("links = %v (%d), want the first %d of %d in body order", c.Links, c.LinksCount, MaxLinks, n)
+	}
+	if len(c.Backlinks) != MaxLinks || c.Backlinks[0] != "s/01" || !slices.IsSorted(c.Backlinks) || c.BacklinksCount != n {
+		t.Fatalf("backlinks = %v (%d), want the first %d of %d by path", c.Backlinks, c.BacklinksCount, MaxLinks, n)
+	}
+}
+
+func TestProvenanceIsLeftOutUnlessRequested(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("rule_id", "R1", "sources", []any{obj("resource", "s3://x")})})
+	c := read(t, tools, "a/b")
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, []string{"rule_id"}) {
+		t.Fatalf("default frontmatter keys = %v", keys)
+	}
+	if c.GeneratedAt == "" {
+		t.Fatal("generated_at MUST still come from the stamp left out of frontmatter")
+	}
+	c, err := tools.Read(ctx, "a/b", ReadOptions{Include: []string{"sources", "generated"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, []string{"rule_id", "sources", "generated"}) {
+		t.Fatalf("included frontmatter keys = %v", keys)
+	}
+}
+
+func TestIdentifyingKeysSurviveAnOverBudgetFrontmatter(t *testing.T) {
+	tools := newTools(t)
+	big := strings.Repeat("x", FrontmatterBytes)
+	// jsonb orders keys shorter first, so "a" leads, "bb" overruns and "after_the_overrun" follows it.
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj(
+		"a", "kept", "bb", big, "rule_id", "R1", "rule_uids", []any{"u1"}, "alert_names", []any{"A"},
+		"status", "stable", "completeness", "partial", "after_the_overrun", "cut",
+	)})
+	c := read(t, tools, "a/b")
+	want := []string{"a", "status", "rule_id", "rule_uids", "alert_names", "completeness"}
+	if keys := c.Frontmatter.Keys(); !reflect.DeepEqual(keys, want) || !c.FrontmatterTruncated {
+		t.Fatalf("keys = %v, truncated %v; want %v, true", keys, c.FrontmatterTruncated, want)
+	}
+	if id, _ := c.Frontmatter.Get("rule_id"); id != "R1" {
+		t.Fatalf("rule_id = %v", id)
+	}
+}
+
+func TestASmallFrontmatterIsNotMarkedTruncated(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("rule_id", "R1")})
+	if c := read(t, tools, "a/b"); c.FrontmatterTruncated {
+		t.Fatalf("truncated a frontmatter of %v", c.Frontmatter.Keys())
+	}
+}
+
+func TestSnippetsStayWithinTheirCap(t *testing.T) {
+	tools := newTools(t)
+	// Four bytes a character, and no whitespace for either snippet to break at.
+	long := strings.Repeat("🙂", 300)
+	seed(t, tools, "a/b", map[string]any{"body": "dormant " + long + " dormant " + long})
+	hits, err := tools.Grep(ctx, "dormant", 5)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("grep = %v, %v", hits, err)
+	}
+	cards, err := tools.Search(ctx, "dormant", 5, nil)
+	if err != nil || len(cards) != 1 {
+		t.Fatalf("search = %v, %v", cards, err)
+	}
+	for _, s := range []string{hits[0].Snippet, cards[0].Snippet} {
+		if len(s) > SnippetBytes || !utf8.ValidString(s) || !strings.Contains(s, "dormant") {
+			t.Fatalf("snippet of %d bytes (cap %d): %q", len(s), SnippetBytes, s)
+		}
 	}
 }
 
@@ -561,11 +687,25 @@ func TestListReturnsPathsAndCountsByType(t *testing.T) {
 	seed(t, tools, "a/one", map[string]any{})
 	seed(t, tools, "a/two", map[string]any{"type": "Runbook"})
 	seed(t, tools, "b/three", map[string]any{})
-	got, err := tools.List(ctx, "a/")
+	got, err := tools.List(ctx, "a/", 200)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/two"],"counts":{"Concept":1,"Runbook":1}}` {
+	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/two"],"counts":{"Concept":1,"Runbook":1},"total":2,"truncated":false}` {
+		t.Fatalf("got %s", b)
+	}
+}
+
+func TestACappedListingSaysSoAndCountsEverything(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/one", map[string]any{})
+	seed(t, tools, "a/two", map[string]any{"type": "Runbook"})
+	seed(t, tools, "a/three", map[string]any{})
+	got, err := tools.List(ctx, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(got); string(b) != `{"paths":["a/one","a/three"],"counts":{"Concept":2,"Runbook":1},"total":3,"truncated":true}` {
 		t.Fatalf("got %s", b)
 	}
 }

@@ -74,14 +74,16 @@ throwaway kind cluster.
 
 A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 
-- `list(prefix?)`: every path under `prefix`, with a count per type. Call it
-  first to learn the shape of the tree.
+- `list(prefix?, limit?)`: up to `limit` paths under `prefix`, with a count per
+  type and the exact total. Call it first to learn the shape of the tree.
 - `search(query, limit, prefix?)`: cards ranked by BM25, each with the
   passages that match. Terms are OR-ed.
   Distinctive keywords find more than a question does.
 - `grep(pattern, limit)`: paths whose text matches a Postgres regex. Use it for
   exact identifiers.
-- `read(path)`: the full concept, its version, links and backlinks.
+- `read(path, offset?, max_chars?, include?)`: one page of the concept, its
+  version, links and backlinks. Pass `next_offset` back as `offset` for the
+  next page.
 - `create(path, type, title?, description?, body?, frontmatter?)`: a new
   concept. Fails if the path is taken.
 - `update(path, expected_version?, ...)`: changes the given fields.

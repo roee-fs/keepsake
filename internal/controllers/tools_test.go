@@ -170,6 +170,65 @@ func TestAToolCallRoundTripsOverTheProtocol(t *testing.T) {
 	}
 }
 
+func TestReadAndListTakeTheirBoundsOverTheProtocol(t *testing.T) {
+	session := connect(t, newTools(t))
+	call := func(name string, args map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	call("create", map[string]any{"path": "a/b", "type": "Concept", "body": "abcdef", "frontmatter": map[string]any{"sources": []any{map[string]any{"resource": "x"}}}})
+	// Today's fields, with only new ones added.
+	whole := call("read", map[string]any{"path": "a/b"}).StructuredContent.(map[string]any)
+	for _, k := range []string{"path", "type", "title", "description", "body", "frontmatter", "version", "links", "backlinks",
+		"status", "stale", "trust", "generated_at", "body_chars", "next_offset", "frontmatter_truncated", "links_count", "backlinks_count"} {
+		if _, ok := whole[k]; !ok {
+			t.Errorf("read lacks %s: %v", k, whole)
+		}
+	}
+	if whole["body"] != "abcdef" || whole["next_offset"] != nil {
+		t.Fatalf("whole read = %v", whole)
+	}
+	page := call("read", map[string]any{"path": "a/b", "offset": 2, "max_chars": 3, "include": []any{"sources"}}).StructuredContent.(map[string]any)
+	if page["body"] != "cde" || page["next_offset"] != float64(5) || field(page["frontmatter"], "sources") == nil {
+		t.Fatalf("page = %v", page)
+	}
+	for _, args := range []map[string]any{
+		{"path": "a/b", "max_chars": MaxBodyChars + 1},
+		{"path": "a/b", "max_chars": 0},
+		{"path": "a/b", "offset": -1},
+		{"path": "a/b", "include": []any{"body"}},
+	} {
+		if res := call("read", args); !res.IsError {
+			t.Errorf("read %v = %s, want a tool error", args, text(t, res))
+		}
+	}
+	listed := call("list", map[string]any{"limit": 0}).StructuredContent.(map[string]any)
+	if listed["total"] != float64(1) || listed["truncated"] != true {
+		t.Fatalf("list = %v", listed)
+	}
+	if res := call("list", map[string]any{"limit": MaxListLimit + 1}); !res.IsError {
+		t.Fatalf("list over the maximum = %s", text(t, res))
+	}
+}
+
+func TestReadAndListDescribeHowToPage(t *testing.T) {
+	advertised := listTools(t)
+	for name, words := range map[string][]string{
+		"read": {"offset", "max_chars", "next_offset", "body_chars", "links_count", "include", "frontmatter_truncated"},
+		"list": {"limit", "total", "truncated"},
+	} {
+		for _, w := range words {
+			if !strings.Contains(advertised[name].Description, w) {
+				t.Errorf("%s description lacks %q", name, w)
+			}
+		}
+	}
+}
+
 func TestARejectedCallIsAnErrorResultNotAProtocolError(t *testing.T) {
 	res, err := connect(t, newTools(t)).CallTool(ctx, &mcp.CallToolParams{Name: "create", Arguments: map[string]any{"path": "a/b", "type": ""}})
 	if err != nil {
@@ -316,13 +375,15 @@ func TestTextContentIsPythonJSONDumps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read", Arguments: map[string]any{"path": "a/b"}})
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "read", Arguments: map[string]any{"path": "a/b", "include": []any{"generated"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := field(field(field(res.StructuredContent, "frontmatter"), "generated"), "at")
 	want := `{"path": "a/b", "type": "Concept", "title": "", "description": "", "body": "caf\u00e9 \"<&>\"\n", ` +
-		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "version": %v, "links": [], "backlinks": [], `+
+		`"body_chars": 11, "next_offset": null, ` +
+		fmt.Sprintf(`"frontmatter": {"n": 1, "generated": {"at": %q, "by": "mcp"}}, "frontmatter_truncated": false, "version": %v, `+
+			`"links": [], "links_count": 0, "backlinks": [], "backlinks_count": 0, `+
 			`"status": "stable", "stale": false, "trust": "unverified", "generated_at": %q}`,
 			at, field(created.StructuredContent, "version"), at)
 	if got := text(t, res); got != want {
@@ -442,7 +503,7 @@ func TestAnUnacceptableAcceptIsPythons406(t *testing.T) {
 }
 
 // wireCase is one entry of testdata/python_wire.json: requests and the result the Python server
-// (2de90d2) answered them with, on an empty tenant.
+// (2de90d2) answered them with, on an empty tenant. The read and list bounds are keepsake's own.
 type wireCase struct {
 	Name    string
 	Headers map[string]string
