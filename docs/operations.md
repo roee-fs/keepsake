@@ -91,6 +91,12 @@ the concept `P/x/y`. Concepts outside `P/` are untouched. A file that fails
 `keepsake import`'s per-file checks refuses the whole upload with a 422 that
 lists every such file.
 
+An upload that adds, changes or deletes an OKF Attested Computation MUST also
+carry the `computations` scope: `keepsake token --scope "bundle computations"`.
+"Changes" means its type, body or contract fields. Without the scope the
+upload gets a 403 naming those paths, and nothing is written. Auth mode `none`
+grants both scopes.
+
 ```bash
 COPYFILE_DISABLE=1 tar -czf bundle.tgz -C ./bundle .
 curl -X PUT --data-binary @bundle.tgz \

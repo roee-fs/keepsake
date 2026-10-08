@@ -134,7 +134,8 @@ func toolDefinitions() []*mcp.Tool {
 				"Links are read out of `body`, never declared separately, so relate a " +
 				"concept by linking to it inline: `[dormant rules](/detect/dormant-" +
 				"rules.md)`. The server sets frontmatter `generated` and `verified` " +
-				"itself and ignores yours.",
+				"itself and ignores yours. An `Attested Computation`'s type, body and " +
+				"contract fields need the computations scope.",
 			InputSchema: schema(withConceptFields("path", str()), "path", "type"),
 		},
 		{

@@ -171,7 +171,7 @@ func nonEmpty(v any) bool {
 	return strings.TrimSpace(s) != ""
 }
 
-// isCount accepts the int the YAML parser yields and the json.Number a tool call yields.
+// isCount accepts the json.Number the YAML parser and a tool call yield, and a Go int.
 func isCount(v any) bool {
 	switch n := v.(type) {
 	case int:

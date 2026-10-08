@@ -18,8 +18,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
-const relateAttempts = 20
+// writeAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
+const writeAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
 type ToolError struct{ Msg string }
@@ -38,9 +38,10 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 }
 
 type Tools struct {
-	c     *store.ConceptStore
-	t     uuid.UUID
-	actor string
+	c            *store.ConceptStore
+	t            uuid.UUID
+	actor        string
+	computations bool
 }
 
 func NewTools(cs *store.ConceptStore, tenant uuid.UUID, actor string) *Tools {
@@ -157,7 +158,40 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 	if errs := append(okf.Validate(c), familyErrors(existing, c)...); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
+	if touched := computationChanges(existing, c); len(touched) > 0 && !t.computations {
+		if existing == nil {
+			return okf.Concept{}, toolErr("only a caller with the computations scope may create an Attested Computation")
+		}
+		return okf.Concept{}, toolErr("only a caller with the computations scope may change an Attested Computation's " +
+			strings.Join(touched, ", ") + "; you may change its title, description, tags, status and sources")
+	}
 	return c, nil
+}
+
+// computationChanges names what a write changes of an Attested Computation's type, body and contract.
+// existing is nil on a create.
+// ponytail: the whole body is guarded, not just its # Computation fence; parse the fence if agents need to edit prose.
+func computationChanges(existing *okf.Concept, c okf.Concept) []string {
+	was := existing != nil && existing.Type == okf.AttestedComputation
+	if !was && c.Type != okf.AttestedComputation {
+		return nil
+	}
+	if existing == nil {
+		return []string{"created"}
+	}
+	var touched []string
+	if existing.Type != c.Type {
+		touched = append(touched, "type")
+	}
+	if existing.Body != c.Body {
+		touched = append(touched, "body")
+	}
+	for _, k := range okf.ContractFields {
+		if changed(existing, c, k) {
+			touched = append(touched, k)
+		}
+	}
+	return touched
 }
 
 // serverOwned are the frontmatter keys the server writes itself, so no caller's value is checked.
@@ -224,7 +258,7 @@ func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (wri
 
 // Update returns a writeResult, or a conflictResult when expectedVersion is stale.
 func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		existing, err := t.c.Read(ctx, t.t, path)
 		if err != nil {
 			return nil, err
@@ -255,8 +289,12 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 		return nil, err
 	}
 	// The checks and the kept verified hold for the version read, so the write MUST NOT land on any other.
-	if expectedVersion == nil {
+	switch {
+	case expectedVersion == nil:
 		expectedVersion = &existing.Version
+	case *expectedVersion > existing.Version:
+		// Versions only grow, so a stale one can never match, but a later one names content nobody checked.
+		return conflictResult{true, existing.Version, existing.Body}, nil
 	}
 	return t.save(ctx, c, expectedVersion)
 }
@@ -286,19 +324,16 @@ func (t *Tools) Verify(ctx context.Context, path string, expectedVersion int) (a
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
 	}
+	// c copies what was read, so it MUST NOT land on any other version.
+	if existing.Version != expectedVersion {
+		return conflictResult{true, existing.Version, existing.Body}, nil
+	}
 	c := *existing
 	c.Frontmatter = okf.NewMap()
 	if existing.Frontmatter != nil {
 		c.Frontmatter = existing.Frontmatter.Clone()
 	}
-	var events []any
-	switch v := get(c.Frontmatter, "verified").(type) {
-	case nil:
-	case []any:
-		events = slices.Clone(v)
-	default:
-		events = []any{v}
-	}
+	events := slices.Clone(okf.Events(get(c.Frontmatter, "verified")))
 	c.Frontmatter.Set("verified", append(events, obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339))))
 	return t.save(ctx, c, &expectedVersion)
 }
@@ -353,7 +388,7 @@ func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
 			return nil, err

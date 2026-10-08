@@ -133,8 +133,14 @@ SELECT tenant_id, path, v, 'delete', jsonb_build_object('path', path, 'type', ty
   'description', description, 'body', body, 'frontmatter', frontmatter, 'links', to_jsonb(links), 'version', v), $3
 FROM (SELECT *, nextval('version_seq') AS v FROM d) d`
 
+// storedComputationsSQL reads what a replace could change of an Attested Computation:
+// those under $1, and the concepts at the paths in $3, where the bundle holds one.
+var storedComputationsSQL = "SELECT " + readCols + " FROM concept WHERE starts_with(path, $1) AND (type = $2 OR path = ANY($3::text[]))"
+
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
-func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (written, deleted int, err error) {
+// A non-nil guard sees the stored Attested Computations the replace could change, by path, and may refuse it.
+func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string,
+	guard func(stored map[string]okf.Concept) error) (written, deleted int, err error) {
 	under := prefix + "/"
 	keep := make([]string, len(bundle))
 	for i, c := range bundle {
@@ -152,6 +158,11 @@ func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, pre
 		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant.String()); err != nil {
 			return err
 		}
+		if guard != nil {
+			if err := guardComputations(ctx, tx, under, bundle, guard); err != nil {
+				return err
+			}
+		}
 		tag, err := tx.Exec(ctx, replaceSQL, under, keep, actor)
 		if err != nil {
 			return err
@@ -161,6 +172,36 @@ func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, pre
 		return err
 	})
 	return written, deleted, err
+}
+
+func guardComputations(ctx context.Context, tx pgx.Tx, under string, bundle []okf.Concept, guard func(map[string]okf.Concept) error) error {
+	// Every row under the prefix, so no tool write can retype one into an Attested Computation after the guard reads.
+	if _, err := tx.Exec(ctx, "SELECT FROM concept WHERE starts_with(path, $1) FOR UPDATE", under); err != nil {
+		return err
+	}
+	var paths []string
+	for _, c := range bundle {
+		if c.Type == okf.AttestedComputation {
+			paths = append(paths, c.Path)
+		}
+	}
+	rows, err := tx.Query(ctx, storedComputationsSQL, under, okf.AttestedComputation, paths)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	stored := map[string]okf.Concept{}
+	for rows.Next() {
+		c, err := scanConcept(rows)
+		if err != nil {
+			return err
+		}
+		stored[c.Path] = c
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return guard(stored)
 }
 
 func newWrites(bundle []okf.Concept) ([]write, error) {
