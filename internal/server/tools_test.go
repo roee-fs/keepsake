@@ -515,6 +515,15 @@ func TestASmallFrontmatterIsNotMarkedTruncated(t *testing.T) {
 	}
 }
 
+func TestTheFrontmatterBudgetCountsTheEscapedText(t *testing.T) {
+	tools := newTools(t)
+	// 2 KB as UTF-8, but 6 KB once the text content escapes each é.
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("note", strings.Repeat("é", 1000))})
+	if c := read(t, tools, "a/b"); !c.FrontmatterTruncated {
+		t.Fatalf("kept %v", c.Frontmatter.Keys())
+	}
+}
+
 func TestSnippetsStayWithinTheirCap(t *testing.T) {
 	tools := newTools(t)
 	// Four bytes a character, and no whitespace for either snippet to break at.

@@ -4,7 +4,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -294,10 +293,13 @@ func boundFrontmatter(fm *okf.Map, include []string) (*okf.Map, bool) {
 			continue
 		}
 		if !provenance && !slices.Contains(identifyingKeys, k) {
-			b, _ := json.Marshal(v)
-			// Quotes, colon and separator.
-			size := len(k) + len(b) + 4
-			if truncated = truncated || size > budget; truncated {
+			if truncated {
+				continue
+			}
+			text, _ := pyDumps(v)
+			// Quotes, ": " and ", ", as the text content spells them.
+			size := len(k) + len(text) + 6
+			if truncated = size > budget; truncated {
 				continue
 			}
 			budget -= size
