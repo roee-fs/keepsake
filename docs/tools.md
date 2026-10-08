@@ -60,9 +60,10 @@ first. `rule_id`, `rule_uids`, `alert_names`, `status` and `completeness` are
 always returned, as are the keys `include` names. Neither counts against the
 budget.
 
-`update` replaces `frontmatter` whole. A client MUST NOT pass back a
-frontmatter that was truncated or read without `include: ["sources"]`, or the
-keys it lacks are lost. Leaving `frontmatter` out of `update` keeps it as stored.
+`update` replaces `frontmatter` whole, except that a frontmatter without
+`sources` keeps the stored `sources`. Passing `sources: []` clears them. A
+client MUST NOT pass back a frontmatter that was truncated, or the keys it
+lacks are lost. Leaving `frontmatter` out of `update` keeps it as stored.
 
 `list` counts `total` and `counts` over every path under `prefix`. `truncated`
 is true when `paths` holds fewer than `total`.
