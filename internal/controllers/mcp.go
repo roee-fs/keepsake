@@ -7,14 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -250,7 +248,7 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 			slog.Error("tool call failed", "tool", name, "err", err)
 			return nil, err
 		}
-		text, err := pyDumps(result)
+		text, err := okf.PyDumps(result)
 		if err != nil {
 			return nil, err
 		}
@@ -385,82 +383,4 @@ func notAcceptable(w http.ResponseWriter, e era) {
 		return
 	}
 	rpcError(w, e, http.StatusNotAcceptable, nil, codeInvalidReq, "Not Acceptable: Client must accept application/json")
-}
-
-// pyDumps renders v as Python's default json.dumps: ", " and ": " separators, non-ASCII escaped.
-func pyDumps(v any) (string, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	var sb strings.Builder
-	var value func() error
-	value = func() error {
-		tok, err := d.Token()
-		if err != nil {
-			return err
-		}
-		switch tok := tok.(type) {
-		case json.Delim:
-			sb.WriteRune(rune(tok))
-			for i := 0; d.More(); i++ {
-				if i > 0 {
-					sb.WriteString(", ")
-				}
-				if tok == '{' {
-					k, _ := d.Token()
-					pyString(&sb, k.(string))
-					sb.WriteString(": ")
-				}
-				if err := value(); err != nil {
-					return err
-				}
-			}
-			end, _ := d.Token()
-			sb.WriteRune(rune(end.(json.Delim)))
-		case string:
-			pyString(&sb, tok)
-		case json.Number:
-			sb.WriteString(string(tok))
-		case bool:
-			fmt.Fprint(&sb, tok)
-		case nil:
-			sb.WriteString("null")
-		}
-		return nil
-	}
-	err = value()
-	return sb.String(), err
-}
-
-func pyString(sb *strings.Builder, s string) {
-	sb.WriteByte('"')
-	for _, r := range s {
-		switch {
-		case r == '"':
-			sb.WriteString(`\"`)
-		case r == '\\':
-			sb.WriteString(`\\`)
-		case r == '\n':
-			sb.WriteString(`\n`)
-		case r == '\r':
-			sb.WriteString(`\r`)
-		case r == '\t':
-			sb.WriteString(`\t`)
-		case r == '\b':
-			sb.WriteString(`\b`)
-		case r == '\f':
-			sb.WriteString(`\f`)
-		case r >= ' ' && r <= '~':
-			sb.WriteRune(r)
-		case r > 0xffff:
-			r1, r2 := utf16.EncodeRune(r)
-			fmt.Fprintf(sb, `\u%04x\u%04x`, r1, r2)
-		default:
-			fmt.Fprintf(sb, `\u%04x`, r)
-		}
-	}
-	sb.WriteByte('"')
 }

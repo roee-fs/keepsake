@@ -36,14 +36,18 @@ No read tool returns more than these bounds. They are constants in
 |---|---|---|
 | `read` body page, in characters | 40000 | 100000 (`max_chars`) |
 | `read` links and backlinks, each | 25 | 25 |
-| `read` frontmatter, in JSON bytes | 4096 | 4096 |
+| `read` frontmatter, in JSON bytes, besides the keys always returned | 4096 | 4096 |
 | `list` paths | 200 | 1000 (`limit`) |
 | `search` and `grep` snippet, in bytes | 512 | 512 |
 
 `read` pages the body by Unicode code point, so a page never splits a
 character. `body_chars` is the full length. `next_offset` is the `offset` of
 the next page, or `null` on the last one. An `offset` past the end returns an
-empty body, not an error.
+empty body, not an error. If `version` changes between pages, a write landed
+in between and the pages do not fit together: start again from `offset` 0.
+
+`update` replaces `body` whole. A client MUST read every page before it passes
+back an edited body, or the pages it skipped are lost.
 
 `links` keep body order and `backlinks` path order. `links_count` and
 `backlinks_count` are the exact totals.

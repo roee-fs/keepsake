@@ -38,8 +38,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   of `frontmatter` unless `include` names them. `generated_at` is unchanged. A
   client that passes `read`'s frontmatter back to `update` MUST read with
   `include: ["sources"]` first, or leave `frontmatter` out of `update`.
-- `list` returns at most 200 paths unless `limit` asks for more. A tenant with
-  more sees `truncated: true`.
+- **Breaking.** `read` returns at most 40000 characters of the body unless
+  `max_chars` asks for more. A client that passes a body back to `update` MUST
+  read every page first.
+- **Breaking.** `list` returns at most 200 paths unless `limit` asks for more.
+  A tenant with more sees `truncated: true`.
 - The console moves to its own port, `KEEPSAKE_CONSOLE_PORT`, 8001 by default.
   Port 8000 serves only `/mcp`, `PUT /bundle` and `/readyz`. Port-forward to
   8001 to reach the console. The chart adds a `console` port to the Service.

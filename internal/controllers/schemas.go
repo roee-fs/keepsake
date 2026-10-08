@@ -50,7 +50,7 @@ func results(item *okf.Map) *okf.Map {
 	return schema(obj("results", obj("type", "array", "items", item)), "results")
 }
 
-func limit() *okf.Map { return obj("type", "integer", "minimum", 0, "maximum", MaxLimit) }
+func limit(maximum int) *okf.Map { return obj("type", "integer", "minimum", 0, "maximum", maximum) }
 
 // conceptFields are the fields a write sets, in the order tools.py declares them.
 var conceptFields = []string{"type", "title", "description", "body", "frontmatter"}
@@ -90,7 +90,7 @@ func toolDefinitions() []*mcp.Tool {
 				", at most " + strconv.Itoa(MaxListLimit) + "). `total` is how many concepts are under " +
 				"the prefix, and `counts` covers all of them. `truncated` is true when `paths` holds " +
 				"fewer than `total`: narrow `prefix` to see the rest.",
-			InputSchema: schema(obj("prefix", str(), "limit", obj("type", "integer", "minimum", 0, "maximum", MaxListLimit))),
+			InputSchema: schema(obj("prefix", str(), "limit", limit(MaxListLimit))),
 		},
 		{
 			Name: "search",
@@ -112,7 +112,7 @@ func toolDefinitions() []*mcp.Tool {
 				"it: add terms to cast wider, drop them to focus. `limit` is required — " +
 				"ask for the fewest results you can use. `prefix` confines the search to " +
 				"one part of the tree.",
-			InputSchema: schema(obj("query", str(), "limit", limit(), "prefix", str()), "query", "limit"),
+			InputSchema: schema(obj("query", str(), "limit", limit(MaxLimit), "prefix", str()), "query", "limit"),
 			OutputSchema: results(schema(
 				obj("path", str(), "type", str(), "title", str(), "description", str(), "score", obj("type", "number"),
 					"snippet", str(), "status", str(), "stale", obj("type", "boolean"),
@@ -130,7 +130,7 @@ func toolDefinitions() []*mcp.Tool {
 				"when you know the exact string or shape you want — an identifier, a " +
 				"config key, a URL — and `search`'s word matching is too loose. " +
 				"`limit` is required.",
-			InputSchema:  schema(obj("pattern", str(), "limit", limit()), "pattern", "limit"),
+			InputSchema:  schema(obj("pattern", str(), "limit", limit(MaxLimit)), "pattern", "limit"),
 			OutputSchema: results(schema(obj("path", str(), "snippet", str()), "path", "snippet")),
 		},
 		{
@@ -142,7 +142,8 @@ func toolDefinitions() []*mcp.Tool {
 				"The body comes in pages of at most `max_chars` characters (default " + strconv.Itoa(services.DefaultBodyChars) +
 				", at most " + strconv.Itoa(MaxBodyChars) + "), starting at character `offset` (default 0). " +
 				"`body_chars` is the full length. `next_offset` is where the next page starts, or null " +
-				"once the page reaches the end: pass it back as `offset` to read on.\n\n" +
+				"once the page reaches the end: pass it back as `offset` to read on. `update` replaces " +
+				"the body whole, so a `body` built from one page drops the rest.\n\n" +
 				"`links` (in body order) and `backlinks` (in path order) hold at most " + strconv.Itoa(services.MaxLinks) +
 				" each. `links_count` and `backlinks_count` are the full totals.\n\n" +
 				"`frontmatter` leaves out the provenance keys `sources` and `generated` unless you " +
