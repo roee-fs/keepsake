@@ -128,7 +128,7 @@ def test_parse_counts_file_tools_over_the_exported_memory() -> None:
             ),
         ]
     )
-    assert [c["tool"] for c in calls] == ["grep", "read"]
+    assert [c["tool"] for c in calls] == ["grep", "read", "bash"]
     checks = grade.grade({"reads": ["runbooks/db-failover"]}, calls, "", {}, {})
     assert checks == {"used keepsake": True, "read runbooks/db-failover": True}
 
@@ -547,6 +547,15 @@ def test_a_rubric_judge_reply_scores_from_its_json() -> None:
     assert run.rubric_score('```json\n{"score": 0.5, "reason": "partly"}\n```') == 0.5
     assert run.rubric_score('{"score": 1.0}') == 1.0
     assert run.rubric_score("no json") == 0.0
+
+
+def test_the_bash_sandbox_reads_only_the_memory(tmp_path: Path) -> None:
+    box = run.sandbox(tmp_path)["sandbox"]
+    assert box["enabled"] and box["failIfUnavailable"] and not box["allowUnsandboxedCommands"]
+    # The operator's home holds the answer keys; "~/" would mean the trial's own HOME.
+    assert str(Path.home().resolve()) in box["filesystem"]["denyRead"]
+    assert box["filesystem"]["allowRead"] == [str(tmp_path.resolve())]
+    assert box["network"] == {"allowedDomains": [], "strictAllowlist": True}
 
 
 LOCOMO_SAMPLE = {

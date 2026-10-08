@@ -18,8 +18,8 @@ from statistics import mean
 from typing import Any
 
 TOOL_PREFIX = "mcp__keepsake__"
-# The files variant's built-in tools, named as the keepsake tools they stand in for.
-FILE_TOOLS = {"Read": "read", "Grep": "grep", "Glob": "list"}
+# The file variants' built-in tools, named as the keepsake tools they stand in for.
+FILE_TOOLS = {"Read": "read", "Grep": "grep", "Glob": "list", "Bash": "bash"}
 # The directory run.py exports a files trial's memory into.
 MEMORY_DIR = "memory"
 # Where a task's judge_template takes the agent's answer.

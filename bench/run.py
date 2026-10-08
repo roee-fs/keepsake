@@ -285,6 +285,24 @@ def wait_ready(url: str, server: subprocess.Popen[bytes]) -> None:
     raise TimeoutError(f"{url} never became ready")
 
 
+def sandbox(memory: Path) -> dict[str, Any]:
+    """Bash settings that read only the memory, write nothing and reach no network.
+    The home and temp directories hold the answer keys and other trials' memories."""
+    return {
+        "sandbox": {
+            "enabled": True,
+            "failIfUnavailable": True,
+            "allowUnsandboxedCommands": False,
+            "filesystem": {
+                # Absolute, since the agent's HOME is its trial directory, not the operator's.
+                "denyRead": [str(Path.home().resolve()), str(Path(tempfile.gettempdir()).resolve())],
+                "allowRead": [str(memory.resolve())],
+            },
+            "network": {"allowedDomains": [], "strictAllowlist": True},
+        }
+    }
+
+
 def rubric_score(reply: str) -> float:
     """The score in a rubric judge's JSON reply, or 0 when it gave none."""
     m = re.search(r'"score"\s*:\s*"?([0-9.]+)', reply)
@@ -381,12 +399,15 @@ def trial(
         proxy = None
         try:
             isolated, cwd, allowed = list(ISOLATED), work, ["mcp__keepsake"]
-            if variant.get("files"):
-                allowed += grade.FILE_TOOLS
+            if files := variant.get("files"):
+                files = files if isinstance(files, list) else ["Read", "Grep", "Glob"]
+                allowed += files
                 # A snapshot taken before the agent starts, so its own writes do not show up in it.
                 cwd = work / grade.MEMORY_DIR
                 sh(str(binary), "export", "--dsn", app, "--tenant", tenant, str(cwd))
-                isolated[isolated.index("--tools") + 1] = ",".join(grade.FILE_TOOLS)
+                isolated[isolated.index("--tools") + 1] = ",".join(files)
+                if "Bash" in files:
+                    isolated += ["--settings", json.dumps(sandbox(cwd))]
             proxy = Proxy(f"http://127.0.0.1:{port}/mcp", variant)
             config = work / "mcp.json"
             config.write_text(
