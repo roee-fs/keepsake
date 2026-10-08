@@ -304,11 +304,11 @@ def judged(
         ]
         return sum(scores) / len(scores)
     if "judge_template" in expect:
-        # LongMemEval's own prompt and parsing: the verdict is any "yes" in the reply.
+        # LongMemEval's parsing passes any "yes" in the reply; a task MAY name its own pattern.
         reply = judge(
             model, expect["judge_template"].replace(grade.RESPONSE, answer), cwd
         )
-        return "yes" in reply.lower()
+        return re.search(expect.get("judge_pass", "yes"), reply, re.IGNORECASE) is not None
     if "judge" in expect:
         prompt = (
             "Grade an answer against a rubric. Reply with exactly PASS or FAIL.\n\n"

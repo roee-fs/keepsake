@@ -74,6 +74,9 @@ update it.
   tasks for `run.py --tasks-file`: `tune.json` and `holdout.json`. Tune on the
   first. A result you report MUST come from the holdout, run once, after tuning
   is done.
+- `python3 bench/locomo.py` turns LoCoMo into 1540 agent tasks, graded by the
+  judge behind Mem0's J score. Its data is CC BY-NC 4.0, so it MUST NOT be
+  committed.
 
 ## The console
 

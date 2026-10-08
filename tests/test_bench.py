@@ -547,3 +547,57 @@ def test_a_rubric_judge_reply_scores_from_its_json() -> None:
     assert run.rubric_score('```json\n{"score": 0.5, "reason": "partly"}\n```') == 0.5
     assert run.rubric_score('{"score": 1.0}') == 1.0
     assert run.rubric_score("no json") == 0.0
+
+
+LOCOMO_SAMPLE = {
+    "sample_id": "conv-26",
+    "conversation": {
+        "speaker_a": "Caroline",
+        "speaker_b": "Melanie",
+        "session_2_date_time": "1:14 pm on 25 May, 2023",
+        "session_2": [{"speaker": "Melanie", "dia_id": "D2:1", "text": "We went camping."}],
+        "session_1_date_time": "1:56 pm on 8 May, 2023",
+        "session_1": [
+            {"speaker": "Caroline", "dia_id": "D1:1", "text": "Look!", "blip_caption": "a photo of a sunset"}
+        ],
+    },
+    "qa": [
+        {"question": "When did Melanie go camping?", "answer": 2023, "evidence": ["D2:1"], "category": 2},
+        {"question": "What did Caroline adopt?", "adversarial_answer": "a dog", "evidence": [], "category": 5},
+    ],
+}
+
+
+def test_a_locomo_conversation_becomes_one_dated_concept_per_session(tmp_path: Path) -> None:
+    import locomo
+
+    locomo.bundle(LOCOMO_SAMPLE, tmp_path)
+    first, second = sorted(tmp_path.rglob("*.md"))
+    assert first.relative_to(tmp_path).as_posix() == "session/01.md"
+    assert 'title: "Session 1, 1:56 pm on 8 May, 2023"' in first.read_text()
+    assert "Caroline: Look! [shares a photo of a sunset]" in first.read_text()
+    assert "Melanie: We went camping." in second.read_text()
+
+
+def test_a_locomo_task_carries_mem0s_judge_and_skips_adversarial_questions() -> None:
+    import locomo
+
+    [task] = locomo.tasks(LOCOMO_SAMPLE, locomo.OUT / "bundles" / "conv-26")
+    assert task["id"] == "conv-26-1"
+    assert task["kind"] == "temporal"
+    assert task["read_only"] is True
+    assert "Caroline and Melanie" in task["system_prompt"]
+    expect = task["expect"]
+    assert "Gold answer: 2023\nGenerated answer: " + grade.RESPONSE in expect["judge_template"]
+    assert expect["evidence"] == ["session/02"]
+
+
+def test_a_template_judge_passes_on_the_tasks_own_pattern(monkeypatch: pytest.MonkeyPatch) -> None:
+    import locomo
+
+    replies = iter(['{"label": "CORRECT"}', '{"label": "WRONG"}', "yes"])
+    monkeypatch.setattr(run, "judge", lambda *_: next(replies))
+    task = {"expect": {"judge_template": grade.RESPONSE, "judge_pass": locomo.PASS}}
+    assert run.judged("m", task, "a", Path()) is True
+    assert run.judged("m", task, "a", Path()) is False
+    assert run.judged("m", {"expect": {"judge_template": grade.RESPONSE}}, "a", Path()) is True
