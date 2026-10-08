@@ -162,8 +162,8 @@ func toolDefinitions() []*mcp.Tool {
 				"`frontmatter` leaves out the provenance keys `sources` and `generated` unless you " +
 				"name them in `include`. If the rest is too large, only its leading keys come back and " +
 				"`frontmatter_truncated` is true; rule_id, rule_uids, alert_names, status and " +
-				"completeness are always kept. `update` replaces frontmatter whole, so leave " +
-				"`frontmatter` out of `update` unless you read it with `include` and it was not truncated.",
+				"completeness are always kept. `update` replaces frontmatter whole, except that it keeps " +
+				"`sources` when you pass none, so leave `frontmatter` out of `update` if it was truncated.",
 			InputSchema: schema(obj(
 				"path", str(),
 				"offset", obj("type", "integer", "minimum", 0, "maximum", MaxVersion),

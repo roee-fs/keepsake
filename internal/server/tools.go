@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -186,6 +187,17 @@ func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, k
 	}
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
+	}
+	// read leaves sources out by default, so a frontmatter without them MUST NOT erase them.
+	if fm, ok := kw["frontmatter"].(*okf.Map); ok && fm != nil {
+		if _, given := fm.Get("sources"); !given {
+			if sources, stored := existing.Frontmatter.Get("sources"); stored {
+				fm = fm.Clone()
+				fm.Set("sources", sources)
+				kw = maps.Clone(kw)
+				kw["frontmatter"] = fm
+			}
+		}
 	}
 	return t.write(ctx, *existing, path, expectedVersion, kw, true)
 }

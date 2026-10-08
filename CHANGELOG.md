@@ -26,9 +26,10 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 ### Changed
 
 - **Breaking.** `read` leaves the provenance keys `sources` and `generated` out
-  of `frontmatter` unless `include` names them. `generated_at` is unchanged. A
-  client that passes `read`'s frontmatter back to `update` MUST read with
-  `include: ["sources"]` first, or leave `frontmatter` out of `update`.
+  of `frontmatter` unless `include` names them. `generated_at` is unchanged.
+- **Breaking.** `update` keeps the stored `sources` when the frontmatter it is
+  given has no `sources` key, so a frontmatter read without them does not erase
+  them. Passing `sources: []` clears them.
 - **Breaking.** `read` returns at most 40000 characters of the body unless
   `max_chars` asks for more. A client that passes a body back to `update` MUST
   read every page first.

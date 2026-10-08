@@ -489,6 +489,28 @@ func TestProvenanceIsLeftOutUnlessRequested(t *testing.T) {
 	}
 }
 
+func TestAnUpdateWithoutSourcesKeepsTheStoredSources(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("status", "draft", "sources", []any{"s3://x"})})
+	fm := read(t, tools, "a/b").Frontmatter
+	fm.Set("status", "stable")
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": fm}); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, tools, "a/b", "sources").Frontmatter
+	status, _ := got.Get("status")
+	sources, _ := got.Get("sources")
+	if status != "stable" || !reflect.DeepEqual(sources, []any{"s3://x"}) {
+		t.Fatalf("frontmatter = %v", got)
+	}
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": obj("sources", []any{})}); err != nil {
+		t.Fatal(err)
+	}
+	if sources, _ := read(t, tools, "a/b", "sources").Frontmatter.Get("sources"); !reflect.DeepEqual(sources, []any{}) {
+		t.Fatalf("sources = %v, want them replaced when given", sources)
+	}
+}
+
 func TestIdentifyingKeysSurviveAnOverBudgetFrontmatter(t *testing.T) {
 	tools := newTools(t)
 	big := strings.Repeat("x", FrontmatterBytes)
