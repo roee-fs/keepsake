@@ -137,9 +137,9 @@ func refuseComputationChanges(stored map[string]okf.Concept, upload []okf.Concep
 			paths = append(paths, c.Path)
 		}
 	}
-	for path, s := range stored {
-		if !uploaded[path] && len(computationChanges(&s, okf.Concept{})) > 0 {
-			paths = append(paths, path)
+	for p, s := range stored {
+		if !uploaded[p] && s.Type == okf.AttestedComputation {
+			paths = append(paths, p)
 		}
 	}
 	if len(paths) == 0 {

@@ -202,6 +202,7 @@ func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
 			return
 		case errors.As(err, &refused):
+			slog.Warn("refused /bundle request", "reason", "token lacks the "+computationsScope+" scope", "actor", c.actor)
 			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot change an Attested Computation: it needs the " +
 				computationsScope + " scope for " + strings.Join(refused.Paths, ", ")})
 			return
