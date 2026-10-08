@@ -4,10 +4,12 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -80,21 +82,36 @@ type grepHit struct {
 }
 
 type listing struct {
-	Paths  []string `json:"paths"`
-	Counts *okf.Map `json:"counts"`
+	Paths     []string `json:"paths"`
+	Counts    *okf.Map `json:"counts"`
+	Total     int      `json:"total"`
+	Truncated bool     `json:"truncated"`
 }
 
 type concept struct {
-	Path        string   `json:"path"`
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Body        string   `json:"body"`
-	Frontmatter *okf.Map `json:"frontmatter"`
-	Version     int      `json:"version"`
-	Links       []string `json:"links"`
-	Backlinks   []string `json:"backlinks"`
+	Path                 string   `json:"path"`
+	Type                 string   `json:"type"`
+	Title                string   `json:"title"`
+	Description          string   `json:"description"`
+	Body                 string   `json:"body"`
+	BodyChars            int      `json:"body_chars"`
+	NextOffset           *int     `json:"next_offset"`
+	Frontmatter          *okf.Map `json:"frontmatter"`
+	FrontmatterTruncated bool     `json:"frontmatter_truncated"`
+	Version              int      `json:"version"`
+	Links                []string `json:"links"`
+	LinksCount           int      `json:"links_count"`
+	Backlinks            []string `json:"backlinks"`
+	BacklinksCount       int      `json:"backlinks_count"`
 	okf.Signals
+}
+
+// readOptions bounds a Read. A zero MaxChars means DefaultBodyChars.
+type readOptions struct {
+	Offset   int
+	MaxChars int
+	// Include names the provenanceKeys to return.
+	Include []string
 }
 
 // textField reads an absent field as empty and refuses a non-string, so null cannot erase a field.
@@ -208,7 +225,7 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 	}
 	now := time.Now()
 	return convert(hits, func(h store.Hit) card {
-		return card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
+		return card{hitOf(h), clip(h.Snippet, SnippetBytes), okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
@@ -221,17 +238,20 @@ func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit,
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), nil
+	return convert(hits, func(h store.GrepHit) grepHit { return grepHit{h.Path, clip(h.Snippet, SnippetBytes)} }), nil
 }
 
-func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {
+// List returns the first limit paths under prefix, with counts and a total over all of them.
+func (t *Tools) List(ctx context.Context, prefix string, limit int) (listing, error) {
 	rows, err := t.c.List(ctx, t.t, prefix)
 	if err != nil {
 		return listing{}, err
 	}
-	out := listing{Paths: []string{}, Counts: okf.NewMap()}
-	for _, r := range rows {
-		out.Paths = append(out.Paths, r.Path)
+	out := listing{Paths: []string{}, Counts: okf.NewMap(), Total: len(rows), Truncated: len(rows) > limit}
+	for i, r := range rows {
+		if i < limit {
+			out.Paths = append(out.Paths, r.Path)
+		}
 		n, _ := out.Counts.Get(r.Type)
 		count, _ := n.(int)
 		out.Counts.Set(r.Type, count+1)
@@ -239,14 +259,63 @@ func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {
 	return out, nil
 }
 
-// Read returns nil when nothing is stored at path.
-func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
+// Read returns one page of the concept at path, or nil when nothing is stored there.
+func (t *Tools) Read(ctx context.Context, path string, o readOptions) (*concept, error) {
 	c, backlinks, err := t.c.ReadWithBacklinks(ctx, t.t, path)
 	if err != nil || c == nil {
 		return nil, err
 	}
-	return &concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks,
+	if o.MaxChars == 0 {
+		o.MaxChars = DefaultBodyChars
+	}
+	// Characters, not bytes, so a page never splits one.
+	body := []rune(c.Body)
+	start := min(o.Offset, len(body))
+	end := min(start+o.MaxChars, len(body))
+	var next *int
+	if end < len(body) {
+		next = &end
+	}
+	frontmatter, truncated := boundFrontmatter(c.Frontmatter, o.Include)
+	return &concept{c.Path, c.Type, c.Title, c.Description, string(body[start:end]), len(body), next,
+		frontmatter, truncated, c.Version, c.Links[:min(len(c.Links), MaxLinks)], len(c.Links),
+		backlinks[:min(len(backlinks), MaxLinks)], len(backlinks),
 		okf.Derive(c.Frontmatter, time.Now())}, nil
+}
+
+// boundFrontmatter drops provenance not in include, then every key from the first that overruns
+// FrontmatterBytes on. Identifying and included keys are always kept and never count.
+func boundFrontmatter(fm *okf.Map, include []string) (*okf.Map, bool) {
+	out, budget, truncated := okf.NewMap(), FrontmatterBytes, false
+	for _, k := range fm.Keys() {
+		v, _ := fm.Get(k)
+		provenance := slices.Contains(provenanceKeys, k)
+		if provenance && !slices.Contains(include, k) {
+			continue
+		}
+		if !provenance && !slices.Contains(identifyingKeys, k) {
+			b, _ := json.Marshal(v)
+			// Quotes, colon and separator.
+			size := len(k) + len(b) + 4
+			if truncated = truncated || size > budget; truncated {
+				continue
+			}
+			budget -= size
+		}
+		out.Set(k, v)
+	}
+	return out, truncated
+}
+
+// clip cuts s to at most n bytes without splitting a character.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.

@@ -82,11 +82,16 @@
     "result": {
       "tools": [
         {
-          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.",
+          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.\n\nReturns at most `limit` paths in path order (default 200, at most 1000). `total` is how many concepts are under the prefix, and `counts` covers all of them. `truncated` is true when `paths` holds fewer than `total`: narrow `prefix` to see the rest.",
           "inputSchema": {
             "properties": {
               "prefix": {
                 "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
               }
             },
             "required": [],
@@ -96,7 +101,7 @@
           "name": "list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, snippet, status, stale, trust, generated_at — not full concepts; read a promising path with `read`.\n\n`snippet` holds the passages of the body that match the query, or is empty when only the title or description matched. Use it to choose which paths to read, not to answer from: a snippet is cut from its context, so read a path before relying on it.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, snippet, status, stale, trust, generated_at — not full concepts; read a promising path with `read`.\n\n`snippet` holds the passages of the body that match the query, or is empty when only the title or description matched. It is at most 512 bytes. Use it to choose which paths to read, not to answer from: a snippet is cut from its context, so read a path before relying on it.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
           "inputSchema": {
             "properties": {
               "query": {
@@ -186,7 +191,7 @@
           }
         },
         {
-          "description": "Search concept text with a Postgres regular expression, case-insensitively: `\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and `search`'s word matching is too loose. `limit` is required.",
+          "description": "Search concept text with a Postgres regular expression, case-insensitively: `\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. Returns each matching path with a snippet of at most 512 bytes around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and `search`'s word matching is too loose. `limit` is required.",
           "inputSchema": {
             "properties": {
               "pattern": {
@@ -236,11 +241,31 @@
           }
         },
         {
-          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as `search`. Returns null if nothing is stored at that path. Take paths from `list`, `search` or `grep`.",
+          "description": "Read one concept: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as `search`. Returns null if nothing is stored at that path. Take paths from `list`, `search` or `grep`.\n\nThe body comes in pages of at most `max_chars` characters (default 40000, at most 100000), starting at character `offset` (default 0). `body_chars` is the full length. `next_offset` is where the next page starts, or null once the page reaches the end: pass it back as `offset` to read on.\n\n`links` (in body order) and `backlinks` (in path order) hold at most 25 each. `links_count` and `backlinks_count` are the full totals.\n\n`frontmatter` leaves out the provenance keys `sources` and `generated` unless you name them in `include`. If the rest is too large, only its leading keys come back and `frontmatter_truncated` is true; rule_id, rule_uids, alert_names, status and completeness are always kept. `update` replaces frontmatter whole, so leave `frontmatter` out of `update` unless you read it with `include` and it was not truncated.",
           "inputSchema": {
             "properties": {
               "path": {
                 "type": "string"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "sources",
+                    "generated"
+                  ]
+                }
               }
             },
             "required": [
@@ -361,14 +386,16 @@
     "result": {
       "content": [
         {
-          "text": "{\"paths\": [], \"counts\": {}}",
+          "text": "{\"paths\": [], \"counts\": {}, \"total\": 0, \"truncated\": false}",
           "type": "text"
         }
       ],
       "isError": false,
       "structuredContent": {
         "paths": [],
-        "counts": {}
+        "counts": {},
+        "total": 0,
+        "truncated": false
       }
     }
   },
@@ -413,6 +440,39 @@
         "name": "read",
         "arguments": {
           "path": "x"
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "null",
+          "type": "text"
+        }
+      ],
+      "isError": false
+    }
+  },
+  {
+    "name": "legacy tools/call read bounded",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2025-11-25"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "read",
+        "arguments": {
+          "path": "x",
+          "offset": 2,
+          "max_chars": 3,
+          "include": [
+            "sources"
+          ]
         }
       }
     },
@@ -490,12 +550,17 @@
       "resultType": "complete",
       "tools": [
         {
-          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.",
+          "description": "List the concepts stored here, with a count of each type. Pass `prefix` to scope to one part of the tree (`detect/` lists everything beneath `detect`); omit it to see everything. This is the cheapest way to learn the shape of the knowledge base before searching it.\n\nReturns at most `limit` paths in path order (default 200, at most 1000). `total` is how many concepts are under the prefix, and `counts` covers all of them. `truncated` is true when `paths` holds fewer than `total`: narrow `prefix` to see the rest.",
           "inputSchema": {
             "type": "object",
             "properties": {
               "prefix": {
                 "type": "string"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000
               }
             },
             "required": [],
@@ -504,7 +569,7 @@
           "name": "list"
         },
         {
-          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, snippet, status, stale, trust, generated_at — not full concepts; read a promising path with `read`.\n\n`snippet` holds the passages of the body that match the query, or is empty when only the title or description matched. Use it to choose which paths to read, not to answer from: a snippet is cut from its context, so read a path before relying on it.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
+          "description": "Find concepts by keyword, ranked by relevance. Returns cards — path, type, title, description, score, snippet, status, stale, trust, generated_at — not full concepts; read a promising path with `read`.\n\n`snippet` holds the passages of the body that match the query, or is empty when only the title or description matched. It is at most 512 bytes. Use it to choose which paths to read, not to answer from: a snippet is cut from its context, so read a path before relying on it.\n\n`status` is draft, stable or deprecated. `stale` is true once the concept's stale_after date has passed. `trust` is unverified, machine-confirmed or human-reviewed. `generated_at` is when the content last changed, or empty.\n\nMatching is lexical, not semantic: the index holds the words that were actually written, so distinctive keywords ('dormant', 'PKCE', 'indextime') find far more than a natural-language question does. Terms are OR-ed, so every extra term broadens the result instead of narrowing it: add terms to cast wider, drop them to focus. `limit` is required — ask for the fewest results you can use. `prefix` confines the search to one part of the tree.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -594,7 +659,7 @@
           }
         },
         {
-          "description": "Search concept text with a Postgres regular expression, case-insensitively: `\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. Returns each matching path with a short snippet around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and `search`'s word matching is too loose. `limit` is required.",
+          "description": "Search concept text with a Postgres regular expression, case-insensitively: `\\d`, `\\w` and `\\s` work, and `\\b` is a word boundary. Returns each matching path with a snippet of at most 512 bytes around the match. Use it when you know the exact string or shape you want — an identifier, a config key, a URL — and `search`'s word matching is too loose. `limit` is required.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -644,12 +709,32 @@
           }
         },
         {
-          "description": "Read one concept in full: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as `search`. Returns null if nothing is stored at that path. Take paths from `list`, `search` or `grep`.",
+          "description": "Read one concept: body, frontmatter, the concepts it links to, and the concepts that link back to it, with the same status, stale, trust and generated_at as `search`. Returns null if nothing is stored at that path. Take paths from `list`, `search` or `grep`.\n\nThe body comes in pages of at most `max_chars` characters (default 40000, at most 100000), starting at character `offset` (default 0). `body_chars` is the full length. `next_offset` is where the next page starts, or null once the page reaches the end: pass it back as `offset` to read on.\n\n`links` (in body order) and `backlinks` (in path order) hold at most 25 each. `links_count` and `backlinks_count` are the full totals.\n\n`frontmatter` leaves out the provenance keys `sources` and `generated` unless you name them in `include`. If the rest is too large, only its leading keys come back and `frontmatter_truncated` is true; rule_id, rule_uids, alert_names, status and completeness are always kept. `update` replaces frontmatter whole, so leave `frontmatter` out of `update` unless you read it with `include` and it was not truncated.",
           "inputSchema": {
             "type": "object",
             "properties": {
               "path": {
                 "type": "string"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100000
+              },
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "sources",
+                    "generated"
+                  ]
+                }
               }
             },
             "required": [
@@ -782,7 +867,7 @@
     "result": {
       "content": [
         {
-          "text": "{\"paths\": [], \"counts\": {}}",
+          "text": "{\"paths\": [], \"counts\": {}, \"total\": 0, \"truncated\": false}",
           "type": "text"
         }
       ],
@@ -790,7 +875,9 @@
       "resultType": "complete",
       "structuredContent": {
         "paths": [],
-        "counts": {}
+        "counts": {},
+        "total": 0,
+        "truncated": false
       },
       "_meta": {
         "io.modelcontextprotocol/serverInfo": {
@@ -856,6 +943,52 @@
         "name": "read",
         "arguments": {
           "path": "x"
+        },
+        "_meta": {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {}
+        }
+      }
+    },
+    "result": {
+      "content": [
+        {
+          "text": "null",
+          "type": "text"
+        }
+      ],
+      "isError": false,
+      "resultType": "complete",
+      "_meta": {
+        "io.modelcontextprotocol/serverInfo": {
+          "name": "keepsake",
+          "version": ""
+        }
+      }
+    }
+  },
+  {
+    "name": "modern tools/call read bounded",
+    "headers": {
+      "content-type": "application/json",
+      "accept": "application/json, text/event-stream",
+      "mcp-protocol-version": "2026-07-28",
+      "mcp-method": "tools/call",
+      "mcp-name": "read"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "tools/call",
+      "params": {
+        "name": "read",
+        "arguments": {
+          "path": "x",
+          "offset": 2,
+          "max_chars": 3,
+          "include": [
+            "sources"
+          ]
         },
         "_meta": {
           "io.modelcontextprotocol/protocolVersion": "2026-07-28",

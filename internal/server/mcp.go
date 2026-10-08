@@ -43,7 +43,11 @@ func number(v any) int {
 var handlers = map[string]handler{
 	"list": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		prefix, _ := a["prefix"].(string)
-		return t.List(ctx, prefix)
+		limit := DefaultListLimit
+		if v, ok := a["limit"]; ok {
+			limit = number(v)
+		}
+		return t.List(ctx, prefix, limit)
 	},
 	"search": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
 		var prefix *string
@@ -58,7 +62,18 @@ var handlers = map[string]handler{
 		return envelope{hits}, err
 	},
 	"read": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
-		c, err := t.Read(ctx, a["path"].(string))
+		var o readOptions
+		if v, ok := a["offset"]; ok {
+			o.Offset = number(v)
+		}
+		if v, ok := a["max_chars"]; ok {
+			o.MaxChars = number(v)
+		}
+		include, _ := a["include"].([]any)
+		for _, k := range include {
+			o.Include = append(o.Include, k.(string))
+		}
+		c, err := t.Read(ctx, a["path"].(string), o)
 		if c == nil {
 			return nil, err
 		}

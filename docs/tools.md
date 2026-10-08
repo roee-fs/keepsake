@@ -12,10 +12,10 @@ A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `list` | `prefix?` | Every path under `prefix`, with a count per type. The cheapest way to learn the shape of the tree. |
+| `list` | `prefix?`, `limit?` | Up to `limit` paths under `prefix`, with `counts` per type, the exact `total` and `truncated`. The cheapest way to learn the shape of the tree. |
 | `search` | `query`, `limit`, `prefix?` | Cards ranked by BM25 alone. Each card holds `path`, `type`, `title`, `description`, `score`, `snippet`, and the OKF signals `status`, `stale`, `trust`, `generated_at`, which label the card but do not change its rank. `snippet` holds the body's passages that match the query, or is empty when only the title or description matched. |
 | `grep` | `pattern`, `limit` | Paths whose title, description or body match a Postgres regex, case-insensitively, each with a snippet. `\b` is a word boundary. |
-| `read` | `path` | The full concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
+| `read` | `path`, `offset?`, `max_chars?`, `include?` | One page of the concept: body, frontmatter, version, outbound links, backlinks and the OKF signals. `null` if the path is empty. |
 | `create` | `path`, `type`, `title?`, `description?`, `body?`, `frontmatter?` | The new version. Fails if the path is taken. |
 | `update` | `path`, `expected_version?`, and any field `create` takes | The new version. Omitted fields keep their values. |
 | `relate` | `from_path`, `to_path` | Appends a link from one concept to the other. |
@@ -26,6 +26,42 @@ Matching is lexical. Terms are OR-ed, so each extra term broadens the result.
 Distinctive keywords find more than a question does. `limit` is required, at most
 200. Use `grep` for an exact identifier such as
 `purge_tenant`, because search splits it at the `_`.
+
+## Output bounds
+
+No read tool returns more than these bounds. They are constants in
+`internal/server/schemas.go` and are not configurable.
+
+| Bound | Default | Maximum |
+|---|---|---|
+| `read` body page, in characters | 40000 | 100000 (`max_chars`) |
+| `read` links and backlinks, each | 25 | 25 |
+| `read` frontmatter, in JSON bytes | 4096 | 4096 |
+| `list` paths | 200 | 1000 (`limit`) |
+| `search` and `grep` snippet, in bytes | 512 | 512 |
+
+`read` pages the body by Unicode code point, so a page never splits a
+character. `body_chars` is the full length. `next_offset` is the `offset` of
+the next page, or `null` on the last one. An `offset` past the end returns an
+empty body, not an error.
+
+`links` keep body order and `backlinks` path order. `links_count` and
+`backlinks_count` are the exact totals.
+
+`frontmatter` leaves out the provenance keys `sources` and `generated` unless
+`include` names them. If the remaining keys exceed the byte budget, `read`
+returns them up to the first key that does not fit, in stored order, and sets
+`frontmatter_truncated`. Stored order is Postgres `jsonb` order: shorter keys
+first. `rule_id`, `rule_uids`, `alert_names`, `status` and `completeness` are
+always returned, as are the keys `include` names. Neither counts against the
+budget.
+
+`update` replaces `frontmatter` whole. A client MUST NOT pass back a
+frontmatter that was truncated or read without `include: ["sources"]`, or the
+keys it lacks are lost. Leaving `frontmatter` out of `update` keeps it as stored.
+
+`list` counts `total` and `counts` over every path under `prefix`. `truncated`
+is true when `paths` holds fewer than `total`.
 
 ## Links
 

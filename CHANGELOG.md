@@ -7,6 +7,31 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Added
+
+- `read` takes `offset` and `max_chars` and returns one page of the body,
+  40000 characters by default and at most 100000. It counts characters, not
+  bytes. `body_chars` is the full length, and `next_offset` is the next page's
+  offset or `null` on the last one.
+- `read` returns at most 25 links and 25 backlinks, with the exact totals in
+  `links_count` and `backlinks_count`.
+- `read` cuts frontmatter past 4096 bytes and sets `frontmatter_truncated`.
+  `rule_id`, `rule_uids`, `alert_names`, `status` and `completeness` are never cut.
+- `list` takes `limit`, 200 by default and at most 1000. It reports the exact
+  `total` and `truncated`. `counts` still covers every path.
+- `search` and `grep` snippets are at most 512 bytes.
+
+### Changed
+
+- **Breaking.** `read` leaves the provenance keys `sources` and `generated` out
+  of `frontmatter` unless `include` names them. `generated_at` is unchanged. A
+  client that passes `read`'s frontmatter back to `update` MUST read with
+  `include: ["sources"]` first, or leave `frontmatter` out of `update`.
+- `list` returns at most 200 paths unless `limit` asks for more. A tenant with
+  more sees `truncated: true`.
+
 ## 0.6.0 — 2026-10-08
 
 ### Added
