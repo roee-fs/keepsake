@@ -270,10 +270,10 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // asTenant connects to one shared server as tenant, the way a platform run would.
-func asTenant(t *testing.T, url string, tenant uuid.UUID, sub string) *mcp.ClientSession {
+func asTenant(t *testing.T, url string, tenant uuid.UUID, sub string, scopes ...string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "keepsake-test"}, nil)
-	transport := &mcp.StreamableClientTransport{Endpoint: url, HTTPClient: &http.Client{Transport: bearer(issuer.Mint(tenant, sub, time.Minute))}}
+	transport := &mcp.StreamableClientTransport{Endpoint: url, HTTPClient: &http.Client{Transport: bearer(issuer.Mint(tenant, sub, time.Minute, scopes...))}}
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
 		t.Fatal(err)

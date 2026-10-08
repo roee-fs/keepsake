@@ -38,10 +38,9 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 }
 
 type Tools struct {
-	c     *store.ConceptStore
-	t     uuid.UUID
-	actor string
-	// computations is the caller's computations scope.
+	c            *store.ConceptStore
+	t            uuid.UUID
+	actor        string
 	computations bool
 }
 
@@ -160,6 +159,9 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
 	if touched := computationChanges(existing, c); len(touched) > 0 && !t.computations {
+		if existing == nil {
+			return okf.Concept{}, toolErr("only a caller with the computations scope may create an Attested Computation")
+		}
 		return okf.Concept{}, toolErr("only a caller with the computations scope may change an Attested Computation's " +
 			strings.Join(touched, ", ") + "; you may change its title, description, tags, status and sources")
 	}
@@ -167,18 +169,15 @@ func (t *Tools) concept(existing *okf.Concept, path string, kw map[string]any, s
 }
 
 // computationChanges names what a write changes of an Attested Computation's type, body and contract.
-// existing is nil on a create; c with an empty Path means the stored concept is deleted.
+// existing is nil on a create.
 // ponytail: the whole body is guarded, not just its # Computation fence; parse the fence if agents need to edit prose.
 func computationChanges(existing *okf.Concept, c okf.Concept) []string {
 	was := existing != nil && existing.Type == okf.AttestedComputation
 	if !was && c.Type != okf.AttestedComputation {
 		return nil
 	}
-	switch {
-	case existing == nil:
+	if existing == nil {
 		return []string{"created"}
-	case c.Path == "":
-		return []string{"deleted"}
 	}
 	var touched []string
 	if existing.Type != c.Type {
@@ -290,8 +289,12 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 		return nil, err
 	}
 	// The checks and the kept verified hold for the version read, so the write MUST NOT land on any other.
-	if expectedVersion == nil {
+	switch {
+	case expectedVersion == nil:
 		expectedVersion = &existing.Version
+	case *expectedVersion > existing.Version:
+		// Versions only grow, so a stale one can never match, but a later one names content nobody checked.
+		return conflictResult{true, existing.Version, existing.Body}, nil
 	}
 	return t.save(ctx, c, expectedVersion)
 }
@@ -320,6 +323,10 @@ func (t *Tools) Verify(ctx context.Context, path string, expectedVersion int) (a
 	}
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
+	}
+	// c copies what was read, so it MUST NOT land on any other version.
+	if existing.Version != expectedVersion {
+		return conflictResult{true, existing.Version, existing.Body}, nil
 	}
 	c := *existing
 	c.Frontmatter = okf.NewMap()

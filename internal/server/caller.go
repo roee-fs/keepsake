@@ -54,7 +54,7 @@ func withCaller(next http.Handler, c caller) http.Handler {
 
 // FixedTenant serves every request as tenant, for auth mode none.
 func FixedTenant(tenant uuid.UUID) func(http.Handler) http.Handler {
-	// Mode none already trusts every client that reaches it, so it keeps /bundle.
+	// Mode none already trusts every client that reaches it, so it grants every scope.
 	return func(next http.Handler) http.Handler {
 		return withCaller(next, caller{tenant: tenant, actor: actor, upload: true, computations: true, anonymous: true})
 	}

@@ -24,10 +24,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
 ### Changed
 
-- Only a token with the new `computations` scope may create an OKF Attested
-  Computation or change its type, body or contract fields, as OKF §10.3
-  requires. Mint it with `keepsake token --scope computations`. A `PUT /bundle`
-  that adds, changes or deletes one needs it beside `bundle`, or gets a 403.
+- Breaking: only a token with the new `computations` scope MAY create an OKF
+  Attested Computation or change its type, body or contract fields, as OKF
+  §10.3 requires. Mint it with `keepsake token --scope computations`. A
+  `PUT /bundle` that adds, changes or deletes one MUST carry it beside `bundle`,
+  or gets a 403.
 - Breaking: a JWT whose `sub` is not an OKF §7 actor now gets a 401. The README
   already said it MUST be one. Mint `process:<id>` instead of a bare id.
 - Migration 0007 shrinks the `posting` table and cuts how much an edit bloats it.

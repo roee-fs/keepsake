@@ -660,6 +660,20 @@ func TestWithoutTheScopeAConceptCannotBecomeAComputation(t *testing.T) {
 	wantToolError(t, err, "computations scope")
 }
 
+func TestTheTokensComputationsScopeReachesTheTools(t *testing.T) {
+	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(NewTools(conceptStore(t), uuid.Nil, actor))))
+	t.Cleanup(srv.Close)
+	tenant := uuid.New()
+	create := &mcp.CallToolParams{Name: "create", Arguments: map[string]any{
+		"path": "c/rev", "type": okf.AttestedComputation, "frontmatter": map[string]any{"runtime": "bigquery"}}}
+	for _, scopes := range [][]string{nil, {computationsScope}} {
+		res, err := asTenant(t, srv.URL, tenant, "human:ann", scopes...).CallTool(ctx, create)
+		if err != nil || res.IsError != (scopes == nil) {
+			t.Errorf("scopes %v: %+v, %v", scopes, res, err)
+		}
+	}
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here")
 	if err != nil || c != nil {
