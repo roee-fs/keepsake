@@ -3,8 +3,8 @@
 Imports each corpus as one concept per document, sends every test query through the
 search MCP tool, and reports nDCG@10 and recall beside BEIR's published BM25.
 
-    python3 bench/beir.py                  # scifact and nfcorpus
-    python3 bench/beir.py --datasets scifact
+    python3 bench/datasets/beir.py                  # scifact and nfcorpus
+    python3 bench/datasets/beir.py --datasets scifact
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import json
 import math
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -22,6 +23,7 @@ import uuid
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import run
 
 DATA = run.BENCH / "data"

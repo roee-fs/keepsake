@@ -8,7 +8,7 @@ Claude, so compare variants with each other, not with Mem0's numbers.
 
 The questions only read, so run.py loads each conversation once and shares it across them.
 
-    python3 bench/locomo.py --conversations 2
+    python3 bench/datasets/locomo.py --conversations 2
     python3 bench/run.py --tasks-file bench/data/locomo/agent/locomo.json --variants baseline --trials 1
 """
 
@@ -18,11 +18,13 @@ import argparse
 import json
 import re
 import shutil
+import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import grade
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 DATA = HERE / "data" / "locomo"
 OUT = DATA / "agent"
 URL = "https://raw.githubusercontent.com/snap-research/locomo/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/data/locomo10.json"

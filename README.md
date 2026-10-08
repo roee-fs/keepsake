@@ -211,7 +211,7 @@ Then log in at `http://localhost:8000` with that password.
 | `charts/keepsake` | The Helm chart. |
 | `demo/` | The two-agent demo and its bundle. |
 | `e2e/`, `tests/` | The kind end-to-end suite and the chart and release checks. |
-| `bench/` | Search quality and speed benchmarks. |
+| `bench/` | Agent and search benchmarks. [`bench/README.md`](bench/README.md) lists them. |
 
 ## Documentation
 

@@ -6,7 +6,7 @@ words with the article holding the answer. A question's bundle is its passage pl
 that passage links to; articles link each other wherever both are bundled. `linked` keeps those
 links and `none` keeps only their text.
 
-    python3 bench/iirc.py --per-kind 15
+    python3 bench/datasets/iirc.py --per-kind 15
     python3 bench/run.py --tasks-file bench/data/iirc/agent/iirc-linked.json --variants main cards
 """
 
@@ -18,15 +18,17 @@ import json
 import random
 import re
 import shutil
+import sys
 import tarfile
 import urllib.parse
 from collections import defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import grade
 from musique import HOST, slug
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 DATA = HERE / "data" / "iirc"
 OUT = DATA / "agent"
 QUESTIONS = ("https://iirc-dataset.s3.us-west-2.amazonaws.com/iirc_train_dev.tgz",

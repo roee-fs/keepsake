@@ -472,7 +472,7 @@ def trial(
                 exported = work / "export"
                 sh(str(binary), "export", "--dsn", app, "--tenant", tenant, str(exported))
                 after = grade.load_bundle(exported)
-                # Kept, so a memory an agent wrote can seed a later task (bench/longmemeval.py --curated).
+                # Kept, so a memory an agent wrote can seed a later task (bench/datasets/longmemeval.py --curated).
                 kept = out / "exports" / f"{variant['name']}.{task['id']}.{n}"
                 shutil.copytree(exported, kept)
                 row["export"] = str(kept)
@@ -535,7 +535,7 @@ def main() -> None:
         "--tasks-file",
         type=Path,
         default=BENCH / "tasks.json",
-        help="Default: bench/tasks.json. bench/longmemeval.py writes others.",
+        help="Default: bench/tasks.json. bench/datasets/longmemeval.py writes others.",
     )
     p.add_argument(
         "--tasks", nargs="*", help="Task ids in the tasks file. Default: all."

@@ -57,10 +57,11 @@ tool rather than a gate.
 ## Benchmarks
 
 `bench/` measures search and agent behaviour. Each script needs Docker and Go.
+`bench/README.md` lists the supported benchmarks.
 `bench/benchmarks.pdf` holds the current results. A change that moves them MUST
 update it.
 
-- `python3 bench/beir.py` scores `search` on BEIR over MCP. A change to
+- `python3 bench/datasets/beir.py` scores `search` on BEIR over MCP. A change to
   search MUST keep SciFact nDCG@10 at 0.66 or above.
 - `python3 bench/rankers.py` compares rankers on BEIR and LongMemEval, and times
   them in a 100k-concept tenant.
@@ -70,11 +71,11 @@ update it.
   `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`
   set. A `/login` session puts your email in the agent's context. A change to a tool description or to
   the server instructions MUST come with its result.
-- `python3 bench/longmemeval.py` turns LongMemEval into two sets of 56 agent
+- `python3 bench/datasets/longmemeval.py` turns LongMemEval into two sets of 56 agent
   tasks for `run.py --tasks-file`: `tune.json` and `holdout.json`. Tune on the
   first. A result you report MUST come from the holdout, run once, after tuning
   is done.
-- `python3 bench/locomo.py` turns LoCoMo into 1540 agent tasks, graded by the
+- `python3 bench/datasets/locomo.py` turns LoCoMo into 1540 agent tasks, graded by the
   judge behind Mem0's J score. Its data is CC BY-NC 4.0, so it MUST NOT be
   committed.
 

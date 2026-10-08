@@ -22,11 +22,13 @@ import json
 import re
 import statistics
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "datasets"))
 import beir
 import grade
 import longmemeval

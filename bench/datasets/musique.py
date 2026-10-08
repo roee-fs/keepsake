@@ -5,7 +5,7 @@ paragraphs, whose distractors were retrieved by BM25 with the bridge entity mask
 question gets three bundles of the same 20 concepts: `none` has no links, `mention` links each
 paragraph's mentions of other paragraphs' titles, and `chain` links only each hop to the next.
 
-    python3 bench/musique.py --per-hop 10
+    python3 bench/datasets/musique.py --per-hop 10
     python3 bench/run.py --tasks-file bench/data/musique/agent/musique-mention.json --variants main cards
 """
 
@@ -16,13 +16,15 @@ import json
 import random
 import re
 import shutil
+import sys
 from collections import defaultdict
 from itertools import pairwise
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import grade
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 DATA = HERE / "data" / "musique"
 OUT = DATA / "agent"
 URL = "https://huggingface.co/datasets/bdsaglam/musique/resolve/main/musique_ans_v1.0_dev.jsonl"

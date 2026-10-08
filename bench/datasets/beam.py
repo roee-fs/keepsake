@@ -8,9 +8,9 @@ by Kendall tau, which needs an alignment model; here it gets the rubric judge li
 
 The questions only read, so run.py loads each conversation once and shares it across them.
 
-    python3 bench/beam.py --split 1M --conversations 5
+    python3 bench/datasets/beam.py --split 1M --conversations 5
     python3 bench/run.py --tasks-file bench/data/beam/agent/1M.json --variants baseline --trials 1
-    python3 bench/beam.py --report bench/results/<run>
+    python3 bench/datasets/beam.py --report bench/results/<run>
 """
 
 from __future__ import annotations
@@ -19,14 +19,16 @@ import argparse
 import ast
 import json
 import shutil
+import sys
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from statistics import mean
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import grade
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 DATA = HERE / "data" / "beam"
 OUT = DATA / "agent"
 # The dataset revisions these converters were written against.

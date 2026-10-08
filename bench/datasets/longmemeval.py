@@ -4,26 +4,26 @@ Each question becomes one task with its own bundle: the ~50 chat sessions of its
 one concept per session. Grading uses LongMemEval's own judge prompts. Tune variants on
 tune.json and report them on holdout.json, which a tuning loop MUST NOT read.
 
-    python3 bench/longmemeval.py --per-bucket 8
+    python3 bench/datasets/longmemeval.py --per-bucket 8
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune.json --trials 1
 
 To report a score comparable with published ones, run all 500 questions. The full set
 includes the holdout questions, so it MUST NOT feed a tuning loop either:
 
-    python3 bench/longmemeval.py --full
+    python3 bench/datasets/longmemeval.py --full
     python3 bench/run.py --tasks-file bench/data/longmemeval/full/all.json --variants baseline --trials 1
 
 LongMemEval_M asks the same questions over ~500 sessions each. Its bundles are ~5 MB, so sample it:
 
-    python3 bench/longmemeval.py --m-sample 100
+    python3 bench/datasets/longmemeval.py --m-sample 100
     python3 bench/run.py --tasks-file bench/data/longmemeval/m/sample.json --variants baseline --trials 1
 
 To test curated memory, have an agent consolidate each memory, then answer against both:
 
-    python3 bench/longmemeval.py --curate single-session-preference multi-session
+    python3 bench/datasets/longmemeval.py --curate single-session-preference multi-session
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/curate-tune.json --variants baseline --trials 1 \
         --timeout 1200 --budget 4
-    python3 bench/longmemeval.py --curated bench/results/<that run>
+    python3 bench/datasets/longmemeval.py --curated bench/results/<that run>
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-raw.json --variants baseline
     python3 bench/run.py --tasks-file bench/data/longmemeval/agent/tune-curated.json --variants baseline
 """
@@ -37,14 +37,16 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import grade
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 DATA = HERE / "data" / "longmemeval"
 SOURCE = DATA / "longmemeval_s_cleaned.json"
 URL = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json"
