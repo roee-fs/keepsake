@@ -296,7 +296,8 @@ def sandbox(memory: Path) -> dict[str, Any]:
             "filesystem": {
                 # Absolute, since the agent's HOME is its trial directory, not the operator's.
                 "denyRead": [str(Path.home().resolve()), str(Path(tempfile.gettempdir()).resolve())],
-                "allowRead": [str(memory.resolve())],
+                # The trial's HOME is memory's parent; its .claude holds tool output too long to show.
+                "allowRead": [str(memory.resolve()), str((memory.parent / ".claude").resolve())],
             },
             "network": {"allowedDomains": [], "strictAllowlist": True},
         }

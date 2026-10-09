@@ -550,12 +550,25 @@ def test_a_rubric_judge_reply_scores_from_its_json() -> None:
     assert run.rubric_score("no json") == 0.0
 
 
+def test_a_file_a_bash_command_names_counts_as_read() -> None:
+    calls = [{"tool": "bash", "input": {"command": "cat ./runbooks/db-failover.md teams/x.md | head"}}]
+    checks = grade.grade({"reads": ["runbooks/db-failover", "teams/x", "teams/y"]}, calls, "", {}, {})
+    assert checks == {
+        "used keepsake": True,
+        "read runbooks/db-failover": True,
+        "read teams/x": True,
+        "read teams/y": False,
+    }
+
+
 def test_the_bash_sandbox_reads_only_the_memory(tmp_path: Path) -> None:
-    box = run.sandbox(tmp_path)["sandbox"]
+    memory = tmp_path / "memory"
+    box = run.sandbox(memory)["sandbox"]
     assert box["enabled"] and box["failIfUnavailable"] and not box["allowUnsandboxedCommands"]
     # The operator's home holds the answer keys; "~/" would mean the trial's own HOME.
     assert str(Path.home().resolve()) in box["filesystem"]["denyRead"]
-    assert box["filesystem"]["allowRead"] == [str(tmp_path.resolve())]
+    # The trial's own .claude holds the tool output Claude Code saves when it is too long to show.
+    assert box["filesystem"]["allowRead"] == [str(memory.resolve()), str((tmp_path / ".claude").resolve())]
     assert box["network"] == {"allowedDomains": [], "strictAllowlist": True}
 
 

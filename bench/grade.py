@@ -140,6 +140,13 @@ def grade(
         for c in calls
         if c["tool"] == "read"
     }
+    # A shell reads by naming the file, as in `cat runbooks/db-failover.md`.
+    read |= {
+        concept_path(p.removeprefix("./"))
+        for c in calls
+        if c["tool"] == "bash"
+        for p in re.findall(r"[\w./-]+\.md", c["input"].get("command", ""))
+    }
     for path in expect.get("reads", []) if require_tools else []:
         checks[f"read {path}"] = path in read
     for rx in expect.get("answer", []):
