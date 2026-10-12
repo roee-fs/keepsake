@@ -11,17 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/okf"
 )
-
-// ErrNotFound reports that a path has no concept in the tenant's scope.
-var ErrNotFound = errors.New("not found")
-
-// NotFoundError is ErrNotFound for one path.
-type NotFoundError struct{ Path string }
-
-func (e *NotFoundError) Error() string        { return ErrNotFound.Error() + ": " + e.Path }
-func (e *NotFoundError) Is(target error) bool { return target == ErrNotFound }
 
 // fields is every column a write sets, in Concept's order; every write statement derives from it.
 var fields = []string{"type", "title", "description", "body", "frontmatter", "links"}
@@ -64,12 +56,6 @@ var updateSQL = func() string {
 		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3, n+4, n+2, "update", n+5, n+1)
 }()
 
-// Conflict is a stale expected version. CurrentBody is the text to merge against.
-type Conflict struct {
-	CurrentVersion int
-	CurrentBody    string
-}
-
 // ConceptStore writes concepts and appends their revision log.
 type ConceptStore struct {
 	s *Store
@@ -95,7 +81,7 @@ func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Conc
 
 // Update writes a concept, as a compare-and-swap unless expected is nil. err is a *NotFoundError for a missing path.
 // A concept that differs only in its authorship stamp writes nothing and returns the current version.
-func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *Conflict, err error) {
+func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *models.Conflict, err error) {
 	w, err := newWrite(c)
 	if err != nil {
 		return 0, nil, err
@@ -261,18 +247,18 @@ func scanInsert(row pgx.Row) (version int, created bool, err error) {
 }
 
 // overwrite scans updateSQL's row. When there is none it tells a stale version from a missing path or no change.
-func overwrite(ctx context.Context, tx pgx.Tx, row pgx.Row, w write) (version int, conflict *Conflict, err error) {
+func overwrite(ctx context.Context, tx pgx.Tx, row pgx.Row, w write) (version int, conflict *models.Conflict, err error) {
 	err = row.Scan(&version)
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return version, nil, err
 	}
 	c := w.c
-	var current Conflict
+	var current models.Conflict
 	var same bool
 	err = tx.QueryRow(ctx, "SELECT version, body, "+sameContent(1)+" FROM concept WHERE path=$1",
 		c.Path, c.Type, c.Title, c.Description, c.Body, w.fm, links(c.Links)).Scan(&current.CurrentVersion, &current.CurrentBody, &same)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil, &NotFoundError{c.Path}
+		return 0, nil, &models.NotFoundError{Path: c.Path}
 	}
 	if err != nil {
 		return 0, nil, err

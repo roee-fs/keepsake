@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const mod = "github.com/roee-fs/keepsake/"
+
 func deps(t *testing.T, pkg string) []string {
 	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	if err != nil {
@@ -14,18 +16,23 @@ func deps(t *testing.T, pkg string) []string {
 	return strings.Fields(string(out))
 }
 
-func TestOkfIsALeaf(t *testing.T) {
-	for _, d := range deps(t, "./okf") {
-		if strings.HasPrefix(d, "github.com/roee-fs/keepsake/internal") {
-			t.Errorf("okf imports %s: okf MUST be publishable without keepsake", d)
-		}
-	}
+// layers maps each package to the module packages it MUST NOT reach, even transitively.
+var layers = map[string][]string{
+	// okf MUST be publishable without keepsake.
+	"./okf":             {"internal/"},
+	"./internal/models": {"internal/"},
+	"./internal/store":  {"internal/server", "internal/cli"},
 }
 
-func TestStoreDoesNotImportTheServer(t *testing.T) {
-	for _, d := range deps(t, "./internal/store") {
-		if strings.Contains(d, "/internal/server") || strings.Contains(d, "/internal/cli") {
-			t.Errorf("internal/store imports %s", d)
+func TestLayering(t *testing.T) {
+	for pkg, banned := range layers {
+		self := mod + strings.TrimPrefix(pkg, "./")
+		for _, d := range deps(t, pkg) {
+			for _, b := range banned {
+				if d != self && strings.HasPrefix(d, mod+b) {
+					t.Errorf("%s imports %s", pkg, d)
+				}
+			}
 		}
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
@@ -533,7 +534,7 @@ func TestListReturnsChildrenOfPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []store.PathType{{Path: "detect/dormant", Type: "Concept"}}; !reflect.DeepEqual(got, want) {
+	if want := []models.PathType{{Path: "detect/dormant", Type: "Concept"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("List(detect/) = %+v, want %+v", got, want)
 	}
 	all, err := cs.List(ctx, tenant, "")
@@ -551,7 +552,7 @@ func TestListTreatsThePrefixLiterally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []store.PathType{{Path: "a_b/one", Type: "Concept"}}; !reflect.DeepEqual(got, want) {
+	if want := []models.PathType{{Path: "a_b/one", Type: "Concept"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("List(a_b/) = %+v, want %+v", got, want)
 	}
 }
@@ -754,7 +755,7 @@ func TestActivityOfEveryTenantTagsEachRowWithItsOwnTenant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var samePath []store.Revision
+	var samePath []models.Revision
 	for _, r := range revs {
 		if r.Path == path {
 			samePath = append(samePath, r)
@@ -989,7 +990,7 @@ func TestGraphReturnsPathTypeTitleAndLinksOrderedByPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []store.GraphRow{
+	want := []models.GraphRow{
 		{Path: "a", Type: "Concept", Title: "A", Links: []string{"b"}},
 		{Path: "b", Type: "Concept", Title: "B", Links: []string{"a", "ghost"}},
 	}

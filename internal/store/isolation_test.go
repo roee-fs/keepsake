@@ -24,6 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/roee-fs/keepsake/internal/migrate"
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
@@ -201,7 +202,7 @@ func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	if c, err := cs.Read(ctx, A, "x/y"); err != nil || c == nil {
 		t.Fatalf("Read(A, x/y) = %v, %v, want a concept", c, err)
 	}
-	if list, err := cs.List(ctx, A, "x/"); err != nil || !reflect.DeepEqual(list, []store.PathType{{Path: "x/y", Type: "Concept"}}) {
+	if list, err := cs.List(ctx, A, "x/"); err != nil || !reflect.DeepEqual(list, []models.PathType{{Path: "x/y", Type: "Concept"}}) {
 		t.Fatalf("List(A, x/) = %v, %v", list, err)
 	}
 	if hits, err := cs.Search(ctx, A, "secret", 10, nil); err != nil || len(hits) != 1 || hits[0].Path != "x/y" {

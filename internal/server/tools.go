@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -63,7 +64,7 @@ type searchHit struct {
 	Score       float64 `json:"score"`
 }
 
-func hitOf(h store.Hit) searchHit {
+func hitOf(h models.Hit) searchHit {
 	return searchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
 }
 
@@ -188,7 +189,7 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 		return nil, err
 	}
 	version, conflict, err := t.c.Update(ctx, t.t, c, t.actor, expectedVersion)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, models.ErrNotFound) {
 		// Another tenant's row gets the same answer, or this would be a cross-tenant existence oracle.
 		return nil, toolErr("no concept at " + path)
 	}
@@ -207,21 +208,21 @@ func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *str
 		return nil, err
 	}
 	now := time.Now()
-	return convert(hits, func(h store.Hit) card {
+	return convert(hits, func(h models.Hit) card {
 		return card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
 func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit, error) {
 	hits, err := t.c.Grep(ctx, t.t, pattern, limit)
-	var ge *store.GrepError
+	var ge *models.GrepError
 	if errors.As(err, &ge) {
 		return nil, toolErr(ge.Msg)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), nil
+	return convert(hits, func(h models.GrepHit) grepHit { return grepHit(h) }), nil
 }
 
 func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {

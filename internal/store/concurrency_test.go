@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -89,8 +90,8 @@ func TestUpdateOfAnAbsentPathReturnsErrNotFoundWithoutDisclosingBody(t *testing.
 	tenant := uuid.New()
 
 	_, _, err := cs.Update(ctx, tenant, okf.Concept{Path: "a/missing", Type: "Concept", Body: "secret"}, "agent", nil)
-	if !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("err = %v, want it to wrap ErrNotFound", err)
+	if !errors.Is(err, models.ErrNotFound) {
+		t.Fatalf("err = %v, want it to wrap models.ErrNotFound", err)
 	}
 	if !strings.Contains(err.Error(), "a/missing") {
 		t.Fatalf("err = %v, want it to name the path", err)
@@ -115,7 +116,7 @@ func TestExactlyOneOfTwoConcurrentUpdatesWins(t *testing.T) {
 
 	type result struct {
 		version  int
-		conflict *store.Conflict
+		conflict *models.Conflict
 		err      error
 	}
 	var ready sync.WaitGroup

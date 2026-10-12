@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -27,87 +27,6 @@ var grepTimeoutMS = 5000
 
 // word finds runs of letters, digits and underscore: Python's \w under re.UNICODE.
 var word = regexp.MustCompile(`[\p{L}\p{N}_]+`)
-
-// Revision is one entry in the revision log, without the snapshot that holds the body.
-type Revision struct {
-	Path      string
-	Version   int
-	Op        string
-	UpdatedBy string
-	CreatedAt time.Time
-	TenantID  uuid.UUID
-	// Day is CreatedAt's date in the session TimeZone, as psycopg dates it.
-	Day string
-}
-
-// Hit is one search result. It carries no body, only the passages that match: the agent
-// searches, chooses, then reads.
-type Hit struct {
-	Path        string
-	Type        string
-	Title       string
-	Description string
-	Score       float64
-	Frontmatter *okf.Map
-	Snippet     string
-}
-
-// Summary is a concept table row: Hit without the score or frontmatter, plus TenantID for mixed-tenant pages.
-type Summary struct {
-	Path        string
-	Type        string
-	Title       string
-	Description string
-	Version     int
-	UpdatedAt   time.Time
-	TenantID    uuid.UUID
-}
-
-// Totals are corpus-wide counts for the admin console's summary tiles.
-type Totals struct {
-	Concepts  int
-	ByType    map[string]int
-	Revisions int
-	Links     int
-	Orphans   int
-}
-
-// PathType is one (path, type) pair, as List returns.
-type PathType struct {
-	Path string
-	Type string
-}
-
-// DailyWrite is one day's concept-revision count.
-type DailyWrite struct {
-	Date  time.Time
-	Count int
-}
-
-// TenantCount is one tenant and how many concepts it holds.
-type TenantCount struct {
-	TenantID uuid.UUID
-	Count    int
-}
-
-// GrepHit is one (path, snippet) match; the snippet is a card, not a body.
-type GrepHit struct {
-	Path    string
-	Snippet string
-}
-
-// GraphRow is (path, type, title, links) for one concept, as Graph returns.
-type GraphRow struct {
-	Path  string
-	Type  string
-	Title string
-	Links []string
-}
-
-// GrepError reports a pattern Postgres could not compile or match within the timeout.
-type GrepError struct{ Msg string }
-
-func (e *GrepError) Error() string { return e.Msg }
 
 func tsquery(query string) string {
 	return strings.Join(word.FindAllString(query, -1), " | ")
@@ -190,12 +109,12 @@ func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID,
 }
 
 // Detail is ReadWithBacklinks plus the path's newest limit revisions, in one transaction.
-func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []Revision, err error) {
+func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []models.Revision, err error) {
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		if c, backlinks, err = readWithBacklinks(ctx, tx, path); err != nil || c == nil {
 			return err
 		}
-		history, err = collect[Revision](ctx, tx,
+		history, err = collect[models.Revision](ctx, tx,
 			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
 				"to_char(created_at, 'YYYY-MM-DD') "+
 				"FROM concept_revision WHERE path = $1 "+
@@ -220,13 +139,13 @@ func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Co
 }
 
 // Revisions returns the newest limit revisions, newest first.
-func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]Revision, error) {
+func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]models.Revision, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	var out []Revision
+	var out []models.Revision
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[Revision](ctx, tx,
+		out, err = collect[models.Revision](ctx, tx,
 			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id,"+
 				" to_char(created_at, 'YYYY-MM-DD')"+
 				" FROM concept_revision"+
@@ -238,10 +157,10 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 }
 
 // List returns (path, type) for every concept under prefix. An empty prefix is all.
-func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]PathType, error) {
-	var out []PathType
+func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]models.PathType, error) {
+	var out []models.PathType
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[PathType](ctx, tx,
+		out, err = collect[models.PathType](ctx, tx,
 			"SELECT path, type FROM concept WHERE starts_with(path, $1) ORDER BY path", prefix)
 		return err
 	})
@@ -249,11 +168,11 @@ func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix strin
 }
 
 // Page returns a path-ordered page under prefix and its total, in one transaction. nil mixes tenants.
-func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []Summary, total int, err error) {
+func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []models.Summary, total int, err error) {
 	err = cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		if limit > 0 {
 			// Two tenants can share a path, so tenant_id breaks the tie.
-			if page, err = collect[Summary](ctx, tx,
+			if page, err = collect[models.Summary](ctx, tx,
 				fmt.Sprintf("SELECT %s FROM concept WHERE starts_with(path, $1) "+
 					"ORDER BY path, tenant_id LIMIT $2 OFFSET $3", summaryCols),
 				prefix, limit, offset); err != nil {
@@ -266,8 +185,8 @@ func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix stri
 }
 
 // Totals are corpus-wide counts for the admin console's summary tiles.
-func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, error) {
-	var t Totals
+func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (models.Totals, error) {
+	var t models.Totals
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		byType, err := collect[struct {
 			Type         string
@@ -299,14 +218,14 @@ func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (Totals, 
 }
 
 // Activity returns the most recent limit revisions, newest first, unlike Revisions.
-func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit int) ([]Revision, error) {
+func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit int) ([]models.Revision, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	var out []Revision
+	var out []models.Revision
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// tenant_id makes the order total: two tenants can share a path, version and timestamp.
-		out, err = collect[Revision](ctx, tx,
+		out, err = collect[models.Revision](ctx, tx,
 			"SELECT path, version, op, coalesce(updated_by, ''), created_at, tenant_id, "+
 				"to_char(created_at, 'YYYY-MM-DD') "+
 				"FROM concept_revision "+
@@ -318,14 +237,14 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 }
 
 // DailyWrites returns revision counts for the last days days, oldest first and zero-filled.
-func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]DailyWrite, error) {
+func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]models.DailyWrite, error) {
 	if days <= 0 {
 		return nil, nil
 	}
-	var out []DailyWrite
+	var out []models.DailyWrite
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// The lower bound repeats the series start so the created_at index can serve the join.
-		out, err = collect[DailyWrite](ctx, tx,
+		out, err = collect[models.DailyWrite](ctx, tx,
 			"SELECT d::date, count(r.created_at) FROM generate_series("+
 				"  (current_date - ($1::int - 1))::timestamp, current_date::timestamp,"+
 				"  interval '1 day'"+
@@ -339,10 +258,10 @@ func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days
 }
 
 // Tenants lists every tenant with concepts, and how many; there is no other tenant registry.
-func (cs *ConceptStore) Tenants(ctx context.Context) ([]TenantCount, error) {
-	var out []TenantCount
+func (cs *ConceptStore) Tenants(ctx context.Context) ([]models.TenantCount, error) {
+	var out []models.TenantCount
 	err := cs.s.AdminScope(ctx, func(tx pgx.Tx) (err error) {
-		out, err = collect[TenantCount](ctx, tx,
+		out, err = collect[models.TenantCount](ctx, tx,
 			"SELECT tenant_id, count(*) FROM concept GROUP BY tenant_id ORDER BY tenant_id")
 		return err
 	})
@@ -399,14 +318,14 @@ FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
 
 // Search returns ranked cards, never bodies. An empty result beats an invalid query.
-func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]Hit, error) {
+func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]models.Hit, error) {
 	terms := tsquery(query)
 	if terms == "" || limit <= 0 {
 		return nil, nil
 	}
-	var out []Hit
+	var out []models.Hit
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
+		out, err = collect[models.Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
 		return err
 	})
 	return out, err
@@ -481,17 +400,17 @@ func pgRegex(pattern string) string {
 }
 
 // Grep returns (path, snippet) matches of a Postgres regex, or a *GrepError for a bad or slow one.
-func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
+func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]models.GrepHit, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	var out []GrepHit
+	var out []models.GrepHit
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// SET LOCAL takes no parameter; the value is an int literal in this file.
 		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", grepTimeoutMS)); err != nil {
 			return err
 		}
-		out, err = collect[GrepHit](ctx, tx, grepSQL, pgRegex(pattern), limit)
+		out, err = collect[models.GrepHit](ctx, tx, grepSQL, pgRegex(pattern), limit)
 		return err
 	})
 	if err != nil {
@@ -499,9 +418,9 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "2201B": // invalid_regular_expression
-				return nil, &GrepError{Msg: fmt.Sprintf("unusable regular expression: %s", okf.PyReprString(pattern))}
+				return nil, &models.GrepError{Msg: fmt.Sprintf("unusable regular expression: %s", okf.PyReprString(pattern))}
 			case "57014": // query_canceled
-				return nil, &GrepError{Msg: fmt.Sprintf(
+				return nil, &models.GrepError{Msg: fmt.Sprintf(
 					"the regular expression took longer than %dms: %s", grepTimeoutMS, okf.PyReprString(pattern))}
 			}
 		}
@@ -511,10 +430,10 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 }
 
 // Graph returns (path, type, title, links) for the first limit concepts by path.
-func (cs *ConceptStore) Graph(ctx context.Context, tenant uuid.UUID, limit int) ([]GraphRow, error) {
-	var out []GraphRow
+func (cs *ConceptStore) Graph(ctx context.Context, tenant uuid.UUID, limit int) ([]models.GraphRow, error) {
+	var out []models.GraphRow
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
-		out, err = collect[GraphRow](ctx, tx,
+		out, err = collect[models.GraphRow](ctx, tx,
 			"SELECT path, type, title, links FROM concept ORDER BY path LIMIT $1", limit)
 		return err
 	})

@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/roee-fs/keepsake/frontend"
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -163,7 +164,7 @@ func internalError(w http.ResponseWriter, r *http.Request, err error) {
 
 // reply answers v, or maps err as FastAPI does: a GrepError is a 400 and anything else a 500.
 func reply(w http.ResponseWriter, r *http.Request, v any, err error) {
-	var ge *store.GrepError
+	var ge *models.GrepError
 	switch {
 	case errors.As(err, &ge):
 		writeJSON(w, r, http.StatusBadRequest, detail{ge.Msg})
@@ -385,7 +386,7 @@ type dailyWrite struct {
 	Count int    `json:"count"`
 }
 
-func revisions(rs []store.Revision) []revisionOut {
+func revisions(rs []models.Revision) []revisionOut {
 	out := []revisionOut{}
 	for _, r := range rs {
 		out = append(out, revisionOut{r.Path, r.Version, r.Op, r.UpdatedBy, pyTime(r.CreatedAt), r.TenantID})
@@ -632,7 +633,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Grep(r.Context(), *tenant, pattern, limit)
-	reply(w, r, convert(hits, func(h store.GrepHit) grepHit { return grepHit(h) }), err)
+	reply(w, r, convert(hits, func(h models.GrepHit) grepHit { return grepHit(h) }), err)
 }
 
 func (a *api) graph(w http.ResponseWriter, r *http.Request) {
@@ -649,7 +650,7 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 	reply(w, r, buildGraph(rows), nil)
 }
 
-func buildGraph(rows []store.GraphRow) graphOut {
+func buildGraph(rows []models.GraphRow) graphOut {
 	g := graphOut{Nodes: []graphNode{}, Edges: [][2]string{}, Truncated: len(rows) > graphLimit}
 	rows = rows[:min(len(rows), graphLimit)]
 	known := map[string]bool{}
