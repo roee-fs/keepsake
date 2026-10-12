@@ -39,18 +39,17 @@ func TestReplaceRefusesAnEmptyBundle(t *testing.T) {
 
 func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
-	b := NewBundleService(cs)
+	b, src := NewBundleService(cs), t.TempDir()
 	for _, step := range []struct{ name, text string }{
 		{"layers.md", doc}, {"layers.md", strings.ReplaceAll(doc, "beneath", "above")}, {"other.md", doc},
 	} {
-		src := t.TempDir()
 		writeFile(t, src, filepath.Join("architecture", step.name), step.text)
 		if _, err := b.Import(ctx, tenant, src); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Three revisions: layers, its edit, and other.
+	// Three revisions: layers, its edit, and other. The third import replays layers unchanged, which writes nothing.
 	full, err := b.renderLog(ctx, tenant, 10)
 	if err != nil {
 		t.Fatal(err)

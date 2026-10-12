@@ -482,6 +482,10 @@ func TestIsUnavailable(t *testing.T) {
 	if !errors.Is(scopeErr, models.ErrUnavailable) {
 		t.Errorf("errors.Is(%v, models.ErrUnavailable) = false, want true", scopeErr)
 	}
+	// Logs and CLI stderr print this text, so the classification MUST NOT change it.
+	if strings.HasPrefix(scopeErr.Error(), models.ErrUnavailable.Error()) {
+		t.Errorf("err = %q, want the driver's text unprefixed", scopeErr)
+	}
 	// Restored now, not just in Cleanup: the unique-violation check below needs a
 	// working connection of its own.
 	restore()

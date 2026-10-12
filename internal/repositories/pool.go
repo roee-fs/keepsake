@@ -123,10 +123,17 @@ func (s *Store) tx(ctx context.Context, begin string, fn func(pgx.Tx) error) err
 		err = pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{BeginQuery: begin}, fn)
 	}
 	if isUnavailable(err) {
-		return fmt.Errorf("%w: %w", models.ErrUnavailable, err)
+		return &unavailableError{err}
 	}
 	return err
 }
+
+// unavailableError matches models.ErrUnavailable and keeps err's text, which logs and CLI stderr print.
+type unavailableError struct{ err error }
+
+func (e *unavailableError) Error() string        { return e.err.Error() }
+func (e *unavailableError) Unwrap() error        { return e.err }
+func (e *unavailableError) Is(target error) bool { return target == models.ErrUnavailable }
 
 // acquireError marks an acquire failure, so isUnavailable can tell it from fn's own deadline.
 type acquireError struct{ err error }
