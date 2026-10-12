@@ -1,5 +1,5 @@
 // Bundles of markdown files in and out of Postgres, ported from 2de90d2:src/keepsake/cli/__init__.py.
-package cli
+package services
 
 import (
 	"context"
@@ -18,8 +18,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// An import copies a bundle in, so it records the OKF §7 process actor.
-const actor = "process:import"
+// ImportActor is the OKF §7 process actor an import records, since it copies a bundle in.
+const ImportActor = "process:import"
 
 // The log is a bundle file an operator reads, not an audit export.
 const logLimit = 1000
@@ -83,16 +83,32 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 	return concepts, nil
 }
 
-// ImportBundle stores the whole bundle in one transaction, all or nothing.
-func ImportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) (int, error) {
+// BundleService moves bundles of markdown files in and out of a tenant's concepts.
+type BundleService struct {
+	r *repositories.ConceptRepository
+}
+
+func NewBundleService(r *repositories.ConceptRepository) *BundleService { return &BundleService{r} }
+
+// Import stores the whole bundle in one transaction, all or nothing.
+func (b *BundleService) Import(ctx context.Context, tenant uuid.UUID, root string) (int, error) {
 	concepts, err := documents(root, true)
 	if err != nil {
 		return 0, err
 	}
-	if _, err := cs.ImportMany(ctx, tenant, concepts, actor); err != nil {
+	if _, err := b.r.ImportMany(ctx, tenant, concepts, ImportActor); err != nil {
 		return 0, err
 	}
 	return len(concepts), nil
+}
+
+// Replace makes the tenant's concepts under prefix exactly concepts.
+func (b *BundleService) Replace(ctx context.Context, tenant uuid.UUID, prefix string, concepts []okf.Concept, actor string) (written, deleted int, err error) {
+	// An empty upload is far likelier a packaging mistake than a corpus that emptied.
+	if len(concepts) == 0 {
+		return 0, 0, toolErr("bundle holds no concepts")
+	}
+	return b.r.ReplacePrefix(ctx, tenant, prefix, concepts, actor)
 }
 
 // target is a concept's file relative to the bundle root, refused if it would leave the bundle.
@@ -109,8 +125,8 @@ func target(path string) (string, error) {
 	return name, nil
 }
 
-// ExportBundle writes the corpus out as a bundle, index and log included.
-func ExportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) (int, error) {
+// Export writes the corpus out as a bundle, index and log included.
+func (b *BundleService) Export(ctx context.Context, tenant uuid.UUID, root string) (int, error) {
 	if err := os.MkdirAll(root, 0o777); err != nil {
 		return 0, err
 	}
@@ -120,7 +136,7 @@ func ExportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenan
 		return 0, err
 	}
 	defer dir.Close()
-	concepts, err := cs.ReadAll(ctx, tenant)
+	concepts, err := b.r.ReadAll(ctx, tenant)
 	if err != nil {
 		return 0, err
 	}
@@ -150,7 +166,7 @@ func ExportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenan
 	if err := dir.WriteFile("index.md", []byte(renderIndex(concepts)), 0o666); err != nil {
 		return 0, err
 	}
-	log, err := renderLog(ctx, cs, tenant, logLimit)
+	log, err := b.renderLog(ctx, tenant, logLimit)
 	if err != nil {
 		return 0, err
 	}
@@ -210,8 +226,8 @@ func renderIndex(concepts []okf.Concept) string {
 }
 
 // renderLog renders the most recent limit revisions, newest first, under date headings.
-func renderLog(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, limit int) (string, error) {
-	revisions, err := cs.Revisions(ctx, tenant, limit)
+func (b *BundleService) renderLog(ctx context.Context, tenant uuid.UUID, limit int) (string, error) {
+	revisions, err := b.r.Revisions(ctx, tenant, limit)
 	if err != nil {
 		return "", err
 	}

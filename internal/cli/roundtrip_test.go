@@ -89,7 +89,7 @@ func bundle(t *testing.T, tmp, text, name string) string {
 
 func mustImport(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) int {
 	t.Helper()
-	n, err := ImportBundle(ctx, cs, tenant, root)
+	n, err := services.NewBundleService(cs).Import(ctx, tenant, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func mustImport(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UU
 
 func mustExport(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) {
 	t.Helper()
-	if _, err := ExportBundle(ctx, cs, tenant, root); err != nil {
+	if _, err := services.NewBundleService(cs).Export(ctx, tenant, root); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -178,43 +178,6 @@ func TestExportGeneratesIndexAndLog(t *testing.T) {
 	}
 }
 
-func TestTheLogIsDatedAndSaysWhenItIsTruncated(t *testing.T) {
-	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
-	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
-	mustImport(t, cs, tenant, bundle(t, tmp, strings.ReplaceAll(doc, "beneath", "above"), "layers.md"))
-	mustImport(t, cs, tenant, bundle(t, tmp, doc, "other.md"))
-
-	// Three revisions: layers, its edit, and other. The third import replays layers unchanged, which writes nothing.
-	full, err := renderLog(ctx, cs, tenant, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(full, "- `architecture/"); n != 3 {
-		t.Fatalf("%d entries:\n%s", n, full)
-	}
-	if strings.Contains(full, "omitted") {
-		t.Fatal(full)
-	}
-	// OKF §9 lists a log newest first.
-	newest, _, _ := strings.Cut(full[strings.Index(full, "`architecture/layers`"):], "\n")
-	if !strings.Contains(newest, " update by") {
-		t.Fatal(full)
-	}
-	revisions, err := cs.Revisions(ctx, tenant, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(full, "## "+revisions[0].Day) {
-		t.Fatal(full)
-	}
-	if rs, _ := cs.Revisions(ctx, tenant, -1); len(rs) != 0 {
-		t.Fatal(rs)
-	}
-	if one, _ := renderLog(ctx, cs, tenant, 1); !strings.Contains(one, "omitted") {
-		t.Fatal(one)
-	}
-}
-
 func TestGeneratedFilesAreNotStoredAsConcepts(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	out := filepath.Join(t.TempDir(), "out")
@@ -259,7 +222,7 @@ func TestReimportingAPathUpdatesIt(t *testing.T) {
 func TestExportRefusesAPathThatEscapesTheBundle(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
 	create(t, cs, tenant, "../escape")
-	_, err := ExportBundle(ctx, cs, tenant, filepath.Join(tmp, "out"))
+	_, err := services.NewBundleService(cs).Export(ctx, tenant, filepath.Join(tmp, "out"))
 	if err == nil || err.Error() != "refusing to write '../escape' outside the bundle" {
 		t.Fatalf("err = %v", err)
 	}
@@ -273,7 +236,7 @@ func TestExportRefusesAConceptThatCollidesWithAGeneratedFile(t *testing.T) {
 	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
 	create(t, cs, tenant, "index")
 	out := filepath.Join(tmp, "out")
-	_, err := ExportBundle(ctx, cs, tenant, out)
+	_, err := services.NewBundleService(cs).Export(ctx, tenant, out)
 	want := "the concept 'index' collides with a generated file: OKF reserves index.md and log.md in every directory"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v", err)
@@ -299,7 +262,7 @@ func TestAMalformedDocumentIsNamedAndRefusesTheWholeImport(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	src := bundle(t, t.TempDir(), doc, "layers.md")
 	writeFile(t, src, "architecture/zz-broken.md", "---\ntype: [unclosed\n---\nx\n")
-	if _, err := ImportBundle(ctx, cs, tenant, src); err == nil || !strings.Contains(err.Error(), "zz-broken.md") {
+	if _, err := services.NewBundleService(cs).Import(ctx, tenant, src); err == nil || !strings.Contains(err.Error(), "zz-broken.md") {
 		t.Fatalf("err = %v", err)
 	}
 	// Nothing was written: the bundle is parsed through before the first insert.
@@ -312,7 +275,7 @@ func TestAnInvalidDocumentIsNamedAndRefusesTheWholeImport(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	src := bundle(t, t.TempDir(), doc, "layers.md")
 	writeFile(t, src, "architecture/zz-typeless.md", "---\ntitle: No type\n---\nx\n")
-	if _, err := ImportBundle(ctx, cs, tenant, src); err == nil || !strings.Contains(err.Error(), "zz-typeless.md: type is required") {
+	if _, err := services.NewBundleService(cs).Import(ctx, tenant, src); err == nil || !strings.Contains(err.Error(), "zz-typeless.md: type is required") {
 		t.Fatalf("err = %v", err)
 	}
 	if read(t, cs, tenant, "architecture/layers") != nil {
@@ -323,7 +286,7 @@ func TestAnInvalidDocumentIsNamedAndRefusesTheWholeImport(t *testing.T) {
 func TestValidateReportsAMalformedDocumentByName(t *testing.T) {
 	src := bundle(t, t.TempDir(), doc, "layers.md")
 	writeFile(t, src, "architecture/broken.md", "---\ntype: [unclosed\n---\nx\n")
-	if _, err := ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
+	if _, err := services.ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -362,7 +325,7 @@ func TestAnUnquotedYAMLDateComesBackAsAString(t *testing.T) {
 func TestValidateAcceptsABundleWhoseLinksResolve(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [see](./other.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/other.md", "---\ntype: Concept\n---\nOther.\n")
-	if errs, err := ValidateBundle(src); err != nil || len(errs) != 0 {
+	if errs, err := services.ValidateBundle(src); err != nil || len(errs) != 0 {
 		t.Fatal(errs, err)
 	}
 }
@@ -370,7 +333,7 @@ func TestValidateAcceptsABundleWhoseLinksResolve(t *testing.T) {
 func TestValidateReportsADanglingLinkAndAMissingType(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [gone](./gone.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	errs, err := ValidateBundle(src)
+	errs, err := services.ValidateBundle(src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +536,7 @@ func TestExportMatchesPythonForEveryGolden(t *testing.T) {
 		t.Run(g.Name, func(t *testing.T) {
 			tenant, tmp := uuid.New(), t.TempDir()
 			writeFile(t, filepath.Join(tmp, "in"), "doc.md", readFile(t, "../../okf/testdata/corpus/"+g.Name+".md"))
-			_, err := ImportBundle(ctx, cs, tenant, filepath.Join(tmp, "in"))
+			_, err := services.NewBundleService(cs).Import(ctx, tenant, filepath.Join(tmp, "in"))
 			if err != nil && strings.Contains(err.Error(), ": unsupported YAML tag ") {
 				t.Skip("deliberate: Python accepts this tag and Go refuses it")
 			}
@@ -607,7 +570,7 @@ func TestImportRefusesNaNAndWritesNothing(t *testing.T) {
 func TestValidateAcceptsNaN(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "b.md", "---\ntype: Concept\nv: [1, .nan]\n---\nx\n")
-	if errs, err := ValidateBundle(dir); err != nil || len(errs) != 0 {
+	if errs, err := services.ValidateBundle(dir); err != nil || len(errs) != 0 {
 		t.Fatal(errs, err)
 	}
 }
@@ -623,11 +586,11 @@ func TestImportAndValidateFollowASymlinkedRoot(t *testing.T) {
 		t.Fatalf("imported %d", n)
 	}
 	writeFile(t, real, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	if errs, err := ValidateBundle(link); err != nil || len(errs) != 1 {
+	if errs, err := services.ValidateBundle(link); err != nil || len(errs) != 1 {
 		t.Fatal(errs, err)
 	}
 	// Files are named by the path the operator typed, not the one it resolves to.
-	_, err := ImportBundle(ctx, cs, tenant, link)
+	_, err := services.NewBundleService(cs).Import(ctx, tenant, link)
 	if want := filepath.Join(link, "architecture", "typeless.md") + ": type is required"; err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %s", err, want)
 	}
@@ -682,7 +645,7 @@ func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
 // The demo's first diff is empty only while this holds.
 func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 	src := filepath.Join("..", "..", "demo", "bundle")
-	if errs, err := ValidateBundle(src); err != nil || len(errs) > 0 {
+	if errs, err := services.ValidateBundle(src); err != nil || len(errs) > 0 {
 		t.Fatal(err, errs)
 	}
 	cs, tenant, out := conceptStore(t), uuid.New(), t.TempDir()

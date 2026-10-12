@@ -47,7 +47,7 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	// Outside the MCP handler, so a request is refused before its body is read.
 	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, actor))))
 	// The same auth as /mcp, so a token can replace only its own tenant's concepts.
-	mux.Handle("PUT /bundle", cfg.Auth(replaceBundle(cs)))
+	mux.Handle("PUT /bundle", cfg.Auth(replaceBundle(services.NewBundleService(cs))))
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

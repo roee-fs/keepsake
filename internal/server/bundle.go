@@ -18,7 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/roee-fs/keepsake/internal/models"
-	"github.com/roee-fs/keepsake/internal/repositories"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -140,7 +140,7 @@ func (z *zeroTail) Read(p []byte) (int, error) {
 }
 
 // replaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
-func replaceBundle(cs *repositories.ConceptRepository) http.HandlerFunc {
+func replaceBundle(svc *services.BundleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := r.Context().Value(callerKey{}).(caller)
 		// Fail closed as /mcp does: the nil tenant is never a caller's.
@@ -188,18 +188,18 @@ func replaceBundle(cs *repositories.ConceptRepository) http.HandlerFunc {
 		case len(problems) > 0:
 			writeJSON(w, r, http.StatusUnprocessableEntity, detail{problems})
 			return
-		case len(concepts) == 0:
-			// An empty upload is far likelier a packaging mistake than a corpus that emptied.
-			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"bundle holds no concepts"})
-			return
 		}
 		by := c.actor
 		// Mode none knows no uploader, so the upload is recorded as `keepsake import` records it.
 		if c.anonymous {
-			by = "process:import"
+			by = services.ImportActor
 		}
-		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by)
+		written, deleted, err := svc.Replace(r.Context(), c.tenant, prefix, concepts, by)
+		var te *services.ToolError
 		switch {
+		case errors.As(err, &te):
+			writeJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
+			return
 		case errors.Is(err, models.ErrUnavailable):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
 			w.Header().Set("Retry-After", "5")

@@ -23,6 +23,7 @@ import (
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/internal/server"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -104,8 +105,8 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"import":   {dsn: true, tenant: true, directory: true, run: runBundle(ImportBundle, "imported")},
-	"export":   {dsn: true, tenant: true, directory: true, run: runBundle(ExportBundle, "exported")},
+	"import":   {dsn: true, tenant: true, directory: true, run: runBundle((*services.BundleService).Import, "imported")},
+	"export":   {dsn: true, tenant: true, directory: true, run: runBundle((*services.BundleService).Export, "exported")},
 	"validate": {directory: true, run: runValidate},
 	"migrate":  {dsn: true, run: runMigrate},
 	"serve":    {dsn: true, tenant: true, run: runServe},
@@ -279,14 +280,14 @@ func bound(ctx context.Context, o *options) (*repositories.ConceptRepository, uu
 }
 
 // runBundle runs import or export against the bound store and reports the count.
-func runBundle(fn func(context.Context, *repositories.ConceptRepository, uuid.UUID, string) (int, error), verb string) func(context.Context, *options, io.Writer, io.Writer) (int, error) {
+func runBundle(fn func(*services.BundleService, context.Context, uuid.UUID, string) (int, error), verb string) func(context.Context, *options, io.Writer, io.Writer) (int, error) {
 	return func(ctx context.Context, o *options, stdout, _ io.Writer) (int, error) {
 		cs, tenant, closeStore, err := bound(ctx, o)
 		if err != nil {
 			return 0, err
 		}
 		defer closeStore()
-		n, err := fn(ctx, cs, tenant, o.directory)
+		n, err := fn(services.NewBundleService(cs), ctx, tenant, o.directory)
 		if err != nil {
 			return 0, err
 		}
@@ -296,7 +297,7 @@ func runBundle(fn func(context.Context, *repositories.ConceptRepository, uuid.UU
 }
 
 func runValidate(_ context.Context, o *options, _, stderr io.Writer) (int, error) {
-	errs, err := ValidateBundle(o.directory)
+	errs, err := services.ValidateBundle(o.directory)
 	if err != nil {
 		return 0, err
 	}
