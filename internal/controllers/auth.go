@@ -1,5 +1,5 @@
 // The admin session, ported from 8f2af2e:src/keepsake/server/auth.py: one password, one signed cookie.
-package server
+package controllers
 
 import (
 	"crypto/hmac"

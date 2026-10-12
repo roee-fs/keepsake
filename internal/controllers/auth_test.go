@@ -1,5 +1,5 @@
 // Ported from 8f2af2e:tests/test_auth.py, plus the cookie-compatibility check across the cutover.
-package server
+package controllers
 
 import (
 	"encoding/json"

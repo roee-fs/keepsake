@@ -1,5 +1,5 @@
 // Bundle uploads: a gzipped tar of OKF files, read as `keepsake import` reads a directory.
-package server
+package controllers
 
 import (
 	"archive/tar"
@@ -139,8 +139,8 @@ func (z *zeroTail) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// replaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
-func replaceBundle(svc *services.BundleService) http.HandlerFunc {
+// ReplaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
+func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := r.Context().Value(callerKey{}).(caller)
 		// Fail closed as /mcp does: the nil tenant is never a caller's.
@@ -150,22 +150,22 @@ func replaceBundle(svc *services.BundleService) http.HandlerFunc {
 		}
 		if c.readOnly {
 			slog.Warn("refused /bundle request", "reason", "token carries the "+readScope+" scope", "actor", c.actor)
-			writeJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: the " + readScope + " scope refuses it, even with the " + uploadScope + " scope"})
+			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: the " + readScope + " scope refuses it, even with the " + uploadScope + " scope"})
 			return
 		}
 		if !c.upload {
 			slog.Warn("refused /bundle request", "reason", "token lacks the "+uploadScope+" scope", "actor", c.actor)
-			writeJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: it needs the " + uploadScope + " scope"})
+			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: it needs the " + uploadScope + " scope"})
 			return
 		}
 		prefix := r.URL.Query().Get("prefix")
 		if !fs.ValidPath(prefix) || prefix == "." || strings.ContainsFunc(prefix, unicode.IsControl) {
-			writeJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
+			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{"prefix must be a relative concept path, such as docs/runbooks"})
 			return
 		}
 		// This runs before the slot is taken, so a declared oversized body never holds it.
 		if r.ContentLength > maxUpload {
-			writeJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
+			WriteJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
 			return
 		}
 		select {
@@ -173,20 +173,20 @@ func replaceBundle(svc *services.BundleService) http.HandlerFunc {
 			defer func() { <-uploads }()
 		default:
 			w.Header().Set("Retry-After", "5")
-			writeJSON(w, r, http.StatusServiceUnavailable, detail{"another bundle upload is in progress"})
+			WriteJSON(w, r, http.StatusServiceUnavailable, detail{"another bundle upload is in progress"})
 			return
 		}
 		concepts, problems, err := readBundle(http.MaxBytesReader(w, r.Body, maxUpload), prefix)
 		var tooBig *http.MaxBytesError
 		switch {
 		case errors.As(err, &tooBig) || errors.Is(err, errTooLarge):
-			writeJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
+			WriteJSON(w, r, http.StatusRequestEntityTooLarge, detail{errTooLarge.Error()})
 			return
 		case err != nil:
-			writeJSON(w, r, http.StatusBadRequest, detail{err.Error()})
+			WriteJSON(w, r, http.StatusBadRequest, detail{err.Error()})
 			return
 		case len(problems) > 0:
-			writeJSON(w, r, http.StatusUnprocessableEntity, detail{problems})
+			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{problems})
 			return
 		}
 		by := c.actor
@@ -198,12 +198,12 @@ func replaceBundle(svc *services.BundleService) http.HandlerFunc {
 		var te *services.ToolError
 		switch {
 		case errors.As(err, &te):
-			writeJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
+			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
 			return
 		case errors.Is(err, models.ErrUnavailable):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
 			w.Header().Set("Retry-After", "5")
-			writeJSON(w, r, http.StatusServiceUnavailable, detail{unavailable})
+			WriteJSON(w, r, http.StatusServiceUnavailable, detail{unavailable})
 			return
 		case err != nil:
 			internalError(w, r, err)
@@ -211,6 +211,6 @@ func replaceBundle(svc *services.BundleService) http.HandlerFunc {
 		}
 		// The prefix is not logged, since a path names a concept.
 		slog.Info("bundle replaced", "tenant", c.tenant.String(), "actor", c.actor, "written", written, "deleted", deleted)
-		writeJSON(w, r, http.StatusOK, map[string]int{"written": written, "deleted": deleted})
+		WriteJSON(w, r, http.StatusOK, map[string]int{"written": written, "deleted": deleted})
 	}
 }

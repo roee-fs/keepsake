@@ -1,7 +1,11 @@
 // Ported from the app tests in 2de90d2:tests/test_tools.py and 8f2af2e:tests/test_api.py.
-package server
+package app
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,8 +18,48 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/roee-fs/keepsake/internal/controllers"
+	"github.com/roee-fs/keepsake/internal/migrate"
+	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/repositories"
 )
+
+var (
+	db  *pgtest.DB
+	ctx = context.Background()
+)
+
+const adminPassword = "test-admin-password"
+
+var issuer = &controllers.JWT{Issuer: "platform", Audience: "keepsake", Secrets: [][]byte{[]byte(strings.Repeat("k", 32))}}
+
+func TestMain(m *testing.M) {
+	pgtest.Main(m, func(d *pgtest.DB) error {
+		db = d
+		return migrate.Up(ctx, d.OwnerDSN, "okf")
+	})
+}
+
+// tarball gzips one regular file into a tar, as a bundle upload carries it.
+func tarball(t *testing.T, name, body string) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf
+}
 
 const shell = "<html>console shell</html>"
 
@@ -23,7 +67,7 @@ const shell = "<html>console shell</html>"
 func served(t *testing.T) string {
 	t.Helper()
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	h, _, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
+	h, _, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +150,7 @@ func TestReadyzReportsReadyWhileThePoolCanReachTheDatabase(t *testing.T) {
 
 func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	_, _, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
+	_, _, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	var m *repositories.MisconfiguredDatabase
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredDatabase", err)
@@ -115,8 +159,8 @@ func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 
 func TestBuildAppRefusesAnEnabledConsoleWithoutAPassword(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", "")
-	_, _, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
-	var m *MisconfiguredAdmin
+	_, _, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	var m *controllers.MisconfiguredAdmin
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredAdmin", err)
 	}
@@ -298,7 +342,7 @@ func TestMCPRefusesABrowserOrigin(t *testing.T) {
 func TestTheAppServesBundleUploadsButNotToBrowsers(t *testing.T) {
 	url := served(t) + "/bundle?prefix=docs"
 	send := func(origin string) int {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, tarball(t, entry{name: "a.md", body: md("Doc", "")}))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, tarball(t, "a.md", "---\ntype: Doc\n---\n\n"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -317,5 +361,29 @@ func TestTheAppServesBundleUploadsButNotToBrowsers(t *testing.T) {
 	}
 	if code := send("https://evil.example"); code != http.StatusForbidden {
 		t.Fatalf("PUT with Origin = %d, want 403", code)
+	}
+}
+
+func TestMetricsAreServedOnlyByTheMetricsHandler(t *testing.T) {
+	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
+	h, metrics, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(closeApp)
+
+	rec := httptest.NewRecorder()
+	metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body, _ := io.ReadAll(rec.Body)
+	for _, want := range []string{`keepsake_tool_calls_total{outcome="ok",tool="read"}`, "keepsake_db_pool_max_connections", "go_goroutines"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("metrics lack %s", want)
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
+		t.Error("the app handler serves metrics")
 	}
 }

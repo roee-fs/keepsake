@@ -1,5 +1,5 @@
 // Prometheus metrics, served on their own port so a public Ingress to /mcp never exposes them.
-package server
+package controllers
 
 import (
 	"net/http"
@@ -39,7 +39,7 @@ func init() {
 	}
 }
 
-func metricsHandler(stat func() *pgxpool.Stat) http.Handler {
+func MetricsHandler(stat func() *pgxpool.Stat) http.Handler {
 	pool := prometheus.NewRegistry()
 	for name, f := range map[string]func(*pgxpool.Stat) int32{
 		"acquired": (*pgxpool.Stat).AcquiredConns,

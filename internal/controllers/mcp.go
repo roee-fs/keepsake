@@ -1,6 +1,6 @@
 // The MCP wiring, ported from 2de90d2:src/keepsake/server/tools.py's register and
 // 8f2af2e:src/keepsake/server/app.py's streamable HTTP app.
-package server
+package controllers
 
 import (
 	"bytes"
@@ -298,7 +298,7 @@ func NewMCPHandler(t *services.ConceptService) http.Handler {
 		// A session would pin an agent to one replica; several sit behind one Service.
 		Stateless:    true,
 		JSONResponse: true,
-		// The Host header is a cluster Service name; refuseBrowsers covers DNS rebinding.
+		// The Host header is a cluster Service name; RefuseBrowsers covers DNS rebinding.
 		DisableLocalhostProtection: true,
 	})
 	// Python's RequestBodyLimitMiddleware runs before everything else, at go-sdk's limit.

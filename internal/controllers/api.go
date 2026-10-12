@@ -1,5 +1,5 @@
 // The admin console's read-only JSON API at /api, ported from 8f2af2e:src/keepsake/server/api.py.
-package server
+package controllers
 
 import (
 	"bytes"
@@ -89,7 +89,7 @@ func NewAPI(svc *services.ConsoleService, a *Auth) http.Handler {
 			}
 			// Checked first, so a request refused with a 401 never queues for the slot.
 			if !a.session(r) {
-				writeJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
+				WriteJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
 				return
 			}
 			release, ok := acquire(r.Context(), slot)
@@ -142,7 +142,7 @@ type detail struct {
 	Detail any `json:"detail"`
 }
 
-func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
+func WriteJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
@@ -169,11 +169,11 @@ func reply(w http.ResponseWriter, r *http.Request, v any, err error) {
 	var ge *models.GrepError
 	switch {
 	case errors.As(err, &ge):
-		writeJSON(w, r, http.StatusBadRequest, detail{ge.Msg})
+		WriteJSON(w, r, http.StatusBadRequest, detail{ge.Msg})
 	case err != nil:
 		internalError(w, r, err)
 	default:
-		writeJSON(w, r, http.StatusOK, v)
+		WriteJSON(w, r, http.StatusOK, v)
 	}
 }
 
@@ -297,7 +297,7 @@ func (p *params) invalid(w http.ResponseWriter) bool {
 	if len(p.errs) == 0 {
 		return false
 	}
-	writeJSON(w, p.r, http.StatusUnprocessableEntity, detail{p.errs})
+	WriteJSON(w, p.r, http.StatusUnprocessableEntity, detail{p.errs})
 	return true
 }
 
@@ -390,7 +390,7 @@ func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	invalid := func(typ string, loc []any, msg string, input any, ctx map[string]any) (string, bool) {
-		writeJSON(w, r, http.StatusUnprocessableEntity, detail{[]fieldError{{typ, loc, msg, input, ctx}}})
+		WriteJSON(w, r, http.StatusUnprocessableEntity, detail{[]fieldError{{typ, loc, msg, input, ctx}}})
 		return "", false
 	}
 	if len(raw) == 0 {
@@ -402,7 +402,7 @@ func credentials(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if main, sub, _ := strings.Cut(ct, "/"); main == "application" && !strings.Contains(sub, "/") && (sub == "json" || strings.HasSuffix(sub, "+json")) {
 		raw = bytes.TrimPrefix(raw, []byte("\uFEFF"))
 		if !utf8.Valid(raw) {
-			writeJSON(w, r, http.StatusBadRequest, detail{"There was an error parsing the body"})
+			WriteJSON(w, r, http.StatusBadRequest, detail{"There was an error parsing the body"})
 			return "", false
 		}
 		v, msg, pos := pyJSON([]rune(string(raw)))
@@ -438,7 +438,7 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 	// The peer, not X-Forwarded-For, which any client can set.
 	if !a.auth.CheckPassword(password) {
 		slog.Warn("console login refused", "remote_addr", r.RemoteAddr)
-		writeJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
+		WriteJSON(w, r, http.StatusUnauthorized, detail{"Unauthorized"})
 		return
 	}
 	slog.Info("console login", "remote_addr", r.RemoteAddr)
@@ -592,7 +592,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c == nil {
-		writeJSON(w, r, http.StatusNotFound, detail{"Not Found"})
+		WriteJSON(w, r, http.StatusNotFound, detail{"Not Found"})
 		return
 	}
 	reply(w, r, conceptDetail{

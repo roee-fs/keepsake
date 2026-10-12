@@ -1,6 +1,6 @@
 // Who a /mcp request acts as. Auth mode none binds one tenant at startup; jwt mode takes the
 // tenant from an HS256 token on every request, so one server serves many tenants.
-package server
+package controllers
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func withCaller(next http.Handler, c caller) http.Handler {
 func FixedTenant(tenant uuid.UUID) func(http.Handler) http.Handler {
 	// Mode none already trusts every client that reaches it, so it keeps /bundle.
 	return func(next http.Handler) http.Handler {
-		return withCaller(next, caller{tenant: tenant, actor: actor, upload: true, anonymous: true})
+		return withCaller(next, caller{tenant: tenant, actor: Actor, upload: true, anonymous: true})
 	}
 }
 

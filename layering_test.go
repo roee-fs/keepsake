@@ -8,30 +8,42 @@ import (
 
 const mod = "github.com/roee-fs/keepsake/"
 
-func deps(t *testing.T, pkg string) []string {
-	out, err := exec.Command("go", "list", "-deps", pkg).Output()
+// imports lists pkg's direct imports, or with transitive set its whole dependency closure.
+func imports(t *testing.T, pkg string, transitive bool) []string {
+	args := []string{"list", "-f", `{{join .Imports " "}}`, pkg}
+	if transitive {
+		args = []string{"list", "-deps", pkg}
+	}
+	out, err := exec.Command("go", args...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	return strings.Fields(string(out))
 }
 
-// layers maps each package to the module packages it MUST NOT reach, even transitively.
-var layers = map[string][]string{
+// layers lists the module packages each package MUST NOT reach.
+var layers = []struct {
+	pkg        string
+	transitive bool
+	banned     []string
+}{
 	// okf MUST be publishable without keepsake.
-	"./okf":                   {"internal/"},
-	"./internal/models":       {"internal/"},
-	"./internal/repositories": {"internal/server", "internal/services", "internal/controllers", "internal/app", "internal/cli"},
-	"./internal/services":     {"internal/server", "internal/controllers", "internal/app", "internal/cli"},
+	{"./okf", true, []string{"internal/"}},
+	{"./internal/models", true, []string{"internal/"}},
+	{"./internal/repositories", true, []string{"internal/services", "internal/controllers", "internal/app", "internal/cli"}},
+	{"./internal/services", true, []string{"internal/controllers", "internal/app", "internal/cli"}},
+	// Direct only: controllers reach the repositories through services.
+	{"./internal/controllers", false, []string{"internal/repositories", "internal/app", "internal/cli"}},
+	{"./internal/app", true, []string{"internal/cli"}},
 }
 
 func TestLayering(t *testing.T) {
-	for pkg, banned := range layers {
-		self := mod + strings.TrimPrefix(pkg, "./")
-		for _, d := range deps(t, pkg) {
-			for _, b := range banned {
+	for _, l := range layers {
+		self := mod + strings.TrimPrefix(l.pkg, "./")
+		for _, d := range imports(t, l.pkg, l.transitive) {
+			for _, b := range l.banned {
 				if d != self && strings.HasPrefix(d, mod+b) {
-					t.Errorf("%s imports %s", pkg, d)
+					t.Errorf("%s imports %s", l.pkg, d)
 				}
 			}
 		}
@@ -39,11 +51,7 @@ func TestLayering(t *testing.T) {
 }
 
 func TestServicesAreHTTPAgnostic(t *testing.T) {
-	out, err := exec.Command("go", "list", "-f", "{{join .Imports \"\\n\"}}", "./internal/services").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, imp := range strings.Fields(string(out)) {
+	for _, imp := range imports(t, "./internal/services", false) {
 		if imp == "net/http" || strings.HasPrefix(imp, "github.com/modelcontextprotocol/") {
 			t.Errorf("internal/services imports %s", imp)
 		}

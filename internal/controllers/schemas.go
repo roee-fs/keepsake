@@ -1,5 +1,5 @@
 // The seven advertised tools, ported from 2de90d2:src/keepsake/server/tools.py's _TOOLS in wire key order.
-package server
+package controllers
 
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"

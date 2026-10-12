@@ -1,6 +1,6 @@
 // Ported from 8f2af2e:tests/test_api.py. The build_app tests there (UI disabled, static
 // bundle) belong to the serve wiring.
-package server
+package controllers
 
 import (
 	"crypto/tls"

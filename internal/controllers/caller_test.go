@@ -1,4 +1,4 @@
-package server
+package controllers
 
 import (
 	"crypto/hmac"
@@ -261,7 +261,7 @@ func asTenant(t *testing.T, url string, tenant uuid.UUID, sub string, scopes ...
 
 func TestOneServerKeepsConcurrentTenantsApart(t *testing.T) {
 	cs := conceptStore(t)
-	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, actor))))
+	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, Actor))))
 	t.Cleanup(srv.Close)
 	tenants := []uuid.UUID{uuid.New(), uuid.New()}
 	sessions := []*mcp.ClientSession{asTenant(t, srv.URL, tenants[0], "run:0"), asTenant(t, srv.URL, tenants[1], "run:1")}
@@ -306,7 +306,7 @@ func TestOneServerKeepsConcurrentTenantsApart(t *testing.T) {
 
 func TestAReadScopedTokenReadsButCannotWrite(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
-	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, actor))))
+	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, Actor))))
 	t.Cleanup(srv.Close)
 	text := func(res *mcp.CallToolResult) string { return res.Content[0].(*mcp.TextContent).Text }
 	// A token without the scope keeps every write it had.
@@ -334,7 +334,7 @@ func TestAReadScopedTokenReadsButCannotWrite(t *testing.T) {
 }
 
 func TestAToolCallWithNoTenantWritesNothing(t *testing.T) {
-	srv := httptest.NewServer(NewMCPHandler(services.NewConceptService(conceptStore(t), uuid.Nil, actor)))
+	srv := httptest.NewServer(NewMCPHandler(services.NewConceptService(conceptStore(t), uuid.Nil, Actor)))
 	t.Cleanup(srv.Close)
 	client := mcp.NewClient(&mcp.Implementation{Name: "keepsake-test"}, nil)
 	s, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL}, nil)

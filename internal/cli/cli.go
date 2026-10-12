@@ -20,9 +20,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/roee-fs/keepsake/internal/app"
+	"github.com/roee-fs/keepsake/internal/controllers"
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/repositories"
-	"github.com/roee-fs/keepsake/internal/server"
 	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -347,7 +348,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if o.port != nil {
 		port = *o.port
 	}
-	h, metrics, closeApp, err := server.BuildApp(ctx, server.Config{DSN: dsn, Auth: auth, Schema: name})
+	h, metrics, closeApp, err := app.BuildApp(ctx, app.Config{DSN: dsn, Auth: auth, Schema: name})
 	if err != nil {
 		return 0, err
 	}
@@ -365,7 +366,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	}
 	poolSize, _ := repositories.PoolSize()
 	slog.Info("listening", "addr", addr, "metrics", metricsAddr, "auth_mode", mode, "schema", name,
-		"pool_size", poolSize, "ui", server.UIEnabled())
+		"pool_size", poolSize, "ui", controllers.UIEnabled())
 	return 0, listen(map[string]http.Handler{addr: h, metricsAddr: mux})
 }
 
@@ -377,13 +378,13 @@ func authFromEnv(tenant string) (func(http.Handler) http.Handler, error) {
 		if err != nil {
 			return nil, err
 		}
-		return server.FixedTenant(id), nil
+		return controllers.FixedTenant(id), nil
 	case "jwt":
 		// A fixed tenant beside jwt would read as a fallback, and there is none.
 		if tenant != "" {
 			return nil, errors.New("--tenant and KEEPSAKE_TENANT_ID are refused in jwt mode; the token names the tenant")
 		}
-		j, err := server.JWTFromEnv()
+		j, err := controllers.JWTFromEnv()
 		if err != nil {
 			return nil, err
 		}
@@ -422,7 +423,7 @@ func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
 	if err != nil || ttl < time.Second {
 		return 0, fmt.Errorf("--ttl must be a duration of at least 1s, such as 1h, not %s", okf.PyReprString(o.ttl))
 	}
-	j, err := server.JWTFromEnv()
+	j, err := controllers.JWTFromEnv()
 	if err != nil {
 		return 0, err
 	}

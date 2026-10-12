@@ -1,4 +1,4 @@
-package server
+package controllers
 
 import (
 	"archive/tar"
@@ -275,7 +275,7 @@ func listPaths(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUI
 
 func TestAnUploadInModeNoneIsRecordedAsAnImport(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
-	h := FixedTenant(tenant)(replaceBundle(services.NewBundleService(cs)))
+	h := FixedTenant(tenant)(ReplaceBundle(services.NewBundleService(cs)))
 	if code, body := put(t, h, "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), tenant); code != http.StatusOK {
 		t.Fatalf("PUT = %d %s", code, body)
 	}
@@ -288,21 +288,21 @@ func TestAnUploadInModeNoneIsRecordedAsAnImport(t *testing.T) {
 func TestAnUploadWithATokenNamingThisServerKeepsItsSubject(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
-	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, actor, time.Minute, uploadScope))
+	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, Actor, time.Minute, uploadScope))
 	rec := httptest.NewRecorder()
-	issuer.Middleware(replaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
+	issuer.Middleware(ReplaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT = %d %s", rec.Code, rec.Body)
 	}
 	revs, err := cs.Revisions(ctx, tenant, 10)
-	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != actor {
+	if err != nil || len(revs) != 1 || revs[0].UpdatedBy != Actor {
 		t.Fatalf("revisions = %+v, %v", revs, err)
 	}
 }
 
 func TestAnUploadReplacesOnlyTheCallersPrefix(t *testing.T) {
 	cs := conceptStore(t)
-	h := issuer.Middleware(replaceBundle(services.NewBundleService(cs)))
+	h := issuer.Middleware(ReplaceBundle(services.NewBundleService(cs)))
 	mine, theirs := uuid.New(), uuid.New()
 	for _, tenant := range []uuid.UUID{mine, theirs} {
 		if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}, {Path: "notes/n", Type: "Note"}}, "agent"); err != nil {
@@ -332,7 +332,7 @@ func TestAnUploadWithAProblemWritesNothing(t *testing.T) {
 	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
 		t.Fatal(err)
 	}
-	code, body := put(t, issuer.Middleware(replaceBundle(services.NewBundleService(cs))), "docs",
+	code, body := put(t, issuer.Middleware(ReplaceBundle(services.NewBundleService(cs))), "docs",
 		tarball(t, entry{name: "a.md", body: md("Doc", "a")}, entry{name: "b.md", body: "no type"}), tenant)
 	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "b.md: type is required") {
 		t.Fatalf("PUT = %d %s", code, body)
@@ -348,7 +348,7 @@ func TestAnEmptyUploadIsRefused(t *testing.T) {
 	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
 		t.Fatal(err)
 	}
-	code, body := put(t, issuer.Middleware(replaceBundle(services.NewBundleService(cs))), "docs", tarball(t, entry{name: "README.txt", body: "x"}), tenant)
+	code, body := put(t, issuer.Middleware(ReplaceBundle(services.NewBundleService(cs))), "docs", tarball(t, entry{name: "README.txt", body: "x"}), tenant)
 	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "bundle holds no concepts") {
 		t.Fatalf("PUT = %d %s", code, body)
 	}
@@ -358,7 +358,7 @@ func TestAnEmptyUploadIsRefused(t *testing.T) {
 }
 
 func TestAnUploadNeedsAValidPrefix(t *testing.T) {
-	h := issuer.Middleware(replaceBundle(services.NewBundleService(conceptStore(t))))
+	h := issuer.Middleware(ReplaceBundle(services.NewBundleService(conceptStore(t))))
 	for _, prefix := range []string{"", ".", "/docs", "docs/", "../x", "a//b", "a%00b"} {
 		if code, _ := put(t, h, prefix, tarball(t, entry{name: "a.md", body: md("Doc", "")}), uuid.New()); code != http.StatusUnprocessableEntity {
 			t.Errorf("prefix %q = %d, want 422", prefix, code)
@@ -370,7 +370,7 @@ func TestAnOversizedUploadIsRefused(t *testing.T) {
 	defer func(n int64) { maxUpload = n }(maxUpload)
 	// Under any gzipped tar, however well it compresses.
 	maxUpload = 16
-	code, _ := put(t, issuer.Middleware(replaceBundle(services.NewBundleService(conceptStore(t)))), "docs",
+	code, _ := put(t, issuer.Middleware(ReplaceBundle(services.NewBundleService(conceptStore(t)))), "docs",
 		tarball(t, entry{name: "a.md", body: md("Doc", strings.Repeat("unique words ", 200))}), uuid.New())
 	if code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("PUT = %d, want 413", code)
@@ -386,7 +386,7 @@ func TestAnAgentTokenCannotUpload(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
 		req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "run:1", time.Minute, scope...))
 		rec := httptest.NewRecorder()
-		issuer.Middleware(replaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
+		issuer.Middleware(ReplaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "bundle scope") {
 			t.Fatalf("%v: PUT = %d %s, want 403", scope, rec.Code, rec.Body)
 		}
@@ -404,7 +404,7 @@ func TestAReadScopedTokenCannotUploadEvenWithTheBundleScope(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
 	req.Header.Set("Authorization", "Bearer "+issuer.Mint(tenant, "process:ingest", time.Minute, uploadScope, readScope))
 	rec := httptest.NewRecorder()
-	issuer.Middleware(replaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
+	issuer.Middleware(ReplaceBundle(services.NewBundleService(cs))).ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "read scope") {
 		t.Fatalf("PUT = %d %s, want 403", rec.Code, rec.Body)
 	}
@@ -419,7 +419,7 @@ func TestADeclaredOversizedUploadIsRefusedWithoutTakingTheSlot(t *testing.T) {
 	// The slot is taken, so a 503 here would mean the size check came after it.
 	uploads <- struct{}{}
 	defer func() { <-uploads }()
-	code, _ := put(t, issuer.Middleware(replaceBundle(services.NewBundleService(conceptStore(t)))), "docs",
+	code, _ := put(t, issuer.Middleware(ReplaceBundle(services.NewBundleService(conceptStore(t)))), "docs",
 		strings.NewReader(strings.Repeat("x", 17)), uuid.New())
 	if code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("PUT = %d, want 413", code)
@@ -433,14 +433,14 @@ func TestTheNilTenantCannotUpload(t *testing.T) {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey{}, caller{tenant: uuid.Nil, actor: "x"})))
 		})
 	}
-	code, _ := put(t, bindNil(replaceBundle(services.NewBundleService(cs))), "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), uuid.New())
+	code, _ := put(t, bindNil(ReplaceBundle(services.NewBundleService(cs))), "docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}), uuid.New())
 	if code != http.StatusInternalServerError || len(listPaths(t, cs, uuid.Nil)) != 0 {
 		t.Fatalf("PUT = %d, want 500 and nothing written", code)
 	}
 }
 
 func TestAnUnavailableDatabaseAsksTheUploaderToRetry(t *testing.T) {
-	h := issuer.Middleware(replaceBundle(services.NewBundleService(conceptStore(t))))
+	h := issuer.Middleware(ReplaceBundle(services.NewBundleService(conceptStore(t))))
 	db.LockOut(t)
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
 	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute, uploadScope))
@@ -457,7 +457,7 @@ func TestAnUploadDuringAnotherIsRefused(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPut, "/bundle?prefix=docs", tarball(t, entry{name: "a.md", body: md("Doc", "a")}))
 	req.Header.Set("Authorization", "Bearer "+issuer.Mint(uuid.New(), "platform-ingest", time.Minute, uploadScope))
 	rec := httptest.NewRecorder()
-	issuer.Middleware(replaceBundle(services.NewBundleService(conceptStore(t)))).ServeHTTP(rec, req)
+	issuer.Middleware(ReplaceBundle(services.NewBundleService(conceptStore(t)))).ServeHTTP(rec, req)
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "5" {
 		t.Fatalf("PUT = %d, Retry-After %q, want 503, 5", rec.Code, rec.Header().Get("Retry-After"))
 	}

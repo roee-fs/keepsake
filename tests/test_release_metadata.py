@@ -67,5 +67,5 @@ def test_the_server_states_the_released_version() -> None:
     """The server records `keepsake/<Version>` as its writer, so a stale constant
     mislabels every write a release makes."""
     chart = YAML(typ="safe").load((CHART / "Chart.yaml").read_text())
-    source = (ROOT / "internal" / "server" / "version.go").read_text()
+    source = (ROOT / "internal" / "controllers" / "version.go").read_text()
     assert f'const Version = "{chart["appVersion"]}"' in source
