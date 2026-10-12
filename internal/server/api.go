@@ -23,7 +23,6 @@ import (
 
 	"github.com/roee-fs/keepsake/frontend"
 	"github.com/roee-fs/keepsake/internal/models"
-	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
@@ -46,15 +45,8 @@ const maxAPIBody = 64 * 1024
 // historyLimit bounds a concept's revision history, since the detail route takes no limit.
 const historyLimit = 50
 
-var (
-	// Past a few hundred nodes a force layout is unreadable anyway.
-	graphLimit = 500
-	// Separate from the node cap: one concept can link to thousands of targets.
-	graphEdgeLimit = 5000
-)
-
 type api struct {
-	cs      *repositories.ConceptRepository
+	svc     *services.ConsoleService
 	auth    *Auth
 	proxies proxies
 }
@@ -83,8 +75,8 @@ var routeTable = []route{
 }
 
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
-func NewAPI(cs *repositories.ConceptRepository, a *Auth) http.Handler {
-	h := &api{cs: cs, auth: a, proxies: loadProxies()}
+func NewAPI(svc *services.ConsoleService, a *Auth) http.Handler {
+	h := &api{svc: svc, auth: a, proxies: loadProxies()}
 	// One, so a slow console read never holds connections an agent is waiting on.
 	slot := make(chan struct{}, 1)
 	mux := http.NewServeMux()
@@ -377,20 +369,6 @@ type conceptDetail struct {
 	Revisions   []revisionOut `json:"revisions"`
 }
 
-type graphNode struct {
-	Path  string `json:"path"`
-	Type  string `json:"type"`
-	Title string `json:"title"`
-	// Missing marks a link target no concept holds: named by an agent, never written.
-	Missing bool `json:"missing"`
-}
-
-type graphOut struct {
-	Nodes     []graphNode `json:"nodes"`
-	Edges     [][2]string `json:"edges"`
-	Truncated bool        `json:"truncated"`
-}
-
 type dailyWrite struct {
 	Date  pyDate `json:"date"`
 	Count int    `json:"count"`
@@ -551,7 +529,7 @@ func (a *api) openapi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) tenants(w http.ResponseWriter, r *http.Request) {
-	ts, err := a.cs.Tenants(r.Context())
+	ts, err := a.svc.Tenants(r.Context())
 	out := []tenantCount{}
 	for _, t := range ts {
 		out = append(out, tenantCount{t.TenantID, t.Count})
@@ -565,7 +543,7 @@ func (a *api) stats(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	t, err := a.cs.Totals(r.Context(), tenant)
+	t, err := a.svc.Totals(r.Context(), tenant)
 	reply(w, r, totalsOut{t.Concepts, t.ByType, t.Revisions, t.Links, t.Orphans}, err)
 }
 
@@ -576,7 +554,7 @@ func (a *api) timeseries(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	ds, err := a.cs.DailyWrites(r.Context(), tenant, days)
+	ds, err := a.svc.DailyWrites(r.Context(), tenant, days)
 	out := []dailyWrite{}
 	for _, d := range ds {
 		out = append(out, dailyWrite{pyDate(d.Date), d.Count})
@@ -593,7 +571,7 @@ func (a *api) concepts(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	items, total, err := a.cs.Page(r.Context(), tenant, prefix, limit, offset)
+	items, total, err := a.svc.Page(r.Context(), tenant, prefix, limit, offset)
 	page := conceptPage{Items: []summaryOut{}, Total: total}
 	for _, s := range items {
 		page.Items = append(page.Items, summaryOut{s.Path, s.Type, s.Title, s.Description, s.Version, pyTime(s.UpdatedAt), s.TenantID})
@@ -608,7 +586,7 @@ func (a *api) concept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.PathValue("path")
-	c, backlinks, history, err := a.cs.Detail(r.Context(), *tenant, path, historyLimit)
+	c, backlinks, history, err := a.svc.Detail(r.Context(), *tenant, path, historyLimit)
 	if err != nil {
 		reply(w, r, nil, err)
 		return
@@ -630,7 +608,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	hits, err := a.cs.Search(r.Context(), *tenant, q, limit, nil)
+	hits, err := a.svc.Search(r.Context(), *tenant, q, limit)
 	reply(w, r, convert(hits, services.HitOf), err)
 }
 
@@ -642,7 +620,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	hits, err := a.cs.Grep(r.Context(), *tenant, pattern, limit)
+	hits, err := a.svc.Grep(r.Context(), *tenant, pattern, limit)
 	reply(w, r, convert(hits, func(h models.GrepHit) services.GrepHit { return services.GrepHit(h) }), err)
 }
 
@@ -652,46 +630,8 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	rows, err := a.cs.Graph(r.Context(), *tenant, graphLimit+1)
-	if err != nil {
-		reply(w, r, nil, err)
-		return
-	}
-	reply(w, r, buildGraph(rows), nil)
-}
-
-func buildGraph(rows []models.GraphRow) graphOut {
-	g := graphOut{Nodes: []graphNode{}, Edges: [][2]string{}, Truncated: len(rows) > graphLimit}
-	rows = rows[:min(len(rows), graphLimit)]
-	known := map[string]bool{}
-	for _, row := range rows {
-		known[row.Path] = true
-		g.Nodes = append(g.Nodes, graphNode{Path: row.Path, Type: row.Type, Title: row.Title})
-	}
-	// Past the row cap, an absent target may just be a concept that did not fit.
-	rowsCut := g.Truncated
-links:
-	for _, row := range rows {
-		for _, target := range row.Links {
-			if len(g.Edges) >= graphEdgeLimit {
-				g.Truncated = true
-				break links
-			}
-			if !known[target] {
-				if rowsCut {
-					continue
-				}
-				if len(g.Nodes) >= graphLimit {
-					g.Truncated = true
-					continue
-				}
-				known[target] = true
-				g.Nodes = append(g.Nodes, graphNode{Path: target, Missing: true})
-			}
-			g.Edges = append(g.Edges, [2]string{row.Path, target})
-		}
-	}
-	return g
+	g, err := a.svc.Graph(r.Context(), *tenant)
+	reply(w, r, g, err)
 }
 
 func (a *api) activity(w http.ResponseWriter, r *http.Request) {
@@ -701,6 +641,6 @@ func (a *api) activity(w http.ResponseWriter, r *http.Request) {
 	if p.invalid(w) {
 		return
 	}
-	rs, err := a.cs.Activity(r.Context(), tenant, limit)
+	rs, err := a.svc.Activity(r.Context(), tenant, limit)
 	reply(w, r, revisions(rs), err)
 }

@@ -66,7 +66,7 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	var fallback http.Handler = slashRedirect(mux, notFound)
 	closeRoot := func() {}
 	if UIEnabled() {
-		mux.Handle("/api/", http.StripPrefix("/api", NewAPI(cs, NewAuth(password))))
+		mux.Handle("/api/", http.StripPrefix("/api", NewAPI(services.NewConsoleService(cs), NewAuth(password))))
 		dir := os.Getenv("KEEPSAKE_STATIC_DIR")
 		if dir == "" {
 			dir = defaultStaticDir

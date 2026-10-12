@@ -21,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/roee-fs/keepsake/internal/repositories"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -38,7 +39,7 @@ type console struct {
 func newConsole(t *testing.T) *console {
 	t.Helper()
 	cs := conceptStore(t)
-	return &console{t: t, h: NewAPI(cs, adminAuth()), cs: cs}
+	return &console{t: t, h: NewAPI(services.NewConsoleService(cs), adminAuth()), cs: cs}
 }
 
 func (c *console) do(r *http.Request) *httptest.ResponseRecorder {
@@ -124,12 +125,6 @@ func wantStatus(t *testing.T, rec *httptest.ResponseRecorder, code int) {
 	if rec.Code != code {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, code, rec.Body)
 	}
-}
-
-func setLimit(t *testing.T, p *int, v int) {
-	old := *p
-	*p = v
-	t.Cleanup(func() { *p = old })
 }
 
 var pathParam = regexp.MustCompile(`\{[^}]+\}`)
@@ -530,46 +525,6 @@ func TestGraphReturnsEdgesAndMarksAMissingTarget(t *testing.T) {
 		t.Fatalf("nodes = %v", nodes)
 	}
 	if !reflect.DeepEqual(g.Edges, [][2]string{{"a", "b"}, {"a", "ghost"}, {"b", "a"}}) || g.Truncated {
-		t.Fatalf("graph = %+v", g)
-	}
-}
-
-func TestGraphPastTheCapDropsEdgesItCannotPlace(t *testing.T) {
-	setLimit(t, &graphLimit, 1)
-	c := newConsole(t).login()
-	tenant := uuid.New()
-	c.create(tenant, "a", "a", "b")
-	c.create(tenant, "b", "b")
-
-	g := c.graph(tenant)
-	// "b" exists past the cap, so it MUST NOT come back as a missing node.
-	if !reflect.DeepEqual(g.paths(), []string{"a"}) || len(g.Edges) != 0 || !g.Truncated {
-		t.Fatalf("graph = %+v", g)
-	}
-}
-
-func TestGraphCapsMissingTargetsAtTheNodeLimit(t *testing.T) {
-	setLimit(t, &graphLimit, 3)
-	c := newConsole(t).login()
-	tenant := uuid.New()
-	c.create(tenant, "a", "a", "g1", "g2", "g3", "g4")
-
-	g := c.graph(tenant)
-	if !reflect.DeepEqual(g.paths(), []string{"a", "g1", "g2"}) ||
-		!reflect.DeepEqual(g.Edges, [][2]string{{"a", "g1"}, {"a", "g2"}}) || !g.Truncated {
-		t.Fatalf("graph = %+v", g)
-	}
-}
-
-func TestGraphCapsEdges(t *testing.T) {
-	setLimit(t, &graphEdgeLimit, 2)
-	c := newConsole(t).login()
-	tenant := uuid.New()
-	c.create(tenant, "a", "a", "b", "c")
-	c.create(tenant, "b", "b", "a", "c")
-	c.create(tenant, "c", "c")
-
-	if g := c.graph(tenant); len(g.Edges) != 2 || !g.Truncated {
 		t.Fatalf("graph = %+v", g)
 	}
 }

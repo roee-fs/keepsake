@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/roee-fs/keepsake/internal/services"
 )
 
