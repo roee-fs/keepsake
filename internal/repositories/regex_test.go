@@ -1,4 +1,4 @@
-// package store, not store_test: pgRegex is unexported.
+// package repositories, not repositories_test: pgRegex is unexported.
 package repositories
 
 import "testing"

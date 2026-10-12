@@ -202,8 +202,11 @@ Then log in at `http://localhost:8000` with that password.
 | Path | Responsibility |
 | --- | --- |
 | `cmd/keepsake` | The one binary: `serve`, `migrate`, `import`, `export`, `validate`, `token`. |
-| `internal/server` | The MCP server, the console API and auth. |
-| `internal/store` | Tenant-scoped reads and writes, search, and the revision log. |
+| `internal/app` | Wires the database, services and controllers into the served app. |
+| `internal/controllers` | The MCP server, the console API, bundle uploads and auth. |
+| `internal/services` | Tool, console and bundle logic. |
+| `internal/repositories` | Tenant-scoped reads and writes, search, and the revision log. |
+| `internal/models` | The rows repositories return and the errors every layer matches on. |
 | `internal/migrate` | The schema, RLS policies and grants. |
 | `internal/cli` | The CLI commands. |
 | `okf/` | OKF parsing, serialization, links and validation. |

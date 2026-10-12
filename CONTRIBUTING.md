@@ -31,11 +31,20 @@ uv run ruff check e2e bench tests
 uv run pytest tests
 ```
 
-`layering_test.go` is not optional decoration. It enforces two contracts that
-the design depends on: `okf` never imports `internal/...`, because it is meant
-to be publishable on its own; and `internal/store` never imports the server or
-the CLI. If your change breaks one of those, the layering is usually the thing
-to reconsider rather than the contract.
+`layering_test.go` is not optional decoration. It enforces the layers the
+design depends on:
+
+| Package | Role | MUST NOT import |
+| --- | --- | --- |
+| `okf` | OKF parsing and validation, publishable on its own. | `internal/...` |
+| `internal/models` | Rows and domain errors. | `internal/...` |
+| `internal/repositories` | All SQL and the tenant scope. | services, controllers, app, cli |
+| `internal/services` | Validation, stamps, retries and bundle rules. Returns `*ToolError` for caller mistakes. | controllers, app, cli, `net/http` |
+| `internal/controllers` | HTTP, MCP and the Python wire format. Maps errors to responses. | repositories (directly), app, cli |
+| `internal/app`, `internal/cli` | Composition roots. | |
+
+If your change breaks one of those, the layering is usually the thing to
+reconsider rather than the contract.
 
 ## The end-to-end suite
 
@@ -125,8 +134,8 @@ this tree. They're refreshed by hand and aren't part of CI.
   Add a new one, and remember that `helm upgrade` re-runs the hook against a
   database already at head.
 - **Anything touching isolation needs a test that fails without it.** The tenant
-  boundary is the product. `internal/store/isolation_test.go` and
-  `internal/store/verify_test.go` are where those live.
+  boundary is the product. `internal/repositories/isolation_test.go` and
+  `internal/repositories/verify_test.go` are where those live.
 
 ## Commits and pull requests
 

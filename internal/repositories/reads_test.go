@@ -1,7 +1,7 @@
 // Ported from 2de90d2:tests/test_reads.py: the read paths an agent and the admin console
 // use to find and browse knowledge. search returns cards, never bodies.
 //
-// package store_test, not store: shares isolation_test.go's TestMain, db and ctx.
+// package repositories_test, not repositories: shares isolation_test.go's TestMain, db and ctx.
 package repositories_test
 
 import (

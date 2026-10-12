@@ -7,7 +7,7 @@ func SetGrepTimeoutMS(ms int) func() {
 	return func() { grepTimeoutMS = orig }
 }
 
-// SearchSQL lets store_test EXPLAIN what Search runs.
+// SearchSQL lets repositories_test EXPLAIN what Search runs.
 const SearchSQL = searchSQL
 
 var IsUnavailable = isUnavailable

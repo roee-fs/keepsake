@@ -3,8 +3,8 @@
 // the connection handling above them scopes every statement and leaves no scope
 // behind on a pooled connection.
 //
-// package store_test, not store: TestMain MUST migrate a database before any test
-// runs, and internal/migrate imports internal/store, so an internal test file here
+// package repositories_test, not repositories: TestMain MUST migrate a database before any test
+// runs, and internal/migrate imports internal/repositories, so an internal test file here
 // importing internal/migrate would be an import cycle.
 package repositories_test
 

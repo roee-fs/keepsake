@@ -6,7 +6,7 @@ token's `tctx.tenant` claim picks it. An agent never names a tenant.
 
 The server also sends `instructions` for the agent's system prompt: search before
 answering, follow links, prefer the more specific memory, and update rather than
-duplicate. They are in `internal/server/schemas.go`.
+duplicate. They are in `internal/controllers/schemas.go`.
 
 A path is relative, with no `.md` suffix: `runbooks/db-failover`.
 

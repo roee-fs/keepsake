@@ -1,6 +1,6 @@
 // Ported from 2de90d2:tests/test_concurrency.py: concept writes and the compare-and-swap.
 //
-// package store_test, not store: reuses isolation_test.go's TestMain, db and ctx.
+// package repositories_test, not repositories: reuses isolation_test.go's TestMain, db and ctx.
 package repositories_test
 
 import (
