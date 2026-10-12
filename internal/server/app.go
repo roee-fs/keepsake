@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/roee-fs/keepsake/internal/repositories"
+	"github.com/roee-fs/keepsake/internal/services"
 )
 
 // The revision log's actor in auth mode none, where a request carries no caller identity.
@@ -44,7 +45,7 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	cs := repositories.NewConceptRepository(s)
 	mux := http.NewServeMux()
 	// Outside the MCP handler, so a request is refused before its body is read.
-	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))
+	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(services.NewConceptService(cs, uuid.Nil, actor))))
 	// The same auth as /mcp, so a token can replace only its own tenant's concepts.
 	mux.Handle("PUT /bundle", cfg.Auth(replaceBundle(cs)))
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {

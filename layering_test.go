@@ -22,6 +22,7 @@ var layers = map[string][]string{
 	"./okf":                   {"internal/"},
 	"./internal/models":       {"internal/"},
 	"./internal/repositories": {"internal/server", "internal/services", "internal/controllers", "internal/app", "internal/cli"},
+	"./internal/services":     {"internal/server", "internal/controllers", "internal/app", "internal/cli"},
 }
 
 func TestLayering(t *testing.T) {
@@ -33,6 +34,18 @@ func TestLayering(t *testing.T) {
 					t.Errorf("%s imports %s", pkg, d)
 				}
 			}
+		}
+	}
+}
+
+func TestServicesAreHTTPAgnostic(t *testing.T) {
+	out, err := exec.Command("go", "list", "-f", "{{join .Imports \"\\n\"}}", "./internal/services").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, imp := range strings.Fields(string(out)) {
+		if imp == "net/http" || strings.HasPrefix(imp, "github.com/modelcontextprotocol/") {
+			t.Errorf("internal/services imports %s", imp)
 		}
 	}
 }

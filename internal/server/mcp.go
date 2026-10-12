@@ -23,12 +23,13 @@ import (
 	"golang.org/x/text/message"
 
 	"github.com/roee-fs/keepsake/internal/models"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
 const unavailable = "the knowledge store is temporarily unavailable; try again shortly"
 
-type handler func(ctx context.Context, t *Tools, args map[string]any) (any, error)
+type handler func(ctx context.Context, t *services.ConceptService, args map[string]any) (any, error)
 
 // envelope carries a list answer, since structured content is object-only through 2025-11-25.
 type envelope struct {
@@ -41,11 +42,11 @@ func number(v any) int {
 }
 
 var handlers = map[string]handler{
-	"list": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"list": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		prefix, _ := a["prefix"].(string)
 		return t.List(ctx, prefix)
 	},
-	"search": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"search": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		var prefix *string
 		if p, ok := a["prefix"].(string); ok {
 			prefix = &p
@@ -53,21 +54,21 @@ var handlers = map[string]handler{
 		hits, err := t.Search(ctx, a["query"].(string), number(a["limit"]), prefix)
 		return envelope{hits}, err
 	},
-	"grep": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"grep": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		hits, err := t.Grep(ctx, a["pattern"].(string), number(a["limit"]))
 		return envelope{hits}, err
 	},
-	"read": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"read": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		c, err := t.Read(ctx, a["path"].(string))
 		if c == nil {
 			return nil, err
 		}
 		return c, err
 	},
-	"create": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"create": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		return t.Create(ctx, a["path"].(string), a)
 	},
-	"update": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"update": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		var expected *int
 		if v, ok := a["expected_version"]; ok {
 			n := number(v)
@@ -75,7 +76,7 @@ var handlers = map[string]handler{
 		}
 		return t.Update(ctx, a["path"].(string), expected, a)
 	},
-	"relate": func(ctx context.Context, t *Tools, a map[string]any) (any, error) {
+	"relate": func(ctx context.Context, t *services.ConceptService, a map[string]any) (any, error) {
 		return t.Relate(ctx, a["from_path"].(string), a["to_path"].(string))
 	},
 }
@@ -171,14 +172,12 @@ func acquire(ctx context.Context, slot chan struct{}) (release func(), ok bool) 
 	}
 }
 
-func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
+func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Schema, call handler, slot chan struct{}) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		tools := t
 		c, bound := ctx.Value(callerKey{}).(caller)
 		if bound {
-			scoped := *t
-			scoped.t, scoped.actor = c.tenant, c.actor
-			tools = &scoped
+			tools = t.As(c.tenant, c.actor)
 		}
 		start, outcome := time.Now(), "error"
 		defer func() {
@@ -187,7 +186,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 			toolDuration.WithLabelValues(name).Observe(elapsed.Seconds())
 			// The arguments MUST NOT be logged: they carry concept bodies.
 			slog.Info("tool call", "tool", name, "outcome", outcome, "duration_ms", elapsed.Milliseconds(),
-				"tenant", tools.t, "actor", tools.actor)
+				"tenant", tools.Tenant(), "actor", tools.Actor())
 		}()
 		// Before the arguments are even parsed: nothing a read-only caller sends can write.
 		if bound && c.readOnly && writes[name] {
@@ -213,7 +212,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 			args[k], _ = m.Get(k)
 		}
 		// Fail closed: the nil tenant is never a caller's, and writing as it would pool every stray write.
-		if tools.t == uuid.Nil {
+		if tools.Tenant() == uuid.Nil {
 			return nil, errors.New("no tenant bound to this request")
 		}
 		release, ok := acquire(ctx, slot)
@@ -222,7 +221,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		}
 		defer release()
 		result, err := call(ctx, tools, args)
-		var te *ToolError
+		var te *services.ToolError
 		switch {
 		case errors.As(err, &te):
 			outcome = "tool_error"
@@ -241,7 +240,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 			return nil, err
 		}
 		outcome = "ok"
-		if _, ok := result.(conflictResult); ok {
+		if _, ok := result.(services.ConflictResult); ok {
 			outcome = "conflict"
 		}
 		res := &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}
@@ -253,7 +252,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 }
 
 // NewMCPHandler serves the seven keepsake tools over stateless streamable HTTP with JSON responses.
-func NewMCPHandler(t *Tools) http.Handler {
+func NewMCPHandler(t *services.ConceptService) http.Handler {
 	// Python advertises tools without list-change notifications, and no logging.
 	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
@@ -261,7 +260,7 @@ func NewMCPHandler(t *Tools) http.Handler {
 	})
 	tools := toolDefinitions()
 	// One fewer than the pool, so a burst queues here and the console keeps a connection.
-	slot := make(chan struct{}, max(t.c.PoolSize()-1, 1))
+	slot := make(chan struct{}, max(t.PoolSize()-1, 1))
 	for _, tool := range tools {
 		server.AddTool(tool, toolHandler(t, tool.Name, compile(tool.InputSchema), handlers[tool.Name], slot))
 	}

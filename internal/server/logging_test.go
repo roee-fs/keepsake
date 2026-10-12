@@ -52,7 +52,7 @@ func TestEachToolCallIsLoggedWithoutItsArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := logLine(t, logs, "tool call", map[string]any{
-		"level": "INFO", "tool": "create", "outcome": "ok", "tenant": tools.t.String(), "actor": "mcp",
+		"level": "INFO", "tool": "create", "outcome": "ok", "tenant": tools.Tenant().String(), "actor": "mcp",
 	})
 	if _, ok := line["duration_ms"].(float64); !ok {
 		t.Errorf("no duration_ms in %v", line)

@@ -22,7 +22,7 @@ import (
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
 	"github.com/roee-fs/keepsake/internal/repositories"
-	"github.com/roee-fs/keepsake/internal/server"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -706,7 +706,7 @@ func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 // The stamp lives in the stored frontmatter, so an export and re-import MUST NOT freeze it.
 func TestTheStampFollowsTheLatestWriterAcrossAnExportAndReimport(t *testing.T) {
 	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
-	if _, err := server.NewTools(cs, tenant, "support-agent/1.4").Create(ctx, "a", map[string]any{"type": "Concept"}); err != nil {
+	if _, err := services.NewConceptService(cs, tenant, "support-agent/1.4").Create(ctx, "a", map[string]any{"type": "Concept"}); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(tmp, "out")
@@ -717,7 +717,7 @@ func TestTheStampFollowsTheLatestWriterAcrossAnExportAndReimport(t *testing.T) {
 	// Another tenant, so the concept holds only what the file carried.
 	other := uuid.New()
 	mustImport(t, cs, other, out)
-	if _, err := server.NewTools(cs, other, "human:ann").Update(ctx, "a", nil, map[string]any{"body": "edited"}); err != nil {
+	if _, err := services.NewConceptService(cs, other, "human:ann").Update(ctx, "a", nil, map[string]any{"body": "edited"}); err != nil {
 		t.Fatal(err)
 	}
 	g, _ := read(t, cs, other, "a").Frontmatter.Get("generated")

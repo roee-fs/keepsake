@@ -1,6 +1,6 @@
 // The seven tool bodies, ported from 2de90d2:src/keepsake/server/tools.py. The tenant comes from
 // the request's caller, so no tool takes one, and no tool returns a body the agent could not read.
-package server
+package services
 
 import (
 	"context"
@@ -35,28 +35,51 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 	return out
 }
 
-type Tools struct {
+// obj builds an ordered JSON object from key, value pairs.
+func obj(kv ...any) *okf.Map {
+	m := okf.NewMap()
+	for i := 0; i < len(kv); i += 2 {
+		m.Set(kv[i].(string), kv[i+1])
+	}
+	return m
+}
+
+type ConceptService struct {
 	c     *repositories.ConceptRepository
 	t     uuid.UUID
 	actor string
 }
 
-func NewTools(cs *repositories.ConceptRepository, tenant uuid.UUID, actor string) *Tools {
-	return &Tools{c: cs, t: tenant, actor: actor}
+func NewConceptService(cs *repositories.ConceptRepository, tenant uuid.UUID, actor string) *ConceptService {
+	return &ConceptService{c: cs, t: tenant, actor: actor}
 }
 
-type writeResult struct {
+// As returns a copy acting for tenant as actor.
+func (t *ConceptService) As(tenant uuid.UUID, actor string) *ConceptService {
+	scoped := *t
+	scoped.t, scoped.actor = tenant, actor
+	return &scoped
+}
+
+func (t *ConceptService) Tenant() uuid.UUID { return t.t }
+
+func (t *ConceptService) Actor() string { return t.actor }
+
+// PoolSize is the most database connections the service can hold at once.
+func (t *ConceptService) PoolSize() int { return t.c.PoolSize() }
+
+type WriteResult struct {
 	Path    string `json:"path"`
 	Version int    `json:"version"`
 }
 
-type conflictResult struct {
+type ConflictResult struct {
 	Conflict       bool   `json:"conflict"`
 	CurrentVersion int    `json:"current_version"`
 	CurrentBody    string `json:"current_body"`
 }
 
-type searchHit struct {
+type SearchHit struct {
 	Path        string  `json:"path"`
 	Type        string  `json:"type"`
 	Title       string  `json:"title"`
@@ -64,28 +87,28 @@ type searchHit struct {
 	Score       float64 `json:"score"`
 }
 
-func hitOf(h models.Hit) searchHit {
-	return searchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
+func HitOf(h models.Hit) SearchHit {
+	return SearchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
 }
 
-// card is a search result: a searchHit, the passages that match, and the OKF §5 signals.
-type card struct {
-	searchHit
+// Card is a search result: a SearchHit, the passages that match, and the OKF §5 signals.
+type Card struct {
+	SearchHit
 	Snippet string `json:"snippet"`
 	okf.Signals
 }
 
-type grepHit struct {
+type GrepHit struct {
 	Path    string `json:"path"`
 	Snippet string `json:"snippet"`
 }
 
-type listing struct {
+type Listing struct {
 	Paths  []string `json:"paths"`
 	Counts *okf.Map `json:"counts"`
 }
 
-type concept struct {
+type Concept struct {
 	Path        string   `json:"path"`
 	Type        string   `json:"type"`
 	Title       string   `json:"title"`
@@ -111,7 +134,7 @@ func textField(kw map[string]any, name string) (string, error) {
 	return s, nil
 }
 
-func (t *Tools) concept(path string, kw map[string]any, stamp bool) (okf.Concept, error) {
+func (t *ConceptService) concept(path string, kw map[string]any, stamp bool) (okf.Concept, error) {
 	body, err := textField(kw, "body")
 	if err != nil {
 		return okf.Concept{}, err
@@ -148,23 +171,23 @@ func (t *Tools) concept(path string, kw map[string]any, stamp bool) (okf.Concept
 	return c, nil
 }
 
-func (t *Tools) Create(ctx context.Context, path string, kw map[string]any) (writeResult, error) {
+func (t *ConceptService) Create(ctx context.Context, path string, kw map[string]any) (WriteResult, error) {
 	c, err := t.concept(path, kw, true)
 	if err != nil {
-		return writeResult{}, err
+		return WriteResult{}, err
 	}
 	version, created, err := t.c.Create(ctx, t.t, c, t.actor)
 	if err != nil {
-		return writeResult{}, err
+		return WriteResult{}, err
 	}
 	if !created {
-		return writeResult{}, toolErr("concept already exists at " + path)
+		return WriteResult{}, toolErr("concept already exists at " + path)
 	}
-	return writeResult{path, version}, nil
+	return WriteResult{path, version}, nil
 }
 
-// Update returns a writeResult, or a conflictResult when expectedVersion is stale.
-func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
+// Update returns a WriteResult, or a ConflictResult when expectedVersion is stale.
+func (t *ConceptService) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
 	existing, err := t.c.Read(ctx, t.t, path)
 	if err != nil {
 		return nil, err
@@ -176,7 +199,7 @@ func (t *Tools) Update(ctx context.Context, path string, expectedVersion *int, k
 }
 
 // write writes kw over the concept the caller already read. Unless stamp is set it keeps the authorship stamp.
-func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any, stamp bool) (any, error) {
+func (t *ConceptService) write(ctx context.Context, existing okf.Concept, path string, expectedVersion *int, kw map[string]any, stamp bool) (any, error) {
 	merged := map[string]any{
 		"type": existing.Type, "title": existing.Title, "description": existing.Description,
 		"body": existing.Body, "frontmatter": existing.Frontmatter,
@@ -197,23 +220,23 @@ func (t *Tools) write(ctx context.Context, existing okf.Concept, path string, ex
 		return nil, err
 	}
 	if conflict != nil {
-		return conflictResult{true, conflict.CurrentVersion, conflict.CurrentBody}, nil
+		return ConflictResult{true, conflict.CurrentVersion, conflict.CurrentBody}, nil
 	}
-	return writeResult{path, version}, nil
+	return WriteResult{path, version}, nil
 }
 
-func (t *Tools) Search(ctx context.Context, query string, limit int, prefix *string) ([]card, error) {
+func (t *ConceptService) Search(ctx context.Context, query string, limit int, prefix *string) ([]Card, error) {
 	hits, err := t.c.Search(ctx, t.t, query, limit, prefix)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
-	return convert(hits, func(h models.Hit) card {
-		return card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
+	return convert(hits, func(h models.Hit) Card {
+		return Card{HitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
-func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit, error) {
+func (t *ConceptService) Grep(ctx context.Context, pattern string, limit int) ([]GrepHit, error) {
 	hits, err := t.c.Grep(ctx, t.t, pattern, limit)
 	var ge *models.GrepError
 	if errors.As(err, &ge) {
@@ -222,15 +245,15 @@ func (t *Tools) Grep(ctx context.Context, pattern string, limit int) ([]grepHit,
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h models.GrepHit) grepHit { return grepHit(h) }), nil
+	return convert(hits, func(h models.GrepHit) GrepHit { return GrepHit(h) }), nil
 }
 
-func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {
+func (t *ConceptService) List(ctx context.Context, prefix string) (Listing, error) {
 	rows, err := t.c.List(ctx, t.t, prefix)
 	if err != nil {
-		return listing{}, err
+		return Listing{}, err
 	}
-	out := listing{Paths: []string{}, Counts: okf.NewMap()}
+	out := Listing{Paths: []string{}, Counts: okf.NewMap()}
 	for _, r := range rows {
 		out.Paths = append(out.Paths, r.Path)
 		n, _ := out.Counts.Get(r.Type)
@@ -241,17 +264,17 @@ func (t *Tools) List(ctx context.Context, prefix string) (listing, error) {
 }
 
 // Read returns nil when nothing is stored at path.
-func (t *Tools) Read(ctx context.Context, path string) (*concept, error) {
+func (t *ConceptService) Read(ctx context.Context, path string) (*Concept, error) {
 	c, backlinks, err := t.c.ReadWithBacklinks(ctx, t.t, path)
 	if err != nil || c == nil {
 		return nil, err
 	}
-	return &concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks,
+	return &Concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks,
 		okf.Derive(c.Frontmatter, time.Now())}, nil
 }
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
-func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
+func (t *ConceptService) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
 	for range relateAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
@@ -262,7 +285,7 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 		}
 		if slices.Contains(source.Links, toPath) {
 			// Idempotent: a retrying agent MUST NOT append the link twice.
-			return writeResult{fromPath, source.Version}, nil
+			return WriteResult{fromPath, source.Version}, nil
 		}
 		// Rooted, not relative: a bare to_path would resolve against the source's own directory.
 		body := strings.TrimRight(source.Body, "\n") + "\n\n[" + toPath + "](/" + toPath + ".md)\n"
@@ -276,7 +299,7 @@ func (t *Tools) Relate(ctx context.Context, fromPath, toPath string) (any, error
 		if err != nil {
 			return nil, err
 		}
-		if _, conflict := result.(conflictResult); !conflict {
+		if _, conflict := result.(ConflictResult); !conflict {
 			return result, nil
 		}
 	}

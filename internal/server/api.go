@@ -24,6 +24,7 @@ import (
 	"github.com/roee-fs/keepsake/frontend"
 	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/repositories"
+	"github.com/roee-fs/keepsake/internal/services"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -108,6 +109,15 @@ func NewAPI(cs *repositories.ConceptRepository, a *Auth) http.Handler {
 		})
 	}
 	return limitBody(maxAPIBody, mux)
+}
+
+// convert maps rows to their wire shape, never nil, so an empty answer is [] and not null.
+func convert[S, T any](rows []S, f func(S) T) []T {
+	out := make([]T, len(rows))
+	for i, r := range rows {
+		out[i] = f(r)
+	}
+	return out
 }
 
 // limitBody buffers the body before next runs, as RequestBodyLimitMiddleware does, and answers 413 past n bytes.
@@ -621,7 +631,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Search(r.Context(), *tenant, q, limit, nil)
-	reply(w, r, convert(hits, hitOf), err)
+	reply(w, r, convert(hits, services.HitOf), err)
 }
 
 func (a *api) grep(w http.ResponseWriter, r *http.Request) {
@@ -633,7 +643,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.cs.Grep(r.Context(), *tenant, pattern, limit)
-	reply(w, r, convert(hits, func(h models.GrepHit) grepHit { return grepHit(h) }), err)
+	reply(w, r, convert(hits, func(h models.GrepHit) services.GrepHit { return services.GrepHit(h) }), err)
 }
 
 func (a *api) graph(w http.ResponseWriter, r *http.Request) {
