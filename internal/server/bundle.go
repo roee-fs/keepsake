@@ -17,7 +17,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/models"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -139,7 +140,7 @@ func (z *zeroTail) Read(p []byte) (int, error) {
 }
 
 // replaceBundle answers PUT /bundle?prefix=P: the caller's concepts under P become exactly the uploaded bundle.
-func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
+func replaceBundle(cs *repositories.ConceptRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, ok := r.Context().Value(callerKey{}).(caller)
 		// Fail closed as /mcp does: the nil tenant is never a caller's.
@@ -199,7 +200,7 @@ func replaceBundle(cs *store.ConceptStore) http.HandlerFunc {
 		}
 		written, deleted, err := cs.ReplacePrefix(r.Context(), c.tenant, prefix, concepts, by)
 		switch {
-		case store.IsUnavailable(err):
+		case errors.Is(err, models.ErrUnavailable):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
 			w.Header().Set("Retry-After", "5")
 			writeJSON(w, r, http.StatusServiceUnavailable, detail{unavailable})

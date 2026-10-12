@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/roee-fs/keepsake/internal/pgtest"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -366,7 +366,7 @@ func TestUpRejectsAnInvalidSchemaName(t *testing.T) {
 }
 
 // Ported from 2de90d2:tests/test_schema_name.py::test_a_non_default_schema_migrates_and_serves, the
-// migration half: the ConceptStore/Store half has no Go port yet (a later task).
+// migration half: the ConceptRepository/Store half has no Go port yet (a later task).
 func TestANonDefaultSchemaMigrates(t *testing.T) {
 	ctx := context.Background()
 	if err := Up(ctx, db.OwnerDSN, scratchSchema(t, "okf_elsewhere")); err != nil {
@@ -451,8 +451,8 @@ func upgradeFrom(t *testing.T, left string) {
 		t.Fatal(err)
 	}
 	f := fields{
-		SCHEMA: schema, TENANT_GUC: store.TenantGUC, ADMIN_GUC: store.AdminGUC,
-		ADMIN_POLICY: store.AdminPolicy, APP_ROLE: appRole,
+		SCHEMA: schema, TENANT_GUC: repositories.TenantGUC, ADMIN_GUC: repositories.AdminGUC,
+		ADMIN_POLICY: repositories.AdminPolicy, APP_ROLE: appRole,
 	}
 	if _, err := tx.Exec(ctx, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s", schema)); err != nil {
 		t.Fatal(err)
@@ -506,23 +506,23 @@ func upgradeFrom(t *testing.T, left string) {
 	}
 
 	// The startup check pins admin_read to 0004's exact expression.
-	s, err := store.Open(ctx, db.AppDSN, schema)
+	s, err := repositories.Open(ctx, db.AppDSN, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := store.Verify(ctx, s, schema); err != nil {
+	if err := repositories.Verify(ctx, s, schema); err != nil {
 		t.Fatalf("the upgraded schema fails the startup check: %v", err)
 	}
 	for _, tenant := range tenants {
-		hits, err := store.NewConceptStore(s).Search(ctx, tenant, "backfilled", 10, nil)
+		hits, err := repositories.NewConceptRepository(s).Search(ctx, tenant, "backfilled", 10, nil)
 		if err != nil || len(hits) != 1 || hits[0].Path != "old" {
 			t.Fatalf("Search after upgrade = %+v, %v, want the pre-0005 concept", hits, err)
 		}
 	}
 	// The sequence starts above every version written before 0006, so no path can reuse one.
 	one := 1
-	v, conflict, err := store.NewConceptStore(s).Update(ctx, tenants[0], okf.Concept{Path: "old", Type: "note"}, "t", &one)
+	v, conflict, err := repositories.NewConceptRepository(s).Update(ctx, tenants[0], okf.Concept{Path: "old", Type: "note"}, "t", &one)
 	if err != nil || conflict != nil || v <= 1 {
 		t.Fatalf("Update after upgrade = %d, %+v, %v, want a version above 1", v, conflict, err)
 	}

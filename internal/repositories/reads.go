@@ -1,5 +1,5 @@
 // Concept reads, ported from 8f2af2e:src/keepsake/store/concepts.py with its SQL verbatim.
-package store
+package repositories
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func tsquery(query string) string {
 }
 
 // connect dispatches tenant=nil to AdminScope and any other tenant to Scope, as Python's _connect.
-func (cs *ConceptStore) connect(ctx context.Context, tenant *uuid.UUID, fn func(pgx.Tx) error) error {
+func (cs *ConceptRepository) connect(ctx context.Context, tenant *uuid.UUID, fn func(pgx.Tx) error) error {
 	if tenant == nil {
 		return cs.s.AdminScope(ctx, fn)
 	}
@@ -69,7 +69,7 @@ func collect[T any](ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]
 }
 
 // Read returns the whole concept, body included. nil means no such path.
-func (cs *ConceptStore) Read(ctx context.Context, tenant uuid.UUID, path string) (*okf.Concept, error) {
+func (cs *ConceptRepository) Read(ctx context.Context, tenant uuid.UUID, path string) (*okf.Concept, error) {
 	var out *okf.Concept
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		c, err := scanConcept(tx.QueryRow(ctx, "SELECT "+readCols+" FROM concept WHERE path = $1", path))
@@ -100,7 +100,7 @@ func readWithBacklinks(ctx context.Context, tx pgx.Tx, path string) (*okf.Concep
 }
 
 // ReadWithBacklinks returns the concept and the paths linking to it. nil means no such path.
-func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID, path string) (c *okf.Concept, backlinks []string, err error) {
+func (cs *ConceptRepository) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID, path string) (c *okf.Concept, backlinks []string, err error) {
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		c, backlinks, err = readWithBacklinks(ctx, tx, path)
 		return err
@@ -109,7 +109,7 @@ func (cs *ConceptStore) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID,
 }
 
 // Detail is ReadWithBacklinks plus the path's newest limit revisions, in one transaction.
-func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []models.Revision, err error) {
+func (cs *ConceptRepository) Detail(ctx context.Context, tenant uuid.UUID, path string, limit int) (c *okf.Concept, backlinks []string, history []models.Revision, err error) {
 	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		if c, backlinks, err = readWithBacklinks(ctx, tx, path); err != nil || c == nil {
 			return err
@@ -125,7 +125,7 @@ func (cs *ConceptStore) Detail(ctx context.Context, tenant uuid.UUID, path strin
 }
 
 // ReadAll returns every concept, body included, path-ordered, from one snapshot.
-func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Concept, error) {
+func (cs *ConceptRepository) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Concept, error) {
 	var out []okf.Concept
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, "SELECT "+readCols+" FROM concept ORDER BY path")
@@ -139,7 +139,7 @@ func (cs *ConceptStore) ReadAll(ctx context.Context, tenant uuid.UUID) ([]okf.Co
 }
 
 // Revisions returns the newest limit revisions, newest first.
-func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]models.Revision, error) {
+func (cs *ConceptRepository) Revisions(ctx context.Context, tenant uuid.UUID, limit int) ([]models.Revision, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -157,7 +157,7 @@ func (cs *ConceptStore) Revisions(ctx context.Context, tenant uuid.UUID, limit i
 }
 
 // List returns (path, type) for every concept under prefix. An empty prefix is all.
-func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]models.PathType, error) {
+func (cs *ConceptRepository) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]models.PathType, error) {
 	var out []models.PathType
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
 		out, err = collect[models.PathType](ctx, tx,
@@ -168,7 +168,7 @@ func (cs *ConceptStore) List(ctx context.Context, tenant uuid.UUID, prefix strin
 }
 
 // Page returns a path-ordered page under prefix and its total, in one transaction. nil mixes tenants.
-func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []models.Summary, total int, err error) {
+func (cs *ConceptRepository) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) (page []models.Summary, total int, err error) {
 	err = cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		if limit > 0 {
 			// Two tenants can share a path, so tenant_id breaks the tie.
@@ -185,7 +185,7 @@ func (cs *ConceptStore) Page(ctx context.Context, tenant *uuid.UUID, prefix stri
 }
 
 // Totals are corpus-wide counts for the admin console's summary tiles.
-func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (models.Totals, error) {
+func (cs *ConceptRepository) Totals(ctx context.Context, tenant *uuid.UUID) (models.Totals, error) {
 	var t models.Totals
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) error {
 		byType, err := collect[struct {
@@ -218,7 +218,7 @@ func (cs *ConceptStore) Totals(ctx context.Context, tenant *uuid.UUID) (models.T
 }
 
 // Activity returns the most recent limit revisions, newest first, unlike Revisions.
-func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit int) ([]models.Revision, error) {
+func (cs *ConceptRepository) Activity(ctx context.Context, tenant *uuid.UUID, limit int) ([]models.Revision, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -237,7 +237,7 @@ func (cs *ConceptStore) Activity(ctx context.Context, tenant *uuid.UUID, limit i
 }
 
 // DailyWrites returns revision counts for the last days days, oldest first and zero-filled.
-func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]models.DailyWrite, error) {
+func (cs *ConceptRepository) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]models.DailyWrite, error) {
 	if days <= 0 {
 		return nil, nil
 	}
@@ -258,7 +258,7 @@ func (cs *ConceptStore) DailyWrites(ctx context.Context, tenant *uuid.UUID, days
 }
 
 // Tenants lists every tenant with concepts, and how many; there is no other tenant registry.
-func (cs *ConceptStore) Tenants(ctx context.Context) ([]models.TenantCount, error) {
+func (cs *ConceptRepository) Tenants(ctx context.Context) ([]models.TenantCount, error) {
 	var out []models.TenantCount
 	err := cs.s.AdminScope(ctx, func(tx pgx.Tx) (err error) {
 		out, err = collect[models.TenantCount](ctx, tx,
@@ -318,7 +318,7 @@ FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
 
 // Search returns ranked cards, never bodies. An empty result beats an invalid query.
-func (cs *ConceptStore) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]models.Hit, error) {
+func (cs *ConceptRepository) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]models.Hit, error) {
 	terms := tsquery(query)
 	if terms == "" || limit <= 0 {
 		return nil, nil
@@ -400,7 +400,7 @@ func pgRegex(pattern string) string {
 }
 
 // Grep returns (path, snippet) matches of a Postgres regex, or a *GrepError for a bad or slow one.
-func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]models.GrepHit, error) {
+func (cs *ConceptRepository) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]models.GrepHit, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
@@ -430,7 +430,7 @@ func (cs *ConceptStore) Grep(ctx context.Context, tenant uuid.UUID, pattern stri
 }
 
 // Graph returns (path, type, title, links) for the first limit concepts by path.
-func (cs *ConceptStore) Graph(ctx context.Context, tenant uuid.UUID, limit int) ([]models.GraphRow, error) {
+func (cs *ConceptRepository) Graph(ctx context.Context, tenant uuid.UUID, limit int) ([]models.GraphRow, error) {
 	var out []models.GraphRow
 	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
 		out, err = collect[models.GraphRow](ctx, tx,

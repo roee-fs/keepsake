@@ -2,7 +2,7 @@
 // use to find and browse knowledge. search returns cards, never bodies.
 //
 // package store_test, not store: shares isolation_test.go's TestMain, db and ctx.
-package store_test
+package repositories_test
 
 import (
 	"crypto/rand"
@@ -20,7 +20,7 @@ import (
 
 	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/pgtest"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -38,14 +38,14 @@ func testTenant(t *testing.T) uuid.UUID {
 	return v.(uuid.UUID)
 }
 
-var fixtureCache sync.Map // *testing.T -> *store.ConceptStore
+var fixtureCache sync.Map // *testing.T -> *repositories.ConceptRepository
 
-func fixture(t *testing.T) (*store.ConceptStore, uuid.UUID) {
+func fixture(t *testing.T) (*repositories.ConceptRepository, uuid.UUID) {
 	t.Helper()
 	if v, ok := fixtureCache.Load(t); ok {
-		return v.(*store.ConceptStore), testTenant(t)
+		return v.(*repositories.ConceptRepository), testTenant(t)
 	}
-	cs := store.NewConceptStore(openApp(t))
+	cs := repositories.NewConceptRepository(openApp(t))
 	fixtureCache.Store(t, cs)
 	return cs, testTenant(t)
 }
@@ -492,7 +492,7 @@ func TestGrepIsCancelledRatherThanHoldingThePod(t *testing.T) {
 	// Every store call blocks the pod's event loop, so an expensive pattern MUST be
 	// the caller's problem and not every sibling agent's.
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := testTenant(t)
 	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
@@ -506,7 +506,7 @@ func TestGrepIsCancelledRatherThanHoldingThePod(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The scan costs ~10ms, so 1ms cancels with an order of magnitude to spare.
-	restore := store.SetGrepTimeoutMS(1)
+	restore := repositories.SetGrepTimeoutMS(1)
 	defer restore()
 	_, err = cs.Grep(ctx, tenant, "(lorem|ipsum|dolor)+ z", 10)
 	if err == nil || !strings.Contains(err.Error(), "took longer than 1ms") {
@@ -830,7 +830,7 @@ func TestActivityOfEveryTenantBreaksATiedRevisionByTenantId(t *testing.T) {
 		if _, err := tx.Exec(ctx, insertRevision, low, path); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", store.TenantGUC, high.String()); err != nil {
+		if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", repositories.TenantGUC, high.String()); err != nil {
 			return err
 		}
 		_, err := tx.Exec(ctx, insertRevision, high, path)
@@ -840,7 +840,7 @@ func TestActivityOfEveryTenantBreaksATiedRevisionByTenantId(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	newest, err := cs.Activity(ctx, nil, 1)
 	if err != nil {
 		t.Fatal(err)

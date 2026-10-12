@@ -20,7 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -31,7 +31,7 @@ var adminAuth = sync.OnceValue(func() *Auth { return NewAuth(adminPassword) })
 type console struct {
 	t      *testing.T
 	h      http.Handler
-	cs     *store.ConceptStore
+	cs     *repositories.ConceptRepository
 	cookie string
 }
 

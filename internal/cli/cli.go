@@ -21,8 +21,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/roee-fs/keepsake/internal/migrate"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/internal/server"
-	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -257,7 +257,7 @@ func tenantID(value string) (uuid.UUID, error) {
 }
 
 // bound opens a store and parses a tenant for one command. The func closes the store.
-func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, func(), error) {
+func bound(ctx context.Context, o *options) (*repositories.ConceptRepository, uuid.UUID, func(), error) {
 	id, err := tenantID(o.tenant)
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
@@ -266,20 +266,20 @@ func bound(ctx context.Context, o *options) (*store.ConceptStore, uuid.UUID, fun
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
-	name, err := store.Schema()
+	name, err := repositories.Schema()
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
 	// Verified: RLS alone keeps another tenant's concepts out of this bundle.
-	s, err := store.OpenVerified(ctx, dsn, name)
+	s, err := repositories.OpenVerified(ctx, dsn, name)
 	if err != nil {
 		return nil, uuid.UUID{}, nil, err
 	}
-	return store.NewConceptStore(s), id, s.Close, nil
+	return repositories.NewConceptRepository(s), id, s.Close, nil
 }
 
 // runBundle runs import or export against the bound store and reports the count.
-func runBundle(fn func(context.Context, *store.ConceptStore, uuid.UUID, string) (int, error), verb string) func(context.Context, *options, io.Writer, io.Writer) (int, error) {
+func runBundle(fn func(context.Context, *repositories.ConceptRepository, uuid.UUID, string) (int, error), verb string) func(context.Context, *options, io.Writer, io.Writer) (int, error) {
 	return func(ctx context.Context, o *options, stdout, _ io.Writer) (int, error) {
 		cs, tenant, closeStore, err := bound(ctx, o)
 		if err != nil {
@@ -315,7 +315,7 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	name, err := store.Schema()
+	name, err := repositories.Schema()
 	if err != nil {
 		return 0, err
 	}
@@ -338,7 +338,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if err != nil {
 		return 0, err
 	}
-	name, err := store.Schema()
+	name, err := repositories.Schema()
 	if err != nil {
 		return 0, err
 	}
@@ -362,7 +362,7 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if mode == "" {
 		mode = "none"
 	}
-	poolSize, _ := store.PoolSize()
+	poolSize, _ := repositories.PoolSize()
 	slog.Info("listening", "addr", addr, "metrics", metricsAddr, "auth_mode", mode, "schema", name,
 		"pool_size", poolSize, "ui", server.UIEnabled())
 	return 0, listen(map[string]http.Handler{addr: h, metricsAddr: mux})

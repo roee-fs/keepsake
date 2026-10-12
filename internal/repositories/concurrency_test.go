@@ -1,7 +1,7 @@
 // Ported from 2de90d2:tests/test_concurrency.py: concept writes and the compare-and-swap.
 //
 // package store_test, not store: reuses isolation_test.go's TestMain, db and ctx.
-package store_test
+package repositories_test
 
 import (
 	"errors"
@@ -15,13 +15,13 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/roee-fs/keepsake/internal/models"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
 func TestCreateReturnsNotCreatedWhenPathTaken(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	c := okf.Concept{Path: "a/b", Type: "Concept", Body: "one"}
 
@@ -37,7 +37,7 @@ func TestCreateReturnsNotCreatedWhenPathTaken(t *testing.T) {
 
 func TestUpdateWithStaleVersionReturnsCurrentContent(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	one, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/c", Type: "Concept", Body: "v1"}, "agent")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestUpdateWithStaleVersionReturnsCurrentContent(t *testing.T) {
 
 func TestUpdateWithoutExpectedVersionIsLastWriteWins(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	one, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/d", Type: "Concept", Body: "v1"}, "agent")
 	if err != nil {
@@ -86,7 +86,7 @@ func TestUpdateWithoutExpectedVersionIsLastWriteWins(t *testing.T) {
 
 func TestUpdateOfAnAbsentPathReturnsErrNotFoundWithoutDisclosingBody(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 
 	_, _, err := cs.Update(ctx, tenant, okf.Concept{Path: "a/missing", Type: "Concept", Body: "secret"}, "agent", nil)
@@ -107,7 +107,7 @@ func TestUpdateOfAnAbsentPathReturnsErrNotFoundWithoutDisclosingBody(t *testing.
 // deterministic: both goroutines reach it before either issues its UPDATE.
 func TestExactlyOneOfTwoConcurrentUpdatesWins(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	one, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/e", Type: "Concept", Body: "v1"}, "agent")
 	if err != nil {
@@ -165,7 +165,7 @@ func TestExactlyOneOfTwoConcurrentUpdatesWins(t *testing.T) {
 
 func TestEveryWriteAppendsARevision(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	one, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/f", Type: "Concept", Body: "v1"}, "agent")
 	if err != nil {
@@ -209,7 +209,7 @@ func TestEveryWriteAppendsARevision(t *testing.T) {
 
 func TestAConflictingUpdateAppendsNoRevision(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/g", Type: "Concept", Body: "v1"}, "agent"); err != nil {
 		t.Fatal(err)
@@ -238,7 +238,7 @@ func TestAConflictingUpdateAppendsNoRevision(t *testing.T) {
 // byte-identically.
 func TestFrontmatterCarryingADateSurvivesAWrite(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 
 	c, err := okf.Parse("---\ntype: Concept\nreviewed: 2026-01-01\n---\nbody\n", "a/h")
@@ -270,7 +270,7 @@ func TestFrontmatterCarryingADateSurvivesAWrite(t *testing.T) {
 
 func TestRevisionSnapshotCarriesEveryFieldAndTheNewVersion(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	fm := okf.NewMap()
 	fm.Set("reviewed", "2026-01-01")
@@ -318,7 +318,7 @@ func TestRevisionSnapshotCarriesEveryFieldAndTheNewVersion(t *testing.T) {
 // transaction ImportMany runs the whole bundle in, so the first MUST NOT survive.
 func TestImportManyIsOneTransaction(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	bundle := []okf.Concept{
 		{Path: "a/import1", Type: "Concept", Body: "ok"},
@@ -344,7 +344,7 @@ func TestImportManyIsOneTransaction(t *testing.T) {
 // A re-import overwrites a taken path and logs it, in bundle order, even when the bundle names it twice.
 func TestImportManyOverwritesTakenPathsInBundleOrder(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "a", Type: "Concept", Body: "1"}}, "agent"); err != nil {
 		t.Fatal(err)
@@ -364,7 +364,7 @@ func TestImportManyOverwritesTakenPathsInBundleOrder(t *testing.T) {
 }
 
 // revisionLog is each revision as "path op body", then whether its snapshot names its version, in version order per path.
-func revisionLog(t *testing.T, s *store.Store, tenant uuid.UUID) []string {
+func revisionLog(t *testing.T, s *repositories.Store, tenant uuid.UUID) []string {
 	t.Helper()
 	var log []string
 	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
@@ -385,7 +385,7 @@ func revisionLog(t *testing.T, s *store.Store, tenant uuid.UUID) []string {
 // Pushing the same bundle again MUST NOT bump versions, or every agent's expected_version goes stale.
 func TestImportManySkipsAnUnchangedConcept(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	fm := okf.NewMap()
 	fm.Set("tags", []any{"db"})
@@ -414,7 +414,7 @@ func TestImportManySkipsAnUnchangedConcept(t *testing.T) {
 	}
 }
 
-func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string {
+func listPaths(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID) []string {
 	t.Helper()
 	got, err := cs.List(ctx, tenant, "")
 	if err != nil {
@@ -424,7 +424,7 @@ func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string 
 }
 
 func TestReplacePrefixMakesThePrefixExactlyTheBundle(t *testing.T) {
-	cs := store.NewConceptStore(openApp(t))
+	cs := repositories.NewConceptRepository(openApp(t))
 	tenant := uuid.New()
 	seed := []okf.Concept{
 		{Path: "docs", Type: "Doc"},
@@ -452,7 +452,7 @@ func TestReplacePrefixMakesThePrefixExactlyTheBundle(t *testing.T) {
 // A re-created path MUST NOT reuse a version, or a stale expected_version would overwrite the new concept.
 func TestADeletedPathReturnsAtANewVersionWithItsHistory(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	replace := func(path, body string) {
 		t.Helper()
@@ -479,7 +479,7 @@ func TestADeletedPathReturnsAtANewVersionWithItsHistory(t *testing.T) {
 }
 
 func TestReplacePrefixIsOneTransaction(t *testing.T) {
-	cs := store.NewConceptStore(openApp(t))
+	cs := repositories.NewConceptRepository(openApp(t))
 	tenant := uuid.New()
 	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/old", Type: "Doc"}}, "agent"); err != nil {
 		t.Fatal(err)
@@ -494,7 +494,7 @@ func TestReplacePrefixIsOneTransaction(t *testing.T) {
 }
 
 func TestReplacePrefixRefusesAPathOutsideIt(t *testing.T) {
-	cs := store.NewConceptStore(openApp(t))
+	cs := repositories.NewConceptRepository(openApp(t))
 	if _, _, err := cs.ReplacePrefix(ctx, uuid.New(), "docs", []okf.Concept{{Path: "docsx/a", Type: "Doc"}}, "platform"); err == nil {
 		t.Fatal("ReplacePrefix = nil error")
 	}
@@ -502,7 +502,7 @@ func TestReplacePrefixRefusesAPathOutsideIt(t *testing.T) {
 
 // Without a tenant-wide lock, a replace of docs and one of docs/sub each keep the path the other inserted.
 func TestConcurrentReplacesOfNestedPrefixesLeaveOneBundle(t *testing.T) {
-	cs := store.NewConceptStore(openApp(t))
+	cs := repositories.NewConceptRepository(openApp(t))
 	for range 10 {
 		tenant := uuid.New()
 		var wg sync.WaitGroup
@@ -523,7 +523,7 @@ func TestConcurrentReplacesOfNestedPrefixesLeaveOneBundle(t *testing.T) {
 // A delete revision MUST follow an update committed while ReplacePrefix waited on its row lock.
 func TestReplacePrefixLogsItsDeleteAfterAnUpdateItWaitedFor(t *testing.T) {
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	tenant := uuid.New()
 	if _, err := cs.ImportMany(ctx, tenant, []okf.Concept{{Path: "docs/gone", Type: "Doc"}}, "agent"); err != nil {
 		t.Fatal(err)

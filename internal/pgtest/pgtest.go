@@ -15,7 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 )
 
 type DB struct{ AdminDSN, OwnerDSN, AppDSN string }
@@ -129,15 +129,15 @@ func (db *DB) TerminateApp(t testing.TB) {
 		"WHERE usename = 'keepsake_app' AND datname = current_database()")
 }
 
-// ConceptStore opens a store on dsn's okf schema, closed when t ends.
-func ConceptStore(t testing.TB, dsn string) *store.ConceptStore {
+// ConceptRepository opens a store on dsn's okf schema, closed when t ends.
+func ConceptRepository(t testing.TB, dsn string) *repositories.ConceptRepository {
 	t.Helper()
-	s, err := store.Open(context.Background(), dsn, "okf")
+	s, err := repositories.Open(context.Background(), dsn, "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	return store.NewConceptStore(s)
+	return repositories.NewConceptRepository(s)
 }
 
 // AssertUnprivileged fails t if dsn logs in as a role exempt from row-level security.

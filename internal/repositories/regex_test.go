@@ -1,5 +1,5 @@
 // package store, not store_test: pgRegex is unexported.
-package store
+package repositories
 
 import "testing"
 

@@ -13,7 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 )
 
 //go:embed sql/*.sql.tmpl
@@ -54,7 +54,7 @@ func loadMigrations() []migration {
 
 // Up applies every migration past schema's alembic_version in one transaction; at head it changes nothing.
 func Up(ctx context.Context, dsn, schema string) error {
-	schema, err := store.ValidatedSchema(schema)
+	schema, err := repositories.ValidatedSchema(schema)
 	if err != nil {
 		return err
 	}
@@ -106,9 +106,9 @@ func up(ctx context.Context, tx pgx.Tx, schema string) error {
 
 	f := fields{
 		SCHEMA:       schema,
-		TENANT_GUC:   store.TenantGUC,
-		ADMIN_GUC:    store.AdminGUC,
-		ADMIN_POLICY: store.AdminPolicy,
+		TENANT_GUC:   repositories.TenantGUC,
+		ADMIN_GUC:    repositories.AdminGUC,
+		ADMIN_POLICY: repositories.AdminPolicy,
 		APP_ROLE:     appRole,
 	}
 	for _, m := range migrations {

@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 )
 
 // The revision log's actor in auth mode none, where a request carries no caller identity.
@@ -36,12 +36,12 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	s, err := store.OpenVerified(ctx, cfg.DSN, cfg.Schema)
+	s, err := repositories.OpenVerified(ctx, cfg.DSN, cfg.Schema)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	mux := http.NewServeMux()
 	// Outside the MCP handler, so a request is refused before its body is read.
 	mux.Handle("/mcp", cfg.Auth(NewMCPHandler(NewTools(cs, uuid.Nil, actor))))

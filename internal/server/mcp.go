@@ -22,7 +22,7 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -227,7 +227,7 @@ func toolHandler(t *Tools, name string, schema *jsonschema.Schema, call handler,
 		case errors.As(err, &te):
 			outcome = "tool_error"
 			return failed(te.Msg), nil
-		case store.IsUnavailable(err):
+		case errors.Is(err, models.ErrUnavailable):
 			outcome = "unavailable"
 			slog.Warn("database unavailable", "tool", name, "err", err)
 			return failed(unavailable), nil

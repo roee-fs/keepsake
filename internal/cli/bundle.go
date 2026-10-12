@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -84,7 +84,7 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 }
 
 // ImportBundle stores the whole bundle in one transaction, all or nothing.
-func ImportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, root string) (int, error) {
+func ImportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) (int, error) {
 	concepts, err := documents(root, true)
 	if err != nil {
 		return 0, err
@@ -110,7 +110,7 @@ func target(path string) (string, error) {
 }
 
 // ExportBundle writes the corpus out as a bundle, index and log included.
-func ExportBundle(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, root string) (int, error) {
+func ExportBundle(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) (int, error) {
 	if err := os.MkdirAll(root, 0o777); err != nil {
 		return 0, err
 	}
@@ -210,7 +210,7 @@ func renderIndex(concepts []okf.Concept) string {
 }
 
 // renderLog renders the most recent limit revisions, newest first, under date headings.
-func renderLog(ctx context.Context, cs *store.ConceptStore, tenant uuid.UUID, limit int) (string, error) {
+func renderLog(ctx context.Context, cs *repositories.ConceptRepository, tenant uuid.UUID, limit int) (string, error) {
 	revisions, err := cs.Revisions(ctx, tenant, limit)
 	if err != nil {
 		return "", err

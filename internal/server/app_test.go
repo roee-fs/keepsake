@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 )
 
 const shell = "<html>console shell</html>"
@@ -107,7 +107,7 @@ func TestReadyzReportsReadyWhileThePoolCanReachTheDatabase(t *testing.T) {
 func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
 	_, _, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: FixedTenant(uuid.New()), Schema: "okf"})
-	var m *store.MisconfiguredDatabase
+	var m *repositories.MisconfiguredDatabase
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredDatabase", err)
 	}

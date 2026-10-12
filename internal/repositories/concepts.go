@@ -1,5 +1,5 @@
 // Concept writes, ported from 8f2af2e:src/keepsake/store/concepts.py.
-package store
+package repositories
 
 import (
 	"context"
@@ -56,18 +56,18 @@ var updateSQL = func() string {
 		strings.Join(assignments, ", "), n+1, n+2, n+3, n+3, n+4, n+2, "update", n+5, n+1)
 }()
 
-// ConceptStore writes concepts and appends their revision log.
-type ConceptStore struct {
+// ConceptRepository writes concepts and appends their revision log.
+type ConceptRepository struct {
 	s *Store
 }
 
-func NewConceptStore(s *Store) *ConceptStore { return &ConceptStore{s: s} }
+func NewConceptRepository(s *Store) *ConceptRepository { return &ConceptRepository{s: s} }
 
 // PoolSize is the most connections the store holds at once.
-func (cs *ConceptStore) PoolSize() int { return int(cs.s.pool.Config().MaxConns) }
+func (cs *ConceptRepository) PoolSize() int { return int(cs.s.pool.Config().MaxConns) }
 
 // Create inserts a concept. created is false when the path is already taken.
-func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string) (version int, created bool, err error) {
+func (cs *ConceptRepository) Create(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string) (version int, created bool, err error) {
 	w, err := newWrite(c)
 	if err != nil {
 		return 0, false, err
@@ -81,7 +81,7 @@ func (cs *ConceptStore) Create(ctx context.Context, tenant uuid.UUID, c okf.Conc
 
 // Update writes a concept, as a compare-and-swap unless expected is nil. err is a *NotFoundError for a missing path.
 // A concept that differs only in its authorship stamp writes nothing and returns the current version.
-func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *models.Conflict, err error) {
+func (cs *ConceptRepository) Update(ctx context.Context, tenant uuid.UUID, c okf.Concept, actor string, expected *int) (version int, conflict *models.Conflict, err error) {
 	w, err := newWrite(c)
 	if err != nil {
 		return 0, nil, err
@@ -94,7 +94,7 @@ func (cs *ConceptStore) Update(ctx context.Context, tenant uuid.UUID, c okf.Conc
 }
 
 // ImportMany stores a bundle in one transaction, last write winning per path. written counts the concepts that changed.
-func (cs *ConceptStore) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (written int, err error) {
+func (cs *ConceptRepository) ImportMany(ctx context.Context, tenant uuid.UUID, bundle []okf.Concept, actor string) (written int, err error) {
 	writes, err := newWrites(bundle)
 	if err != nil {
 		return 0, err
@@ -120,7 +120,7 @@ SELECT tenant_id, path, v, 'delete', jsonb_build_object('path', path, 'type', ty
 FROM (SELECT *, nextval('version_seq') AS v FROM d) d`
 
 // ReplacePrefix makes the concepts under prefix+"/" exactly bundle, in one transaction.
-func (cs *ConceptStore) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (written, deleted int, err error) {
+func (cs *ConceptRepository) ReplacePrefix(ctx context.Context, tenant uuid.UUID, prefix string, bundle []okf.Concept, actor string) (written, deleted int, err error) {
 	under := prefix + "/"
 	keep := make([]string, len(bundle))
 	for i, c := range bundle {

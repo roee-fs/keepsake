@@ -6,7 +6,7 @@
 // package store_test, not store: TestMain MUST migrate a database before any test
 // runs, and internal/migrate imports internal/store, so an internal test file here
 // importing internal/migrate would be an import cycle.
-package store_test
+package repositories_test
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/models"
 	"github.com/roee-fs/keepsake/internal/pgtest"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -46,10 +46,10 @@ func TestMain(m *testing.M) {
 	})
 }
 
-func openApp(t *testing.T) *store.Store {
+func openApp(t *testing.T) *repositories.Store {
 	t.Helper()
 	pgtest.AssertUnprivileged(t, db.AppDSN)
-	s, err := store.Open(ctx, db.AppDSN, "okf")
+	s, err := repositories.Open(ctx, db.AppDSN, "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func pgErrCode(t *testing.T, err error) string {
 // a pool too large to cycle fails here instead of silently ceasing to test the leak
 // path. Both GUCs are checked because okf.admin riding a recycled connection to the
 // next caller is a cross-tenant read exactly as okf.current_tenant leaking is.
-func probeUntilScopedConnectionReturns(t *testing.T, s *store.Store, scoped map[uint32]bool) {
+func probeUntilScopedConnectionReturns(t *testing.T, s *repositories.Store, scoped map[uint32]bool) {
 	t.Helper()
 	for range probeAttempts {
 		var pid uint32
@@ -184,7 +184,7 @@ func TestCannotInsertForAnotherTenant(t *testing.T) {
 func TestIsolationHoldsForEveryReadShape(t *testing.T) {
 	A, B := uuid.New(), uuid.New()
 	s := openApp(t)
-	cs := store.NewConceptStore(s)
+	cs := repositories.NewConceptRepository(s)
 	if _, _, err := cs.Create(ctx, A, okf.Concept{
 		Path: "x/y", Type: "Concept", Title: "secret", Body: "tenant a only",
 		Links: []string{"t/z"},
@@ -249,7 +249,7 @@ func TestUnsetScopeRaisesRatherThanReturningEverything(t *testing.T) {
 // once per hit or per result instead, which is quadratic and took SciFact from 5ms to 4s.
 func TestSearchReadsConceptOncePerRead(t *testing.T) {
 	s := openApp(t)
-	cs, tenant := store.NewConceptStore(s), uuid.New()
+	cs, tenant := repositories.NewConceptRepository(s), uuid.New()
 	for i := range 5 {
 		if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: fmt.Sprintf("a/%d", i), Type: "Concept", Body: "alpha"}, "t"); err != nil {
 			t.Fatal(err)
@@ -257,7 +257,7 @@ func TestSearchReadsConceptOncePerRead(t *testing.T) {
 	}
 	var plan []string
 	err := s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF) "+store.SearchSQL, "alpha", nil, 100, tenant)
+		rows, err := tx.Query(ctx, "EXPLAIN (ANALYZE, COSTS OFF) "+repositories.SearchSQL, "alpha", nil, 100, tenant)
 		if err != nil {
 			return err
 		}
@@ -462,7 +462,7 @@ func TestScopeDoesNotLeakAcrossPooledConnections(t *testing.T) {
 // one (see TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed), so a real
 // failure needs both the existing connection dead and no replacement possible.
 func TestIsUnavailable(t *testing.T) {
-	s, err := store.Open(ctx, db.AppDSN, "okf")
+	s, err := repositories.Open(ctx, db.AppDSN, "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,8 +479,8 @@ func TestIsUnavailable(t *testing.T) {
 	if scopeErr == nil {
 		t.Fatal("Scope succeeded after keepsake_app was locked out and its backends terminated")
 	}
-	if !store.IsUnavailable(scopeErr) {
-		t.Errorf("IsUnavailable(%v) = false, want true", scopeErr)
+	if !errors.Is(scopeErr, models.ErrUnavailable) {
+		t.Errorf("errors.Is(%v, models.ErrUnavailable) = false, want true", scopeErr)
 	}
 	// Restored now, not just in Cleanup: the unique-violation check below needs a
 	// working connection of its own.
@@ -497,8 +497,8 @@ func TestIsUnavailable(t *testing.T) {
 	if code := pgErrCode(t, dupErr); code != "23505" {
 		t.Fatalf("code = %s, want unique_violation (23505)", code)
 	}
-	if store.IsUnavailable(dupErr) {
-		t.Errorf("IsUnavailable(%v) = true, want false for a unique violation", dupErr)
+	if errors.Is(dupErr, models.ErrUnavailable) {
+		t.Errorf("errors.Is(%v, models.ErrUnavailable) = true, want false for a unique violation", dupErr)
 	}
 }
 
@@ -506,7 +506,7 @@ func TestIsUnavailable(t *testing.T) {
 // ping-on-acquire discards a killed connection and dials a fresh one instead of
 // failing the caller.
 func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
-	s, err := store.Open(ctx, db.AppDSN, "okf")
+	s, err := repositories.Open(ctx, db.AppDSN, "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestScopeSurvivesATerminatedBackendWhenLoginIsStillAllowed(t *testing.T) {
 func TestScopeCommitsAfterTheAcquireTimeoutElapses(t *testing.T) {
 	s := openApp(t)
 	warm(t, s)
-	restore := store.SetAcquireTimeout(100 * time.Millisecond)
+	restore := repositories.SetAcquireTimeout(100 * time.Millisecond)
 	defer restore()
 
 	tenant := uuid.New()
@@ -562,7 +562,7 @@ func TestScopeCommitsAfterTheAcquireTimeoutElapses(t *testing.T) {
 // itself could not produce a connection.
 func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 	t.Setenv("KEEPSAKE_POOL_SIZE", "1")
-	s, err := store.Open(ctx, db.AppDSN, "okf")
+	s, err := repositories.Open(ctx, db.AppDSN, "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 	}()
 	<-holding
 	// Only now: a 20ms timeout on the holder's own acquire can fail it and never close holding.
-	restore := store.SetAcquireTimeout(20 * time.Millisecond)
+	restore := repositories.SetAcquireTimeout(20 * time.Millisecond)
 	defer restore()
 	defer func() {
 		close(release)
@@ -593,8 +593,8 @@ func TestIsUnavailableClassifiesAnAcquireTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("Scope succeeded while the pool's only connection was held")
 	}
-	if !store.IsUnavailable(err) {
-		t.Errorf("IsUnavailable(%v) = false, want true for an acquire timeout", err)
+	if !errors.Is(err, models.ErrUnavailable) {
+		t.Errorf("errors.Is(%v, models.ErrUnavailable) = false, want true for an acquire timeout", err)
 	}
 }
 
@@ -614,15 +614,15 @@ func TestIsUnavailableDoesNotClassifyAnUnrelatedDeadline(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
-	if store.IsUnavailable(err) {
-		t.Errorf("IsUnavailable(%v) = true, want false for a query-level deadline", err)
+	if errors.Is(err, models.ErrUnavailable) {
+		t.Errorf("errors.Is(%v, models.ErrUnavailable) = true, want false for a query-level deadline", err)
 	}
 }
 
 // A server that dies mid-query sends no error; pgconn wraps the read's io.ErrUnexpectedEOF.
 func TestIsUnavailableClassifiesADroppedConnection(t *testing.T) {
 	err := fmt.Errorf("failed to receive message: %w", io.ErrUnexpectedEOF)
-	if !store.IsUnavailable(err) {
+	if !repositories.IsUnavailable(err) {
 		t.Errorf("IsUnavailable(%v) = false, want true", err)
 	}
 }
@@ -641,7 +641,7 @@ func TestASessionDefaultAdminGUCDoesNotWidenAScopedRead(t *testing.T) {
 		}
 	}
 
-	ambient, err := store.Open(ctx, db.AppDSN+"&options=-c%20okf.admin%3Don", "okf")
+	ambient, err := repositories.Open(ctx, db.AppDSN+"&options=-c%20okf.admin%3Don", "okf")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -683,7 +683,7 @@ func TestAScopedPointReadKeepsTheTenantIndex(t *testing.T) {
 }
 
 // warm opens the pool's connection first, so a short timeout bounds the step under test, not the dial.
-func warm(t *testing.T, s *store.Store) {
+func warm(t *testing.T, s *repositories.Store) {
 	t.Helper()
 	if err := s.Scope(ctx, uuid.New(), func(pgx.Tx) error { return nil }); err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -140,15 +140,15 @@ func TestANonDefaultSchemaMigratesAndServes(t *testing.T) {
 		t.Fatal(guarded, err)
 	}
 
-	s, err := store.Open(ctx, db.AppDSN, schema)
+	s, err := repositories.Open(ctx, db.AppDSN, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := store.Verify(ctx, s, schema); err != nil {
+	if err := repositories.Verify(ctx, s, schema); err != nil {
 		t.Fatal(err)
 	}
-	cs, tenant := store.NewConceptStore(s), uuid.New()
+	cs, tenant := repositories.NewConceptRepository(s), uuid.New()
 	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: "a/b", Type: "Concept", Body: "here"}, "t"); err != nil {
 		t.Fatal(err)
 	}

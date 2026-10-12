@@ -23,7 +23,7 @@ import (
 
 	"github.com/roee-fs/keepsake/frontend"
 	"github.com/roee-fs/keepsake/internal/models"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -53,7 +53,7 @@ var (
 )
 
 type api struct {
-	cs      *store.ConceptStore
+	cs      *repositories.ConceptRepository
 	auth    *Auth
 	proxies proxies
 }
@@ -82,7 +82,7 @@ var routeTable = []route{
 }
 
 // NewAPI serves the admin API. Mount it at /api with the prefix stripped.
-func NewAPI(cs *store.ConceptStore, a *Auth) http.Handler {
+func NewAPI(cs *repositories.ConceptRepository, a *Auth) http.Handler {
 	h := &api{cs: cs, auth: a, proxies: loadProxies()}
 	// One, so a slow console read never holds connections an agent is waiting on.
 	slot := make(chan struct{}, 1)

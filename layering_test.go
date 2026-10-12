@@ -19,9 +19,9 @@ func deps(t *testing.T, pkg string) []string {
 // layers maps each package to the module packages it MUST NOT reach, even transitively.
 var layers = map[string][]string{
 	// okf MUST be publishable without keepsake.
-	"./okf":             {"internal/"},
-	"./internal/models": {"internal/"},
-	"./internal/store":  {"internal/server", "internal/cli"},
+	"./okf":                   {"internal/"},
+	"./internal/models":       {"internal/"},
+	"./internal/repositories": {"internal/server", "internal/services", "internal/controllers", "internal/app", "internal/cli"},
 }
 
 func TestLayering(t *testing.T) {

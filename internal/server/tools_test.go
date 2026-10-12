@@ -27,7 +27,7 @@ import (
 
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -48,7 +48,9 @@ func TestMain(m *testing.M) {
 	})
 }
 
-func conceptStore(t *testing.T) *store.ConceptStore { return pgtest.ConceptStore(t, db.AppDSN) }
+func conceptStore(t *testing.T) *repositories.ConceptRepository {
+	return pgtest.ConceptRepository(t, db.AppDSN)
+}
 
 func newTools(t *testing.T) *Tools {
 	t.Helper()
@@ -658,7 +660,7 @@ func TestADefectIsLoggedAndAnAgentMistakeIsNot(t *testing.T) {
 func TestABurstPastThePoolQueuesInsteadOfTimingOut(t *testing.T) {
 	t.Setenv("KEEPSAKE_POOL_SIZE", "2")
 	session := connect(t, newTools(t))
-	defer store.SetAcquireTimeout(100 * time.Millisecond)()
+	defer repositories.SetAcquireTimeout(100 * time.Millisecond)()
 
 	conn, err := pgx.Connect(ctx, db.AdminDSN)
 	if err != nil {

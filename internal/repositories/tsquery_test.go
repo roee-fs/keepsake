@@ -1,6 +1,6 @@
 // package store, not store_test: unqualified tsquery is unexported, and this test
 // needs no database, so it does not share isolation_test.go's TestMain.
-package store
+package repositories
 
 import (
 	"encoding/json"

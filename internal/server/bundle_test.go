@@ -19,7 +19,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -259,7 +259,7 @@ func put(t *testing.T, h http.Handler, prefix string, body io.Reader, tenant uui
 	return rec.Code, rec.Body.String()
 }
 
-func listPaths(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID) []string {
+func listPaths(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID) []string {
 	t.Helper()
 	got, err := cs.List(ctx, tenant, "")
 	if err != nil {

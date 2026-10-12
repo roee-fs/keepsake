@@ -1,7 +1,7 @@
 // Ported from 8f2af2e:tests/test_verify.py: every rejection here misconfigures the shared
 // database and restores it in t.Cleanup, so later tests see a clean database. None of
 // these tests run in parallel with each other or with isolation_test.go's.
-package store_test
+package repositories_test
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/roee-fs/keepsake/internal/pgtest"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 )
 
 // Restated from the migration: the tests that rewrite these policies restore them.
@@ -28,12 +28,12 @@ var restoreTenantPolicy = fmt.Sprintf(
 // verifyDSN opens a store on dsn and runs Verify, without leaking the pool it opens.
 func verifyDSN(t *testing.T, dsn, schema string) error {
 	t.Helper()
-	s, err := store.Open(ctx, dsn, schema)
+	s, err := repositories.Open(ctx, dsn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	return store.Verify(ctx, s, schema)
+	return repositories.Verify(ctx, s, schema)
 }
 
 // asRole swaps the credentials in dsn for role's, keeping the same host, port and database.
@@ -49,9 +49,9 @@ func asRole(t *testing.T, dsn, role, password string) string {
 
 func assertMisconfigured(t *testing.T, err error, want string) {
 	t.Helper()
-	var md *store.MisconfiguredDatabase
+	var md *repositories.MisconfiguredDatabase
 	if !errors.As(err, &md) {
-		t.Fatalf("err = %v, want *store.MisconfiguredDatabase", err)
+		t.Fatalf("err = %v, want *repositories.MisconfiguredDatabase", err)
 	}
 	if md.Msg != want {
 		t.Fatalf("Msg = %q, want %q", md.Msg, want)

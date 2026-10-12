@@ -21,8 +21,8 @@ import (
 
 	"github.com/roee-fs/keepsake/internal/migrate"
 	"github.com/roee-fs/keepsake/internal/pgtest"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/internal/server"
-	"github.com/roee-fs/keepsake/internal/store"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -50,7 +50,9 @@ custom_vendor_field: keep-me
 The spec sits beneath the convention. Beneath that, the café.
 `
 
-func conceptStore(t *testing.T) *store.ConceptStore { return pgtest.ConceptStore(t, db.AppDSN) }
+func conceptStore(t *testing.T) *repositories.ConceptRepository {
+	return pgtest.ConceptRepository(t, db.AppDSN)
+}
 
 func writeFile(t *testing.T, dir, name, text string) {
 	t.Helper()
@@ -85,7 +87,7 @@ func bundle(t *testing.T, tmp, text, name string) string {
 	return src
 }
 
-func mustImport(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, root string) int {
+func mustImport(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) int {
 	t.Helper()
 	n, err := ImportBundle(ctx, cs, tenant, root)
 	if err != nil {
@@ -94,14 +96,14 @@ func mustImport(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, root str
 	return n
 }
 
-func mustExport(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, root string) {
+func mustExport(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, root string) {
 	t.Helper()
 	if _, err := ExportBundle(ctx, cs, tenant, root); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func read(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, path string) *okf.Concept {
+func read(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, path string) *okf.Concept {
 	t.Helper()
 	c, err := cs.Read(ctx, tenant, path)
 	if err != nil {
@@ -110,7 +112,7 @@ func read(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, path string) *
 	return c
 }
 
-func create(t *testing.T, cs *store.ConceptStore, tenant uuid.UUID, path string) {
+func create(t *testing.T, cs *repositories.ConceptRepository, tenant uuid.UUID, path string) {
 	t.Helper()
 	if _, _, err := cs.Create(ctx, tenant, okf.Concept{Path: path, Type: "Concept"}, "test"); err != nil {
 		t.Fatal(err)
@@ -664,13 +666,13 @@ func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
 		db.AppDSN: "## 2026-01-01",
 		db.AppDSN + "&options=-c%20TimeZone%3DPacific/Kiritimati": "## 2026-01-02",
 	} {
-		s, err := store.Open(ctx, dsn, "okf")
+		s, err := repositories.Open(ctx, dsn, "okf")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer s.Close()
 		out := filepath.Join(tmp, strings.TrimPrefix(want, "## "))
-		mustExport(t, store.NewConceptStore(s), tenant, out)
+		mustExport(t, repositories.NewConceptRepository(s), tenant, out)
 		if log := readFile(t, filepath.Join(out, "log.md")); !strings.Contains(log, want+"\n") {
 			t.Errorf("want %s:\n%s", want, log)
 		}

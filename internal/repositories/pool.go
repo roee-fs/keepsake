@@ -1,4 +1,4 @@
-package store
+package repositories
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/roee-fs/keepsake/internal/models"
 )
 
 // acquireTimeout bounds only the wait to acquire a pooled connection, as psycopg_pool's does.
@@ -115,13 +116,18 @@ func (s *Store) tx(ctx context.Context, begin string, fn func(pgx.Tx) error) err
 	conn, err := s.pool.Acquire(acquireCtx)
 	cancel()
 	if err != nil {
-		return &acquireError{err}
+		err = &acquireError{err}
+	} else {
+		defer conn.Release()
+		err = pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{BeginQuery: begin}, fn)
 	}
-	defer conn.Release()
-	return pgx.BeginTxFunc(ctx, conn, pgx.TxOptions{BeginQuery: begin}, fn)
+	if isUnavailable(err) {
+		return fmt.Errorf("%w: %w", models.ErrUnavailable, err)
+	}
+	return err
 }
 
-// acquireError marks an acquire failure, so IsUnavailable can tell it from fn's own deadline.
+// acquireError marks an acquire failure, so isUnavailable can tell it from fn's own deadline.
 type acquireError struct{ err error }
 
 func (e *acquireError) Error() string { return e.err.Error() }

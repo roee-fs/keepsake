@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/roee-fs/keepsake/internal/models"
-	"github.com/roee-fs/keepsake/internal/store"
+	"github.com/roee-fs/keepsake/internal/repositories"
 	"github.com/roee-fs/keepsake/okf"
 )
 
@@ -36,12 +36,12 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 }
 
 type Tools struct {
-	c     *store.ConceptStore
+	c     *repositories.ConceptRepository
 	t     uuid.UUID
 	actor string
 }
 
-func NewTools(cs *store.ConceptStore, tenant uuid.UUID, actor string) *Tools {
+func NewTools(cs *repositories.ConceptRepository, tenant uuid.UUID, actor string) *Tools {
 	return &Tools{c: cs, t: tenant, actor: actor}
 }
 
