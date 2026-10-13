@@ -1,4 +1,4 @@
-// Package store sends every statement keepsake runs, ported from 2de90d2:src/keepsake/store/__init__.py.
+// Package repositories sends every statement keepsake runs, ported from 2de90d2:src/keepsake/store/__init__.py.
 package repositories
 
 import (

@@ -1,6 +1,6 @@
 -- Candidate rankers for bench/rankers.py, installed over a migrated schema. Each takes the
--- tenant explicitly and a query of OR-ed words, as store.Search builds it, and returns
--- paths best first. rankers.py adds okf.rank_shipped, store.Search's own SQL. Since 0007
+-- tenant explicitly and a query of OR-ed words, as ConceptRepository.Search builds it, and returns
+-- paths best first. rankers.py adds okf.rank_shipped, ConceptRepository.Search's own SQL. Since 0007
 -- drops concept.search, the first three compute each concept's tsvector per query.
 
 -- 1. What 0.2.0 shipped.

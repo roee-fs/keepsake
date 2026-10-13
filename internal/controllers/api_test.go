@@ -494,14 +494,6 @@ type graphBody struct {
 	Truncated bool
 }
 
-func (g graphBody) paths() []string {
-	var out []string
-	for _, n := range g.Nodes {
-		out = append(out, n.Path)
-	}
-	return out
-}
-
 func (c *console) graph(tenant uuid.UUID) graphBody {
 	rec := c.get("/graph", "tenant", tenant.String())
 	wantStatus(c.t, rec, http.StatusOK)

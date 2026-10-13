@@ -43,8 +43,8 @@ RANKERS = {
 
 
 def shipped_ranker() -> str:
-    """store.Search's SQL, read from reads.go so the benchmark cannot drift from what ships."""
-    src = (run.ROOT / "internal" / "store" / "reads.go").read_text()
+    """ConceptRepository.Search's SQL, read from reads.go so the benchmark cannot drift from what ships."""
+    src = (run.ROOT / "internal" / "repositories" / "reads.go").read_text()
     sql = re.search(r"const searchSQL = `(.*?)`", src, re.DOTALL).group(1)
     return (
         "CREATE FUNCTION okf.rank_shipped(text, text, int, uuid)\n"

@@ -31,7 +31,7 @@ type Graph struct {
 	Truncated bool        `json:"truncated"`
 }
 
-// ConsoleService serves the admin console's reads. Only Graph adds logic over the repository.
+// ConsoleService serves the admin console's reads.
 type ConsoleService struct {
 	r *repositories.ConceptRepository
 }
@@ -58,12 +58,13 @@ func (s *ConsoleService) Detail(ctx context.Context, tenant uuid.UUID, path stri
 	return s.r.Detail(ctx, tenant, path, limit)
 }
 
-func (s *ConsoleService) Search(ctx context.Context, tenant uuid.UUID, query string, limit int) ([]models.Hit, error) {
-	return s.r.Search(ctx, tenant, query, limit, nil)
+func (s *ConsoleService) Search(ctx context.Context, tenant uuid.UUID, query string, limit int) ([]SearchHit, error) {
+	hits, err := s.r.Search(ctx, tenant, query, limit, nil)
+	return convert(hits, hitOf), err
 }
 
-func (s *ConsoleService) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]models.GrepHit, error) {
-	return s.r.Grep(ctx, tenant, pattern, limit)
+func (s *ConsoleService) Grep(ctx context.Context, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
+	return grep(ctx, s.r, tenant, pattern, limit)
 }
 
 func (s *ConsoleService) Activity(ctx context.Context, tenant *uuid.UUID, limit int) ([]models.Revision, error) {

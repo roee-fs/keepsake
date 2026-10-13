@@ -103,15 +103,6 @@ func NewAPI(svc *services.ConsoleService, a *Auth) http.Handler {
 	return limitBody(maxAPIBody, mux)
 }
 
-// convert maps rows to their wire shape, never nil, so an empty answer is [] and not null.
-func convert[S, T any](rows []S, f func(S) T) []T {
-	out := make([]T, len(rows))
-	for i, r := range rows {
-		out[i] = f(r)
-	}
-	return out
-}
-
 // limitBody buffers the body before next runs, as RequestBodyLimitMiddleware does, and answers 413 past n bytes.
 func limitBody(n int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,12 +155,12 @@ func internalError(w http.ResponseWriter, r *http.Request, err error) {
 	io.WriteString(w, "Internal Server Error")
 }
 
-// reply answers v, or maps err as FastAPI does: a GrepError is a 400 and anything else a 500.
+// reply answers v, or maps err as FastAPI does: a bad grep pattern is a 400 and anything else a 500.
 func reply(w http.ResponseWriter, r *http.Request, v any, err error) {
-	var ge *models.GrepError
+	var te *services.ToolError
 	switch {
-	case errors.As(err, &ge):
-		WriteJSON(w, r, http.StatusBadRequest, detail{ge.Msg})
+	case errors.As(err, &te):
+		WriteJSON(w, r, http.StatusBadRequest, detail{te.Msg})
 	case err != nil:
 		internalError(w, r, err)
 	default:
@@ -609,7 +600,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.svc.Search(r.Context(), *tenant, q, limit)
-	reply(w, r, convert(hits, services.HitOf), err)
+	reply(w, r, hits, err)
 }
 
 func (a *api) grep(w http.ResponseWriter, r *http.Request) {
@@ -621,7 +612,7 @@ func (a *api) grep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hits, err := a.svc.Grep(r.Context(), *tenant, pattern, limit)
-	reply(w, r, convert(hits, func(h models.GrepHit) services.GrepHit { return services.GrepHit(h) }), err)
+	reply(w, r, hits, err)
 }
 
 func (a *api) graph(w http.ResponseWriter, r *http.Request) {

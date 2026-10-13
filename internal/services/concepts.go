@@ -35,15 +35,6 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 	return out
 }
 
-// obj builds an ordered JSON object from key, value pairs.
-func obj(kv ...any) *okf.Map {
-	m := okf.NewMap()
-	for i := 0; i < len(kv); i += 2 {
-		m.Set(kv[i].(string), kv[i+1])
-	}
-	return m
-}
-
 type ConceptService struct {
 	c     *repositories.ConceptRepository
 	t     uuid.UUID
@@ -87,7 +78,7 @@ type SearchHit struct {
 	Score       float64 `json:"score"`
 }
 
-func HitOf(h models.Hit) SearchHit {
+func hitOf(h models.Hit) SearchHit {
 	return SearchHit{Path: h.Path, Type: h.Type, Title: h.Title, Description: h.Description, Score: h.Score}
 }
 
@@ -163,7 +154,10 @@ func (t *ConceptService) concept(path string, kw map[string]any, stamp bool) (ok
 	if stamp {
 		// A copy, so the caller's map is left as it was.
 		c.Frontmatter = frontmatter.Clone()
-		c.Frontmatter.Set("generated", obj("by", t.actor, "at", time.Now().UTC().Format(time.RFC3339)))
+		generated := okf.NewMap()
+		generated.Set("by", t.actor)
+		generated.Set("at", time.Now().UTC().Format(time.RFC3339))
+		c.Frontmatter.Set("generated", generated)
 	}
 	if errs := okf.Validate(c); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
@@ -232,12 +226,17 @@ func (t *ConceptService) Search(ctx context.Context, query string, limit int, pr
 	}
 	now := time.Now()
 	return convert(hits, func(h models.Hit) Card {
-		return Card{HitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
+		return Card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
 func (t *ConceptService) Grep(ctx context.Context, pattern string, limit int) ([]GrepHit, error) {
-	hits, err := t.c.Grep(ctx, t.t, pattern, limit)
+	return grep(ctx, t.c, t.t, pattern, limit)
+}
+
+// grep is Grep for both services: a pattern Postgres refuses is the caller's mistake.
+func grep(ctx context.Context, r *repositories.ConceptRepository, tenant uuid.UUID, pattern string, limit int) ([]GrepHit, error) {
+	hits, err := r.Grep(ctx, tenant, pattern, limit)
 	var ge *models.GrepError
 	if errors.As(err, &ge) {
 		return nil, toolErr(ge.Msg)

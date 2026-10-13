@@ -34,6 +34,15 @@ func TestMain(m *testing.M) {
 	})
 }
 
+// obj builds an ordered JSON object from key, value pairs.
+func obj(kv ...any) *okf.Map {
+	m := okf.NewMap()
+	for i := 0; i < len(kv); i += 2 {
+		m.Set(kv[i].(string), kv[i+1])
+	}
+	return m
+}
+
 func conceptStore(t *testing.T) *repositories.ConceptRepository {
 	return pgtest.ConceptRepository(t, db.AppDSN)
 }

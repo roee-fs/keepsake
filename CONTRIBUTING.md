@@ -41,7 +41,8 @@ design depends on:
 | `internal/repositories` | All SQL and the tenant scope. | services, controllers, app, cli |
 | `internal/services` | Validation, stamps, retries and bundle rules. Returns `*ToolError` for caller mistakes. | controllers, app, cli, `net/http` |
 | `internal/controllers` | HTTP, MCP and the Python wire format. Maps errors to responses. | repositories (directly), app, cli |
-| `internal/app`, `internal/cli` | Composition roots. | |
+| `internal/app` | Composition root for `serve`. | cli |
+| `internal/cli` | Composition root for the commands. | |
 
 If your change breaks one of those, the layering is usually the thing to
 reconsider rather than the contract.

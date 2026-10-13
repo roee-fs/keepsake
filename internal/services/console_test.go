@@ -1,10 +1,14 @@
 package services
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/roee-fs/keepsake/internal/models"
+	"github.com/roee-fs/keepsake/okf"
 )
 
 func paths(g Graph) []string {
@@ -42,5 +46,21 @@ func TestGraphCapsEdges(t *testing.T) {
 	rows := []models.GraphRow{{Path: "a", Links: []string{"b", "c"}}, {Path: "b", Links: []string{"a", "c"}}, {Path: "c"}}
 	if g := buildGraph(rows, 10, 2); len(g.Edges) != 2 || !g.Truncated {
 		t.Fatalf("graph = %+v", g)
+	}
+}
+
+// Graph reads one row past the cap, or a corpus of exactly one more would not read as truncated.
+func TestGraphReportsACorpusOnePastTheCapAsTruncated(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	concepts := make([]okf.Concept, graphLimit+1)
+	for i := range concepts {
+		concepts[i] = okf.Concept{Path: fmt.Sprintf("c/%04d", i), Type: "Concept"}
+	}
+	if _, err := cs.ImportMany(ctx, tenant, concepts, "t"); err != nil {
+		t.Fatal(err)
+	}
+	g, err := NewConsoleService(cs).Graph(ctx, tenant)
+	if err != nil || len(g.Nodes) != graphLimit || !g.Truncated {
+		t.Fatalf("%d nodes, truncated %v, err %v", len(g.Nodes), g.Truncated, err)
 	}
 }
