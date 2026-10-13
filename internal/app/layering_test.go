@@ -1,4 +1,4 @@
-package keepsake_test
+package app_test
 
 import (
 	"os/exec"
@@ -28,19 +28,19 @@ var layers = []struct {
 	banned     []string
 }{
 	// okf MUST be publishable without keepsake.
-	{"./okf", true, []string{"internal/"}},
-	{"./internal/models", true, []string{"internal/"}},
-	{"./internal/repositories", true, []string{"internal/services", "internal/controllers", "internal/app", "internal/cli"}},
-	{"./internal/services", true, []string{"internal/controllers", "internal/app", "internal/cli"}},
+	{"okf", true, []string{"internal/"}},
+	{"internal/models", true, []string{"internal/"}},
+	{"internal/repositories", true, []string{"internal/services", "internal/controllers", "internal/app", "internal/cli"}},
+	{"internal/services", true, []string{"internal/controllers", "internal/app", "internal/cli"}},
 	// Direct only: controllers reach the repositories through services.
-	{"./internal/controllers", false, []string{"internal/repositories", "internal/app", "internal/cli"}},
-	{"./internal/app", true, []string{"internal/cli"}},
+	{"internal/controllers", false, []string{"internal/repositories", "internal/app", "internal/cli"}},
+	{"internal/app", true, []string{"internal/cli"}},
 }
 
 func TestLayering(t *testing.T) {
 	for _, l := range layers {
-		self := mod + strings.TrimPrefix(l.pkg, "./")
-		for _, d := range imports(t, l.pkg, l.transitive) {
+		self := mod + l.pkg
+		for _, d := range imports(t, self, l.transitive) {
 			for _, b := range l.banned {
 				if d != self && strings.HasPrefix(d, mod+b) {
 					t.Errorf("%s imports %s", l.pkg, d)
@@ -51,7 +51,7 @@ func TestLayering(t *testing.T) {
 }
 
 func TestServicesAreHTTPAgnostic(t *testing.T) {
-	for _, imp := range imports(t, "./internal/services", false) {
+	for _, imp := range imports(t, mod+"internal/services", false) {
 		if imp == "net/http" || strings.HasPrefix(imp, "github.com/modelcontextprotocol/") {
 			t.Errorf("internal/services imports %s", imp)
 		}
