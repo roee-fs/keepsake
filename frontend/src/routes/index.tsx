@@ -71,7 +71,7 @@ function Index() {
           {(['writes', 'reads'] as const).map((series) => (
             <div key={series}>
               <h3 className="mb-2 text-sm text-fg-muted">
-                {series === 'writes' ? 'Writes' : 'Reads'} per {unit}
+                {series === 'writes' ? 'Writes' : 'Reads'} per {unit} (UTC)
               </h3>
               <TimeseriesChart
                 data={timeseries.data}

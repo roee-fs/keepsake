@@ -23,7 +23,7 @@ const TOOLTIP_CONTENT = {
   padding: '6px 10px',
 }
 
-/** Hours read as `MM-DD HH:MM`, days and weeks as the date they start. */
+/** Hours read as `MM-DD HH:MM`, days and weeks as the date they start, all in UTC as the API buckets them. */
 function label(start: string, unit: Unit) {
   return unit === 'hour' ? start.slice(5, 16).replace('T', ' ') : start.slice(0, 10)
 }
@@ -72,7 +72,7 @@ export function TimeseriesChart({ data, series, unit, isLoading, isError }: Time
             width={32}
           />
           <Tooltip
-            labelFormatter={(start) => label(String(start), unit)}
+            labelFormatter={(start) => `${label(String(start), unit)} UTC`}
             contentStyle={TOOLTIP_CONTENT}
             labelStyle={{ color: 'var(--color-fg-muted)' }}
             itemStyle={{ color: 'var(--color-fg)' }}
