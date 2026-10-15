@@ -77,17 +77,21 @@ export type Credentials = {
 };
 
 /**
- * DailyWrite
+ * Bucket
  */
-export type DailyWrite = {
+export type Bucket = {
     /**
-     * Date
+     * Start
      */
-    date: string;
+    start: string;
     /**
-     * Count
+     * Writes
      */
-    count: number;
+    writes: number;
+    /**
+     * Reads
+     */
+    reads: number;
 };
 
 /**
@@ -435,9 +439,13 @@ export type StatsTimeseriesStatsTimeseriesGetData = {
          */
         tenant?: string | null;
         /**
-         * Days
+         * Bucket
          */
-        days?: number;
+        bucket?: 'hour' | 'day' | 'week';
+        /**
+         * Buckets
+         */
+        buckets?: number;
     };
     url: '/stats/timeseries';
 };
@@ -457,7 +465,7 @@ export type StatsTimeseriesStatsTimeseriesGetResponses = {
      *
      * Successful Response
      */
-    200: Array<DailyWrite>;
+    200: Array<Bucket>;
 };
 
 export type StatsTimeseriesStatsTimeseriesGetResponse = StatsTimeseriesStatsTimeseriesGetResponses[keyof StatsTimeseriesStatsTimeseriesGetResponses];

@@ -1,0 +1,38 @@
+-- One row per agent read, search, grep or list, for the console's reads chart.
+CREATE TABLE {{.SCHEMA}}.concept_read (
+  tenant_id  uuid        NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX concept_read_log_idx ON {{.SCHEMA}}.concept_read (tenant_id, created_at);
+
+ALTER TABLE {{.SCHEMA}}.concept_read ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{.SCHEMA}}.concept_read FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON {{.SCHEMA}}.concept_read
+  USING      (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid)
+  WITH CHECK (tenant_id = current_setting('{{.TENANT_GUC}}')::uuid);
+CREATE POLICY {{.ADMIN_POLICY}} ON {{.SCHEMA}}.concept_read FOR SELECT
+  USING (tenant_id >= CASE WHEN current_setting('{{.ADMIN_GUC}}', true) = 'on' THEN '00000000-0000-0000-0000-000000000000'::uuid END);
+
+-- 0001's purge_tenant, which now empties the read log too. REPLACE keeps 0005's grants.
+CREATE OR REPLACE FUNCTION {{.SCHEMA}}.purge_tenant(t uuid) RETURNS bigint
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
+DECLARE n bigint;
+BEGIN
+  IF t <> current_setting('{{.TENANT_GUC}}')::uuid THEN
+    RAISE EXCEPTION 'purge_tenant(%) requires the session scoped to that tenant', t;
+  END IF;
+  DELETE FROM {{.SCHEMA}}.concept_read WHERE tenant_id = t;
+  DELETE FROM {{.SCHEMA}}.concept_revision WHERE tenant_id = t;
+  DELETE FROM {{.SCHEMA}}.concept WHERE tenant_id = t;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{.APP_ROLE}}') THEN
+    -- DELETE for keepsake prune, which runs as this role.
+    GRANT SELECT, INSERT, DELETE ON {{.SCHEMA}}.concept_read TO {{.APP_ROLE}};
+  END IF;
+END $$;

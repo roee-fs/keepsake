@@ -11,3 +11,10 @@ func SetGrepTimeoutMS(ms int) func() {
 const SearchSQL = searchSQL
 
 var IsUnavailable = isUnavailable
+
+// SetPruneBatch overrides pruneBatch for a test and returns a restorer.
+func SetPruneBatch(n int) func() {
+	orig := pruneBatch
+	pruneBatch = n
+	return func() { pruneBatch = orig }
+}

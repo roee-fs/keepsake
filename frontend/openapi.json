@@ -157,7 +157,22 @@
             }
           },
           {
-            "name": "days",
+            "name": "bucket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week"
+              ],
+              "type": "string",
+              "default": "day",
+              "title": "Bucket"
+            }
+          },
+          {
+            "name": "buckets",
             "in": "query",
             "required": false,
             "schema": {
@@ -165,7 +180,7 @@
               "maximum": 365,
               "minimum": 1,
               "default": 30,
-              "title": "Days"
+              "title": "Buckets"
             }
           }
         ],
@@ -177,7 +192,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/DailyWrite"
+                    "$ref": "#/components/schemas/Bucket"
                   },
                   "title": "Response Stats Timeseries Stats Timeseries Get"
                 }
@@ -664,24 +679,29 @@
         ],
         "title": "Credentials"
       },
-      "DailyWrite": {
+      "Bucket": {
         "properties": {
-          "date": {
+          "start": {
             "type": "string",
-            "format": "date",
-            "title": "Date"
+            "format": "date-time",
+            "title": "Start"
           },
-          "count": {
+          "writes": {
             "type": "integer",
-            "title": "Count"
+            "title": "Writes"
+          },
+          "reads": {
+            "type": "integer",
+            "title": "Reads"
           }
         },
         "type": "object",
         "required": [
-          "date",
-          "count"
+          "start",
+          "writes",
+          "reads"
         ],
-        "title": "DailyWrite"
+        "title": "Bucket"
       },
       "Graph": {
         "properties": {

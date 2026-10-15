@@ -11,6 +11,7 @@ CLUSTER=${CLUSTER:-keepsake-local}
 IMAGE_TAG=${IMAGE_TAG:-local}
 # Distinct from the e2e cluster's 30800, so both can run on one machine.
 NODE_PORT=${NODE_PORT:-30900}
+CONSOLE_NODE_PORT=${CONSOLE_NODE_PORT:-30901}
 # Never the caller's kubeconfig: every command here must reach this cluster and no other.
 export KUBECONFIG=${KUBECONFIG:-"${TMPDIR:-/tmp}/$CLUSTER-kubeconfig"}
 
@@ -23,6 +24,8 @@ nodes:
     extraPortMappings:
       - containerPort: $NODE_PORT
         hostPort: $NODE_PORT
+      - containerPort: $CONSOLE_NODE_PORT
+        hostPort: $CONSOLE_NODE_PORT
 EOF
 else
   kind export kubeconfig --name "$CLUSTER" --kubeconfig "$KUBECONFIG"
@@ -48,6 +51,7 @@ helm upgrade --install keepsake charts/keepsake \
   --set postgres.dsn="postgres://keepsake_app:app@postgres:5432/keepsake" \
   --set postgres.ownerDsn="postgres://keepsake_owner:owner@postgres:5432/keepsake" \
   --set service.type=NodePort --set service.nodePort="$NODE_PORT" \
+  --set service.consoleNodePort="$CONSOLE_NODE_PORT" \
   --wait --timeout 180s
 # A reused tag leaves the pod on the old image, since the Deployment spec did not change.
 if $upgrading; then
@@ -57,6 +61,6 @@ fi
 
 password=$(kubectl get secret keepsake-admin -o jsonpath='{.data.password}' | base64 -d)
 echo
-echo "console:    http://localhost:$NODE_PORT  (password: $password)"
+echo "console:    http://localhost:$CONSOLE_NODE_PORT  (password: $password)"
 echo "mcp:        http://localhost:$NODE_PORT/mcp"
 echo "kubeconfig: $KUBECONFIG"

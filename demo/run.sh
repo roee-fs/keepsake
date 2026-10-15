@@ -16,6 +16,7 @@ done
 CLUSTER=keepsake-demo
 # Distinct from up.sh's 30900 and the e2e's 30800, so all three can run on one machine.
 NODE_PORT=31000
+CONSOLE_NODE_PORT=31001
 PG_NODE_PORT=31432
 TENANT=00000000-0000-0000-0000-000000000001
 IMAGE=${IMAGE:-ghcr.io/roee-fs/keepsake:$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' charts/keepsake/Chart.yaml)}
@@ -104,6 +105,8 @@ nodes:
     extraPortMappings:
       - containerPort: $NODE_PORT
         hostPort: $NODE_PORT
+      - containerPort: $CONSOLE_NODE_PORT
+        hostPort: $CONSOLE_NODE_PORT
 EOF
 # Every command below is destructive against whatever context it lands in.
 context=$(kubectl config current-context)
@@ -135,11 +138,12 @@ helm install keepsake charts/keepsake \
   --set postgres.dsn="postgres://keepsake_app:app@postgres:5432/keepsake" \
   --set postgres.ownerDsn="postgres://keepsake_owner:owner@postgres:5432/keepsake" \
   --set service.type=NodePort --set service.nodePort="$NODE_PORT" \
+  --set service.consoleNodePort="$CONSOLE_NODE_PORT" \
   --wait --timeout 180s >/dev/null
 # The pod being ready does not mean the host port forwards to it yet.
 for _ in $(seq 60); do curl -sf "http://localhost:$NODE_PORT/readyz" >/dev/null && break; sleep 1; done
 password=$(kubectl get secret keepsake-admin -o jsonpath='{.data.password}' | base64 -d)
-bold "Ready in ${SECONDS}s. Console: http://localhost:$NODE_PORT (password: $password)"
+bold "Ready in ${SECONDS}s. Console: http://localhost:$CONSOLE_NODE_PORT (password: $password)"
 
 beat "Import an on-call team's knowledge base"
 shown keepsake import /bundle

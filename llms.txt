@@ -68,7 +68,7 @@ throwaway kind cluster.
   and the time. `relate` keeps the existing stamp.
 - **Open format.** `keepsake import` and `keepsake export` move a tenant's memory
   as a directory of markdown files with YAML frontmatter.
-- **Console.** A read-only admin UI on the same port as `/mcp`.
+- **Console.** A read-only admin UI on its own port, 8001.
 
 ## Tools
 
@@ -106,8 +106,8 @@ Load the demo bundle:
 docker compose run --rm -v "$PWD/demo/bundle:/bundle:ro" keepsake keepsake import /bundle
 ```
 
-The console is at http://localhost:8000, password `keepsake`. This setup serves
-one tenant to anything that reaches the port. It is for trying keepsake out.
+The console is at http://localhost:8001, password `keepsake`. This setup serves
+one tenant to anything that reaches port 8000. It is for trying keepsake out.
 
 ### Kubernetes
 
@@ -118,10 +118,11 @@ claude mcp add --transport http keepsake http://localhost:8000/mcp
 ```
 
 This also serves one tenant to anything that reaches the Service. The console
-password is in a Secret:
+is on port 8001, and its password is in a Secret:
 
 ```bash
 kubectl get secret keepsake-admin -o jsonpath='{.data.password}' | base64 -d
+kubectl port-forward svc/keepsake 8001:8001
 ```
 
 ### Production
@@ -135,7 +136,7 @@ step. It needs two database roles created first.
 - Through the MCP client, call `list`. It returns paths, or an empty list
   before an import.
 - Call `search` with a word from an imported concept. It returns a card.
-- Open the console on port 8000 and log in.
+- Open the console on port 8001 and log in.
 - In `jwt` mode, a request without a token MUST get a 401, and a token for
   another tenant MUST NOT list this tenant's concepts.
 

@@ -69,7 +69,26 @@ The chart configures no backups. You MUST set up one of these:
 - The `posting` table takes about 20 times the space of `concept`. An edit
   leaves one dead row per changed word, and autovacuum clears `posting` at 2%
   dead rows.
-- Every write appends a revision, a delete included. Nothing prunes revisions yet.
+- Every write appends a revision, a delete included. Revisions are kept
+  forever unless `retention.revisionDays` is set.
+- Every `read`, `search`, `grep` and `list` appends a row to `concept_read`.
+  Reads are deleted after `retention.readDays`, 190 by default.
+
+## Retention
+
+The chart runs `keepsake prune` nightly as a CronJob (`retention.*` in
+`values.yaml`). It runs as the app role and deletes one tenant at a time, in
+batches of 10,000 rows.
+
+| Value | Env var | Default | Effect |
+| --- | --- | --- | --- |
+| `retention.readDays` | `KEEPSAKE_READ_RETENTION_DAYS` | 190 | Reads older than this are deleted. 190 covers the console's 26-week chart. |
+| `retention.revisionDays` | `KEEPSAKE_REVISION_RETENTION_DAYS` | 0 | Revisions older than this are deleted. 0 keeps them all. |
+| `retention.revisionKeep` | `KEEPSAKE_REVISION_KEEP` | 50 | Each path keeps its newest revisions at any age. |
+
+Pruned revisions leave a concept's history, `log.md` on export, the Revisions
+tile and the writes chart. Docker Compose runs no scheduler. Run
+`docker compose run --rm keepsake keepsake prune` yourself.
 - The database sees `postgres.poolSize` × `replicaCount` connections.
 
 ## Auth and access
@@ -81,7 +100,7 @@ The chart configures no backups. You MUST set up one of these:
 - A token carrying the `read` scope can only read: `create`, `update`,
   `relate` and `PUT /bundle` refuse it, even alongside `bundle`. A refused
   tool call counts as `tool_error`. `keepsake token --scope read` mints one.
-- The console shares the port with `/mcp` and has its own password in
+- The console is on its own port, 8001, and has its own password in
   `<release>-admin`. A GitOps install MUST set `admin.existingSecret`, or the
   password changes on every sync.
 

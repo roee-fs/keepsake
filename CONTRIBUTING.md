@@ -100,9 +100,9 @@ bun install
 bun run dev
 ```
 
-Vite proxies `/api` and `/mcp` to `localhost:8000` — the session cookie is
-`SameSite=Strict`, so a cross-origin dev server never gets it back. Point that
-port at a real server: run `go run ./cmd/keepsake migrate` and
+Vite proxies `/api` to the console on `localhost:8001` and `/mcp` to
+`localhost:8000`. The session cookie is `SameSite=Strict`, so a cross-origin dev
+server never gets it back. Point those ports at a real server: run `go run ./cmd/keepsake migrate` and
 `go run ./cmd/keepsake serve` against a database you already have, with
 `KEEPSAKE_DSN` and `KEEPSAKE_ADMIN_PASSWORD` set.
 

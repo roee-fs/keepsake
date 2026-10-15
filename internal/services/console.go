@@ -46,8 +46,8 @@ func (s *ConsoleService) Totals(ctx context.Context, tenant *uuid.UUID) (models.
 	return s.r.Totals(ctx, tenant)
 }
 
-func (s *ConsoleService) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]models.DailyWrite, error) {
-	return s.r.DailyWrites(ctx, tenant, days)
+func (s *ConsoleService) Timeseries(ctx context.Context, tenant *uuid.UUID, unit string, n int) ([]models.Bucket, error) {
+	return s.r.Timeseries(ctx, tenant, unit, n)
 }
 
 func (s *ConsoleService) Page(ctx context.Context, tenant *uuid.UUID, prefix string, limit, offset int) ([]models.Summary, int, error) {

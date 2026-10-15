@@ -304,12 +304,6 @@ func (t pyTime) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s + "Z")
 }
 
-type pyDate time.Time
-
-func (d pyDate) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(d).Format(time.DateOnly))
-}
-
 type tenantCount struct {
 	TenantID uuid.UUID `json:"tenant_id"`
 	Concepts int       `json:"concepts"`
@@ -360,9 +354,10 @@ type conceptDetail struct {
 	Revisions   []revisionOut `json:"revisions"`
 }
 
-type dailyWrite struct {
-	Date  pyDate `json:"date"`
-	Count int    `json:"count"`
+type bucketOut struct {
+	Start  pyTime `json:"start"`
+	Writes int    `json:"writes"`
+	Reads  int    `json:"reads"`
 }
 
 func revisions(rs []models.Revision) []revisionOut {
@@ -541,14 +536,21 @@ func (a *api) stats(w http.ResponseWriter, r *http.Request) {
 func (a *api) timeseries(w http.ResponseWriter, r *http.Request) {
 	p := query(r)
 	tenant := p.tenant(false)
-	days := p.int("days", 30, 1, 365)
+	unit, ok := p.value("bucket")
+	if !ok {
+		unit = "day"
+	} else if !slices.Contains([]string{"hour", "day", "week"}, unit) {
+		p.fail("literal_error", "bucket", "Input should be 'hour', 'day' or 'week'", unit,
+			map[string]any{"expected": "'hour', 'day' or 'week'"})
+	}
+	n := p.int("buckets", 30, 1, 365)
 	if p.invalid(w) {
 		return
 	}
-	ds, err := a.svc.DailyWrites(r.Context(), tenant, days)
-	out := []dailyWrite{}
-	for _, d := range ds {
-		out = append(out, dailyWrite{pyDate(d.Date), d.Count})
+	bs, err := a.svc.Timeseries(r.Context(), tenant, unit, n)
+	out := []bucketOut{}
+	for _, b := range bs {
+		out = append(out, bucketOut{pyTime(b.Start), b.Writes, b.Reads})
 	}
 	reply(w, r, out, err)
 }

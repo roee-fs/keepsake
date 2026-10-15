@@ -1,0 +1,49 @@
+{{- if .Values.retention.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-prune
+  labels:
+    app: {{ .Release.Name }}-prune
+spec:
+  schedule: {{ .Values.retention.schedule | quote }}
+  # A prune still deleting when the next is due would only race it for the same rows.
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-prune
+        spec:
+          restartPolicy: OnFailure
+          # Nothing here reads a Service link variable. See cli.EnvPort in internal/cli/cli.go.
+          enableServiceLinks: false
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: prune
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["keepsake", "prune"]
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              env:
+                # The app DSN: prune deletes one tenant at a time under the same RLS as the server.
+                - name: KEEPSAKE_DSN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "keepsake.dsnSecret" . }}
+                      key: app-dsn
+                - name: KEEPSAKE_SCHEMA
+                  value: {{ .Values.postgres.schema | quote }}
+                - name: KEEPSAKE_READ_RETENTION_DAYS
+                  value: {{ .Values.retention.readDays | quote }}
+                - name: KEEPSAKE_REVISION_RETENTION_DAYS
+                  value: {{ .Values.retention.revisionDays | quote }}
+                - name: KEEPSAKE_REVISION_KEEP
+                  value: {{ .Values.retention.revisionKeep | quote }}
+{{- end }}

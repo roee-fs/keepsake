@@ -23,6 +23,7 @@ from urllib.error import HTTPError
 import pytest
 
 BASE = "http://localhost:30800"
+CONSOLE = "http://localhost:30801"
 CHART = str(Path(__file__).resolve().parent.parent / "charts" / "keepsake")
 
 # Named on every command rather than taken from the ambient one. These tests install a
@@ -67,6 +68,8 @@ _INSTALL_ARGS = [
     "service.type=NodePort",
     "--set",
     "service.nodePort=30800",
+    "--set",
+    "service.consoleNodePort=30801",
 ]
 
 # The second release, installed by the crash-loop test alone: it connects as the
@@ -158,7 +161,7 @@ def _admin_password() -> str:
 def _login(password: str) -> str:
     """POST /api/session and hand back the cookie header to replay on later requests."""
     request = urllib.request.Request(
-        f"{BASE}/api/session",
+        f"{CONSOLE}/api/session",
         data=json.dumps({"password": password}).encode(),
         headers={"Content-Type": "application/json"},
     )
@@ -172,7 +175,7 @@ def _api_get(path: str, cookie: str | None = None) -> tuple[int, Any]:
     """GET a console API route. Returns the status so callers can assert a 401
     without an exception handler of their own."""
     headers = {"Cookie": cookie} if cookie else {}
-    request = urllib.request.Request(f"{BASE}{path}", headers=headers)
+    request = urllib.request.Request(f"{CONSOLE}{path}", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             return response.status, json.loads(response.read())
@@ -264,7 +267,7 @@ def test_console_serves_the_built_image_bundle() -> None:
     `bun` stage, not from a bundle `bun run build` produced on the test machine. A
     dev-source reference (`/src/main.tsx`) here would mean the image shipped with no
     bundle at all."""
-    with urllib.request.urlopen(f"{BASE}/", timeout=30) as response:
+    with urllib.request.urlopen(f"{CONSOLE}/", timeout=30) as response:
         assert response.status == 200
         assert "text/html" in response.headers["Content-Type"]
         body = response.read().decode()

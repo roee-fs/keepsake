@@ -1,5 +1,6 @@
 {{- $port := 8000 -}}
 {{- $metricsPort := 9090 -}}
+{{- $consolePort := 8001 -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -82,6 +83,8 @@ spec:
               value: {{ $port | quote }}
             - name: KEEPSAKE_METRICS_PORT
               value: {{ $metricsPort | quote }}
+            - name: KEEPSAKE_CONSOLE_PORT
+              value: {{ $consolePort | quote }}
             - name: KEEPSAKE_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
             # UIEnabled in internal/controllers/auth.go compares against the string "true"; an unquoted
@@ -102,6 +105,10 @@ spec:
           ports:
             - name: http
               containerPort: {{ $port }}
+            {{- if .Values.ui.enabled }}
+            - name: console
+              containerPort: {{ $consolePort }}
+            {{- end }}
             # Not on the Service, so no Ingress can expose it.
             - name: metrics
               containerPort: {{ $metricsPort }}

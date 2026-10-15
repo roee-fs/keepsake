@@ -88,7 +88,8 @@ list this tenant's concepts.
 - Your orchestrator signs a short-lived token per call. See
   [Tenancy and authority](../README.md#tenancy-and-authority) for the claims.
 - Keep the Service `ClusterIP`. Allow only your callers to reach port 8000, for
-  example with a NetworkPolicy or a mesh authorization policy.
+  example with a NetworkPolicy or a mesh authorization policy. The admin console
+  is on port 8001. Allow only operators to reach it.
 - Scrape `/metrics` on port 9090 from the pods, not the Service.
 
 ## 6. Before production

@@ -358,8 +358,8 @@ func TestMainExportsABundle(t *testing.T) {
 }
 
 type servedApp struct {
-	addr, metricsAddr string
-	h, metrics        http.Handler
+	addr, metricsAddr, consoleAddr string
+	h, metrics, console            http.Handler
 }
 
 // fakeListen replaces the listener the way the Python tests monkeypatch uvicorn.run.
@@ -371,6 +371,8 @@ func fakeListen(t *testing.T) *servedApp {
 		for addr, h := range apps {
 			if strings.HasSuffix(addr, ":9123") || strings.HasSuffix(addr, ":8000") {
 				got.addr, got.h = addr, h
+			} else if strings.HasSuffix(addr, ":8001") {
+				got.consoleAddr, got.console = addr, h
 			} else {
 				got.metricsAddr, got.metrics = addr, h
 			}
@@ -394,6 +396,40 @@ func TestServeServesMetricsOnTheirOwnPort(t *testing.T) {
 	served.metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
 		t.Fatalf("%d: %.200s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestServeServesTheConsoleOnItsOwnPort(t *testing.T) {
+	served := fakeListen(t)
+	if code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123"); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if served.consoleAddr != "0.0.0.0:8001" {
+		t.Fatal(served.consoleAddr)
+	}
+	for _, c := range []struct {
+		h    http.Handler
+		want int
+	}{{served.console, http.StatusUnauthorized}, {served.h, http.StatusNotFound}} {
+		rec := httptest.NewRecorder()
+		c.h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/tenants", nil))
+		if rec.Code != c.want {
+			t.Fatalf("/api/tenants = %d, want %d", rec.Code, c.want)
+		}
+	}
+}
+
+func TestServeRefusesAConsolePortEqualToTheServePort(t *testing.T) {
+	t.Setenv("KEEPSAKE_CONSOLE_PORT", "9123")
+	fakeListen(t)
+	code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123")
+	if code != 1 || !strings.Contains(stderr, "KEEPSAKE_CONSOLE_PORT must differ") {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	// A disabled console binds no port, so it MUST NOT refuse one.
+	t.Setenv("KEEPSAKE_UI", "false")
+	if code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString(), "--port", "9123"); code != 0 {
+		t.Fatalf("with the console off: exit %d: %s", code, stderr)
 	}
 }
 

@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -55,6 +56,13 @@ func (t *ConceptService) As(tenant uuid.UUID, actor string) *ConceptService {
 func (t *ConceptService) Tenant() uuid.UUID { return t.t }
 
 func (t *ConceptService) Actor() string { return t.actor }
+
+// logRead records a read for the console's reads chart. A failure costs a chart point, not the read.
+func (t *ConceptService) logRead(ctx context.Context) {
+	if err := t.c.LogRead(ctx, t.t); err != nil {
+		slog.Warn("read not logged", "tenant", t.t, "err", err)
+	}
+}
 
 // PoolSize is the most database connections the service can hold at once.
 func (t *ConceptService) PoolSize() int { return t.c.PoolSize() }
@@ -224,6 +232,7 @@ func (t *ConceptService) Search(ctx context.Context, query string, limit int, pr
 	if err != nil {
 		return nil, err
 	}
+	t.logRead(ctx)
 	now := time.Now()
 	return convert(hits, func(h models.Hit) Card {
 		return Card{hitOf(h), h.Snippet, okf.Derive(h.Frontmatter, now)}
@@ -231,7 +240,12 @@ func (t *ConceptService) Search(ctx context.Context, query string, limit int, pr
 }
 
 func (t *ConceptService) Grep(ctx context.Context, pattern string, limit int) ([]GrepHit, error) {
-	return grep(ctx, t.c, t.t, pattern, limit)
+	hits, err := grep(ctx, t.c, t.t, pattern, limit)
+	if err != nil {
+		return nil, err
+	}
+	t.logRead(ctx)
+	return hits, nil
 }
 
 // grep is Grep for both services: a pattern Postgres refuses is the caller's mistake.
@@ -252,6 +266,7 @@ func (t *ConceptService) List(ctx context.Context, prefix string) (Listing, erro
 	if err != nil {
 		return Listing{}, err
 	}
+	t.logRead(ctx)
 	out := Listing{Paths: []string{}, Counts: okf.NewMap()}
 	for _, r := range rows {
 		out.Paths = append(out.Paths, r.Path)
@@ -265,8 +280,12 @@ func (t *ConceptService) List(ctx context.Context, prefix string) (Listing, erro
 // Read returns nil when nothing is stored at path.
 func (t *ConceptService) Read(ctx context.Context, path string) (*Concept, error) {
 	c, backlinks, err := t.c.ReadWithBacklinks(ctx, t.t, path)
-	if err != nil || c == nil {
+	if err != nil {
 		return nil, err
+	}
+	t.logRead(ctx)
+	if c == nil {
+		return nil, nil
 	}
 	return &Concept{c.Path, c.Type, c.Title, c.Description, c.Body, c.Frontmatter, c.Version, c.Links, backlinks,
 		okf.Derive(c.Frontmatter, time.Now())}, nil

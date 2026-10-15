@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -31,9 +32,10 @@ import (
 const (
 	defaultPort        = 8000
 	defaultMetricsPort = 9090
+	defaultConsolePort = 8001
 )
 
-const choices = "{import,export,validate,migrate,serve,token}"
+const choices = "{import,export,validate,migrate,prune,serve,token}"
 
 // EnvPort is $KEEPSAKE_PORT, or 8000 for anything else, such as the service link kubelet injects.
 func EnvPort() int { return envPort("KEEPSAKE_PORT", defaultPort) }
@@ -110,6 +112,7 @@ var commands = map[string]command{
 	"export":   {dsn: true, tenant: true, directory: true, run: runBundle((*services.BundleService).Export, "exported")},
 	"validate": {directory: true, run: runValidate},
 	"migrate":  {dsn: true, run: runMigrate},
+	"prune":    {dsn: true, run: runPrune},
 	"serve":    {dsn: true, tenant: true, run: runServe},
 	"token":    {tenant: true, run: runToken},
 }
@@ -142,7 +145,7 @@ func Main(args []string, stdout, stderr io.Writer) int {
 	}
 	cmd, ok := commands[name]
 	if !ok {
-		return usageError(stderr, "", fmt.Sprintf("argument %s: invalid choice: %s (choose from 'import', 'export', 'validate', 'migrate', 'serve', 'token')",
+		return usageError(stderr, "", fmt.Sprintf("argument %s: invalid choice: %s (choose from 'import', 'export', 'validate', 'migrate', 'prune', 'serve', 'token')",
 			choices, okf.PyReprString(name)))
 	}
 
@@ -324,6 +327,47 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 	return 0, migrate.Up(ctx, dsn, name)
 }
 
+// runPrune deletes reads and revisions past their retention. It runs as the app role.
+func runPrune(ctx context.Context, o *options, stdout, stderr io.Writer) (int, error) {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(stderr, nil)))
+	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
+	if err != nil {
+		return 0, err
+	}
+	var r services.Retention
+	for _, e := range []struct {
+		dst           *int
+		name          string
+		def, smallest int
+	}{
+		{&r.ReadDays, "KEEPSAKE_READ_RETENTION_DAYS", 190, 1},
+		{&r.RevisionDays, "KEEPSAKE_REVISION_RETENTION_DAYS", 0, 0},
+		{&r.RevisionKeep, "KEEPSAKE_REVISION_KEEP", 50, 1},
+	} {
+		value := cmp.Or(os.Getenv(e.name), strconv.Itoa(e.def))
+		n, err := strconv.Atoi(value)
+		if err != nil || n < e.smallest || !okf.IsDecimal(value) {
+			return 0, fmt.Errorf("%s must be an integer of at least %d: %s", e.name, e.smallest, okf.PyReprString(value))
+		}
+		*e.dst = n
+	}
+	name, err := repositories.Schema()
+	if err != nil {
+		return 0, err
+	}
+	s, err := repositories.OpenVerified(ctx, dsn, name)
+	if err != nil {
+		return 0, err
+	}
+	defer s.Close()
+	reads, revisions, err := services.Prune(ctx, repositories.NewConceptRepository(s), r, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	fmt.Fprintf(stdout, "pruned %d reads and %d revisions\n", reads, revisions)
+	return 0, nil
+}
+
 func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
 	var level slog.Level
 	if v := os.Getenv("KEEPSAKE_LOG_LEVEL"); v != "" {
@@ -348,26 +392,36 @@ func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error)
 	if o.port != nil {
 		port = *o.port
 	}
-	h, metrics, closeApp, err := app.BuildApp(ctx, app.Config{DSN: dsn, Auth: auth, Schema: name})
+	addr := net.JoinHostPort(o.host, strconv.Itoa(port))
+	metricsAddr := net.JoinHostPort(o.host, strconv.Itoa(envPort("KEEPSAKE_METRICS_PORT", defaultMetricsPort)))
+	consoleAddr := net.JoinHostPort(o.host, strconv.Itoa(envPort("KEEPSAKE_CONSOLE_PORT", defaultConsolePort)))
+	if metricsAddr == addr {
+		return 0, fmt.Errorf("KEEPSAKE_METRICS_PORT must differ from the serve port %d", port)
+	}
+	if controllers.UIEnabled() && (consoleAddr == addr || consoleAddr == metricsAddr) {
+		return 0, fmt.Errorf("KEEPSAKE_CONSOLE_PORT must differ from the serve and metrics ports")
+	}
+	h, closeApp, err := app.BuildApp(ctx, app.Config{DSN: dsn, Auth: auth, Schema: name})
 	if err != nil {
 		return 0, err
 	}
 	defer closeApp()
-	addr := net.JoinHostPort(o.host, strconv.Itoa(port))
-	metricsAddr := net.JoinHostPort(o.host, strconv.Itoa(envPort("KEEPSAKE_METRICS_PORT", defaultMetricsPort)))
-	if metricsAddr == addr {
-		return 0, fmt.Errorf("KEEPSAKE_METRICS_PORT must differ from the serve port %d", port)
-	}
 	mux := http.NewServeMux()
-	mux.Handle("GET /metrics", metrics)
+	mux.Handle("GET /metrics", h.Metrics)
+	servers := map[string]http.Handler{addr: h.App, metricsAddr: mux}
+	if h.Console != nil {
+		servers[consoleAddr] = h.Console
+	} else {
+		consoleAddr = ""
+	}
 	mode := os.Getenv("KEEPSAKE_AUTH_MODE")
 	if mode == "" {
 		mode = "none"
 	}
 	poolSize, _ := repositories.PoolSize()
-	slog.Info("listening", "addr", addr, "metrics", metricsAddr, "auth_mode", mode, "schema", name,
-		"pool_size", poolSize, "ui", controllers.UIEnabled())
-	return 0, listen(map[string]http.Handler{addr: h, metricsAddr: mux})
+	slog.Info("listening", "addr", addr, "metrics", metricsAddr, "console", consoleAddr, "auth_mode", mode,
+		"schema", name, "pool_size", poolSize)
+	return 0, listen(servers)
 }
 
 // authFromEnv picks how /mcp finds its tenant from KEEPSAKE_AUTH_MODE, none when unset.
@@ -433,17 +487,18 @@ func runToken(_ context.Context, o *options, stdout, _ io.Writer) (int, error) {
 
 // Help text copied from argparse at 2de90d2, so -h reads the same.
 var help = map[string]string{
-	"": `usage: keepsake [-h] {import,export,validate,migrate,serve,token} ...
+	"": `usage: keepsake [-h] {import,export,validate,migrate,prune,serve,token} ...
 
 Operate an OKF knowledge store. Import and export move a bundle of markdown
 files in and out of Postgres; serve exposes the MCP tools.
 
 positional arguments:
-  {import,export,validate,migrate,serve,token}
+  {import,export,validate,migrate,prune,serve,token}
     import              Load a bundle of markdown files into the store.
     export              Write the stored concepts out as a bundle.
     validate            Check a bundle on disk. Reads no database.
     migrate             Bring the database schema to head.
+    prune               Delete reads and revisions past their retention.
     serve               Serve the MCP tools over HTTP.
     token               Print a jwt-mode token for one tenant.
 
@@ -494,12 +549,24 @@ options:
   -h, --help  show this help message and exit
   --dsn DSN   PostgreSQL connection string. Defaults to $KEEPSAKE_DSN.
 `,
+	"prune": `usage: keepsake prune [-h] [--dsn DSN]
+
+Delete reads and revisions past their retention, one tenant at a time.
+Reads go after $KEEPSAKE_READ_RETENTION_DAYS, then 190. Revisions go after
+$KEEPSAKE_REVISION_RETENTION_DAYS, then 0, which keeps them all. Each path
+keeps its newest $KEEPSAKE_REVISION_KEEP revisions, then 50, at any age.
+
+options:
+  -h, --help  show this help message and exit
+  --dsn DSN   PostgreSQL connection string. Defaults to $KEEPSAKE_DSN.
+`,
 	"serve": `usage: keepsake serve [-h] [--dsn DSN] [--tenant TENANT] [--host HOST]
                       [--port PORT]
 
 Serve the MCP tools over HTTP. $KEEPSAKE_AUTH_MODE is none (one tenant, set by
 --tenant) or jwt (the tenant comes from each request's bearer token).
 Prometheus metrics are at /metrics on $KEEPSAKE_METRICS_PORT, then 9090.
+The admin console is on $KEEPSAKE_CONSOLE_PORT, then 8001.
 Logs are JSON lines on stderr at $KEEPSAKE_LOG_LEVEL, then info.
 
 options:

@@ -30,6 +30,6 @@ teardown() {
 trap teardown EXIT INT TERM
 
 # The ports and tag test_deployed.py assumes.
-CLUSTER=$CLUSTER IMAGE_TAG=e2e NODE_PORT=30800 bash e2e/up.sh
+CLUSTER=$CLUSTER IMAGE_TAG=e2e NODE_PORT=30800 CONSOLE_NODE_PORT=30801 bash e2e/up.sh
 
 uv run pytest e2e/test_deployed.py -v

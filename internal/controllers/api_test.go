@@ -331,9 +331,24 @@ func TestStatsTimeseriesReturnsAThirtyDayDefault(t *testing.T) {
 	if len(days) != 30 {
 		t.Fatalf("%d days", len(days))
 	}
-	if today := time.Now().UTC().Format(time.DateOnly); days[29]["date"] != today || days[29]["count"] != 1.0 {
+	if today := time.Now().UTC().Format(time.DateOnly) + "T00:00:00Z"; days[29]["start"] != today ||
+		days[29]["writes"] != 1.0 || days[29]["reads"] != 0.0 {
 		t.Fatalf("last day = %v, want %s with 1 write", days[29], today)
 	}
+}
+
+func TestStatsTimeseriesBucketsByHour(t *testing.T) {
+	c := newConsole(t).login()
+	rec := c.get("/stats/timeseries", "tenant", c.seeded().String(), "bucket", "hour", "buckets", "24")
+	wantStatus(t, rec, http.StatusOK)
+	hours := decode[[]map[string]any](t, rec)
+	if len(hours) != 24 || hours[23]["writes"] != 1.0 {
+		t.Fatalf("hours = %v, want 24 with the write in the last", hours)
+	}
+}
+
+func TestStatsTimeseriesRejectsAnUnknownBucket(t *testing.T) {
+	wantStatus(t, newConsole(t).login().get("/stats/timeseries", "bucket", "month"), http.StatusUnprocessableEntity)
 }
 
 func TestConceptsPageListsASeededConcept(t *testing.T) {
@@ -358,8 +373,8 @@ func TestQueryBoundsAreValidationErrors(t *testing.T) {
 		{"/concepts", "limit", "-1"},
 		{"/concepts", "limit", "201"},
 		{"/concepts", "limit", "ten"},
-		{"/stats/timeseries", "days", "1000000"},
-		{"/stats/timeseries", "days", "0"},
+		{"/stats/timeseries", "buckets", "1000000"},
+		{"/stats/timeseries", "buckets", "0"},
 		{"/activity", "limit", "0"},
 		{"/search", "limit", "101", "q", "x"},
 		{"/grep", "limit", "0", "pattern", "x"},
@@ -476,7 +491,7 @@ func TestStatsTimeseriesAdminScopeMixesEveryTenant(t *testing.T) {
 	c.otherTenant()
 	sum := func(rec *httptest.ResponseRecorder) (n float64) {
 		for _, d := range decode[[]map[string]any](t, rec) {
-			n += d["count"].(float64)
+			n += d["writes"].(float64)
 		}
 		return n
 	}

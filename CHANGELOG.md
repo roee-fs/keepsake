@@ -7,6 +7,27 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Added
+
+- The console charts reads next to writes, per hour, day or week. Migration 0008
+  adds `concept_read`, one row per MCP `read`, `search`, `grep` or `list`.
+  `purge_tenant` empties it too.
+- `keepsake prune` deletes reads after `KEEPSAKE_READ_RETENTION_DAYS` (190) and,
+  when `KEEPSAKE_REVISION_RETENTION_DAYS` is set, revisions older than that,
+  keeping each path's newest `KEEPSAKE_REVISION_KEEP` (50). The chart runs it
+  nightly as a CronJob. Set `retention.enabled: false` to turn it off.
+
+### Changed
+
+- The console moves to its own port, `KEEPSAKE_CONSOLE_PORT`, 8001 by default.
+  Port 8000 serves only `/mcp`, `PUT /bundle` and `/readyz`. Port-forward to
+  8001 to reach the console. The chart adds a `console` port to the Service.
+- `GET /api/stats/timeseries` takes `bucket` and `buckets` in place of `days`.
+  Each row is `{start, writes, reads}` in place of `{date, count}`. Buckets are
+  UTC, whatever the database's TimeZone.
+
 ## 0.6.0 — 2026-10-08
 
 ### Added

@@ -81,6 +81,30 @@ func toolError(t *testing.T, err error) string {
 	return te.Msg
 }
 
+// Each read tool logs one read, and a write logs none.
+func TestReadToolsLogOneReadEach(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	read(t, tools, "a/b")
+	if _, err := tools.Search(ctx, "b", 5, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Grep(ctx, "b", 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.List(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	tenant := tools.Tenant()
+	buckets, err := tools.c.Timeseries(ctx, &tenant, "day", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(buckets) != 1 || buckets[0].Reads != 4 || buckets[0].Writes != 1 {
+		t.Fatalf("buckets = %+v, want 4 reads and 1 write today", buckets)
+	}
+}
+
 func wantToolError(t *testing.T, err error, contains string) {
 	t.Helper()
 	if msg := toolError(t, err); !strings.Contains(msg, contains) {

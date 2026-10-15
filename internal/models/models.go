@@ -59,10 +59,11 @@ type PathType struct {
 	Type string
 }
 
-// DailyWrite is one day's concept-revision count.
-type DailyWrite struct {
-	Date  time.Time
-	Count int
+// Bucket is one time bucket's concept-revision and read counts.
+type Bucket struct {
+	Start  time.Time
+	Writes int
+	Reads  int
 }
 
 // TenantCount is one tenant and how many concepts it holds.

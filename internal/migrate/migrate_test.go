@@ -75,6 +75,9 @@ func seed(t *testing.T, tx pgx.Tx, tenant uuid.UUID) {
 			"VALUES ($1, 'a.md', 1, 'create', '{}'::jsonb)", tenant); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := tx.Exec(ctx, "INSERT INTO okf.concept_read (tenant_id) VALUES ($1)", tenant); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Ported from 2de90d2:tests/test_migration.py::test_tables_have_rls_enabled_and_forced.
@@ -135,7 +138,7 @@ func TestPoliciesReadTheOkfGUC(t *testing.T) {
 	}
 	// posting has no admin_read: the console never searches.
 	want := map[[2]string]bool{{"posting", "tenant_isolation"}: true}
-	for _, table := range []string{"concept", "concept_revision"} {
+	for _, table := range []string{"concept", "concept_read", "concept_revision"} {
 		for _, name := range []string{"tenant_isolation", "admin_read"} {
 			want[[2]string{table, name}] = true
 		}
@@ -267,17 +270,18 @@ func TestPurgeTenantReturnsTheCountAndEmptiesBothTables(t *testing.T) {
 	if err := tx.QueryRow(ctx, "SELECT okf.purge_tenant($1)", tenant).Scan(&purged); err != nil {
 		t.Fatal(err)
 	}
-	var concepts, revisions int64
+	var concepts, revisions, reads int64
 	if err := tx.QueryRow(ctx,
-		"SELECT (SELECT count(*) FROM okf.concept), (SELECT count(*) FROM okf.concept_revision)",
-	).Scan(&concepts, &revisions); err != nil {
+		"SELECT (SELECT count(*) FROM okf.concept), (SELECT count(*) FROM okf.concept_revision), "+
+			"(SELECT count(*) FROM okf.concept_read)",
+	).Scan(&concepts, &revisions, &reads); err != nil {
 		t.Fatal(err)
 	}
 	if purged != 1 {
 		t.Errorf("purged = %d, want 1", purged)
 	}
-	if concepts != 0 || revisions != 0 {
-		t.Errorf("remaining = (%d, %d), want (0, 0)", concepts, revisions)
+	if concepts != 0 || revisions != 0 || reads != 0 {
+		t.Errorf("remaining = (%d, %d, %d), want (0, 0, 0)", concepts, revisions, reads)
 	}
 }
 
@@ -389,7 +393,7 @@ func TestANonDefaultSchemaMigrates(t *testing.T) {
 		}
 		got = append(got, name)
 	}
-	want := []string{"concept", "concept_revision", "posting"}
+	want := []string{"concept", "concept_read", "concept_revision", "posting"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("guarded tables = %v, want %v", got, want)
 	}
@@ -501,8 +505,8 @@ func upgradeFrom(t *testing.T, left string) {
 		fmt.Sprintf("SELECT version_num FROM %s.alembic_version", schema)).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != "0007" {
-		t.Fatalf("version_num = %s, want 0007", version)
+	if version != "0008" {
+		t.Fatalf("version_num = %s, want 0008", version)
 	}
 
 	// The startup check pins admin_read to 0004's exact expression.

@@ -236,25 +236,41 @@ func (cs *ConceptRepository) Activity(ctx context.Context, tenant *uuid.UUID, li
 	return out, err
 }
 
-// DailyWrites returns revision counts for the last days days, oldest first and zero-filled.
-func (cs *ConceptRepository) DailyWrites(ctx context.Context, tenant *uuid.UUID, days int) ([]models.DailyWrite, error) {
-	if days <= 0 {
+// timeseriesSQL counts writes and reads per UTC bucket, oldest first and zero-filled. $1 is a
+// date_trunc unit and $2 the bucket count. Each table is scanned once, from the first bucket on.
+const timeseriesSQL = `
+WITH b AS (
+  SELECT generate_series(date_trunc($1, now() AT TIME ZONE 'UTC') - ($2::int - 1) * ('1 ' || $1)::interval,
+                         date_trunc($1, now() AT TIME ZONE 'UTC'), ('1 ' || $1)::interval) AS start
+), w AS (
+  SELECT date_trunc($1, created_at AT TIME ZONE 'UTC') AS start, count(*) AS n FROM concept_revision
+  WHERE created_at >= (SELECT min(start) FROM b) AT TIME ZONE 'UTC' GROUP BY 1
+), r AS (
+  SELECT date_trunc($1, created_at AT TIME ZONE 'UTC') AS start, count(*) AS n FROM concept_read
+  WHERE created_at >= (SELECT min(start) FROM b) AT TIME ZONE 'UTC' GROUP BY 1
+)
+SELECT b.start AT TIME ZONE 'UTC', coalesce(w.n, 0), coalesce(r.n, 0)
+FROM b LEFT JOIN w USING (start) LEFT JOIN r USING (start) ORDER BY b.start`
+
+// Timeseries returns write and read counts for the last n buckets of unit: hour, day or week.
+func (cs *ConceptRepository) Timeseries(ctx context.Context, tenant *uuid.UUID, unit string, n int) ([]models.Bucket, error) {
+	if n <= 0 {
 		return nil, nil
 	}
-	var out []models.DailyWrite
+	var out []models.Bucket
 	err := cs.connect(ctx, tenant, func(tx pgx.Tx) (err error) {
-		// The lower bound repeats the series start so the created_at index can serve the join.
-		out, err = collect[models.DailyWrite](ctx, tx,
-			"SELECT d::date, count(r.created_at) FROM generate_series("+
-				"  (current_date - ($1::int - 1))::timestamp, current_date::timestamp,"+
-				"  interval '1 day'"+
-				") AS d "+
-				"LEFT JOIN concept_revision r ON r.created_at::date = d::date"+
-				"  AND r.created_at >= (current_date - ($1::int - 1))::timestamp "+
-				"GROUP BY d ORDER BY d", days)
+		out, err = collect[models.Bucket](ctx, tx, timeseriesSQL, unit, n)
 		return err
 	})
 	return out, err
+}
+
+// LogRead records one read for the console's reads chart.
+func (cs *ConceptRepository) LogRead(ctx context.Context, tenant uuid.UUID) error {
+	return cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, "INSERT INTO concept_read (tenant_id) VALUES ($1)", tenant)
+		return err
+	})
 }
 
 // Tenants lists every tenant with concepts, and how many; there is no other tenant registry.

@@ -63,20 +63,27 @@ func tarball(t *testing.T, name, body string) *bytes.Buffer {
 
 const shell = "<html>console shell</html>"
 
-// served is the built app on a real socket, so the wire format is the one a pod serves.
-func served(t *testing.T) string {
+// served is the built app and console on real sockets, so the wire format is the one a pod serves.
+// console is "" when the console is off.
+func served(t *testing.T) (app, console string) {
 	t.Helper()
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	h, _, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(h)
-	t.Cleanup(func() { srv.Close(); closeApp() })
-	return srv.URL
+	t.Cleanup(closeApp)
+	srv := httptest.NewServer(h.App)
+	t.Cleanup(srv.Close)
+	if h.Console == nil {
+		return srv.URL, ""
+	}
+	csrv := httptest.NewServer(h.Console)
+	t.Cleanup(csrv.Close)
+	return srv.URL, csrv.URL
 }
 
-func withStatic(t *testing.T) string {
+func withStatic(t *testing.T) (app, console string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "static")
 	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
@@ -88,7 +95,7 @@ func withStatic(t *testing.T) string {
 	return served(t)
 }
 
-func withoutStatic(t *testing.T) string {
+func withoutStatic(t *testing.T) (app, console string) {
 	t.Helper()
 	t.Setenv("KEEPSAKE_STATIC_DIR", filepath.Join(t.TempDir(), "no-such-dir"))
 	return served(t)
@@ -145,12 +152,13 @@ func wantLogin(t *testing.T, base string) {
 }
 
 func TestReadyzReportsReadyWhileThePoolCanReachTheDatabase(t *testing.T) {
-	wantReady(t, served(t))
+	app, _ := served(t)
+	wantReady(t, app)
 }
 
 func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	_, _, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	_, _, err := BuildApp(ctx, Config{DSN: db.OwnerDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	var m *repositories.MisconfiguredDatabase
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredDatabase", err)
@@ -159,7 +167,7 @@ func TestBuildAppRefusesADatabaseThatDoesNotIsolate(t *testing.T) {
 
 func TestBuildAppRefusesAnEnabledConsoleWithoutAPassword(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", "")
-	_, _, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	_, _, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	var m *controllers.MisconfiguredAdmin
 	if !errors.As(err, &m) {
 		t.Fatalf("err = %v, want MisconfiguredAdmin", err)
@@ -167,16 +175,17 @@ func TestBuildAppRefusesAnEnabledConsoleWithoutAPassword(t *testing.T) {
 }
 
 func TestBuildAppServesMCPOnAnIsolatingDatabase(t *testing.T) {
-	wantMCP(t, served(t))
+	app, _ := served(t)
+	wantMCP(t, app)
 }
 
 func TestJWTModeGuardsMCPButNotReadyz(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	h, _, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: issuer.Middleware, Schema: "okf"})
+	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: issuer.Middleware, Schema: "okf"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(h)
+	srv := httptest.NewServer(h.App)
 	t.Cleanup(func() { srv.Close(); closeApp() })
 	if resp, body := send(t, http.MethodPost, srv.URL+"/mcp", toolsList); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("POST /mcp without a token = %d %s", resp.StatusCode, body)
@@ -184,31 +193,41 @@ func TestJWTModeGuardsMCPButNotReadyz(t *testing.T) {
 	wantReady(t, srv.URL)
 }
 
-func TestUIDisabledMountsNoAPIButStillServesMCPAndReadyz(t *testing.T) {
+func TestUIDisabledServesNoConsoleButStillServesMCPAndReadyz(t *testing.T) {
 	t.Setenv("KEEPSAKE_UI", "false")
-	base := withStatic(t)
-	if resp, _ := send(t, http.MethodPost, base+"/api/session", `{"password": "x"}`); resp.StatusCode != 404 {
-		t.Fatalf("/api/session = %d, want 404", resp.StatusCode)
+	app, console := withStatic(t)
+	if console != "" {
+		t.Fatal("the console is served with KEEPSAKE_UI=false")
 	}
-	if resp, _ := send(t, http.MethodGet, base+"/", ""); resp.StatusCode != 404 {
-		t.Fatalf("/ = %d: the console is part of the UI", resp.StatusCode)
+	wantMCP(t, app)
+	wantReady(t, app)
+}
+
+// The console has its own port, so the MCP port MUST NOT answer for it.
+func TestTheAppServesNeitherTheConsoleNorItsAPI(t *testing.T) {
+	app, _ := withStatic(t)
+	for _, p := range []string{"/", "/api/tenants", "/assets/app.js"} {
+		if resp, _ := send(t, http.MethodGet, app+p, ""); resp.StatusCode != 404 {
+			t.Errorf("app %s = %d, want 404", p, resp.StatusCode)
+		}
 	}
-	wantMCP(t, base)
-	wantReady(t, base)
+	if resp, _ := send(t, http.MethodPost, app+"/api/session", `{"password": "`+adminPassword+`"}`); resp.StatusCode != 404 {
+		t.Errorf("app /api/session = %d, want 404", resp.StatusCode)
+	}
 }
 
 func TestMissingStaticBundleSkipsTheMountButAPIAndMCPStillServe(t *testing.T) {
-	base := withoutStatic(t)
-	if resp, _ := send(t, http.MethodGet, base+"/", ""); resp.StatusCode != 404 {
+	app, console := withoutStatic(t)
+	if resp, _ := send(t, http.MethodGet, console+"/", ""); resp.StatusCode != 404 {
 		t.Fatalf("/ = %d, want 404", resp.StatusCode)
 	}
-	wantReady(t, base)
-	wantLogin(t, base)
-	wantMCP(t, base)
+	wantReady(t, app)
+	wantLogin(t, console)
+	wantMCP(t, app)
 }
 
 func TestStaticBundlePresentServesTheConsoleLastWithSPAFallback(t *testing.T) {
-	base := withStatic(t)
+	app, base := withStatic(t)
 	for _, p := range []string{"/", "/concepts/notes%2Fa.md"} {
 		resp, body := send(t, http.MethodGet, base+p, "")
 		if resp.StatusCode != 200 || body != shell {
@@ -222,17 +241,13 @@ func TestStaticBundlePresentServesTheConsoleLastWithSPAFallback(t *testing.T) {
 	if resp, _ := send(t, http.MethodGet, base+"/assets/app.js", ""); resp.Header.Get("Cache-Control") != "" {
 		t.Fatalf("a hashed asset is served with Cache-Control %q", resp.Header.Get("Cache-Control"))
 	}
-	// The console MUST NOT stop the router redirecting a trailing slash.
-	if resp, _ := send(t, http.MethodPost, base+"/mcp/", "{}"); resp.StatusCode != 307 || resp.Header.Get("Location") != "/mcp" {
-		t.Fatalf("POST /mcp/ = %d %q", resp.StatusCode, resp.Header.Get("Location"))
-	}
-	wantReady(t, base)
+	wantReady(t, app)
 	wantLogin(t, base)
-	wantMCP(t, base)
+	wantMCP(t, app)
 }
 
-func TestStaticFallsBackToTheShellButNotForAPIAndMCP(t *testing.T) {
-	base := withStatic(t)
+func TestStaticFallsBackToTheShellButNotForAPI(t *testing.T) {
+	app, base := withStatic(t)
 	if resp, body := send(t, http.MethodGet, base+"/concepts/a/b", ""); resp.StatusCode != 200 || body != shell {
 		t.Fatalf("deep link = %d %q", resp.StatusCode, body)
 	}
@@ -242,7 +257,7 @@ func TestStaticFallsBackToTheShellButNotForAPIAndMCP(t *testing.T) {
 	if resp, _ := send(t, http.MethodGet, base+"/api/tenants", ""); resp.StatusCode != 401 {
 		t.Fatalf("/api/tenants = %d, want 401", resp.StatusCode)
 	}
-	wantMCP(t, base)
+	wantMCP(t, app)
 }
 
 // Starlette's behaviour at 8f2af2e: an unmatched path one slash away from a route
@@ -254,40 +269,39 @@ func TestUnmatchedPathsBehaveAsStarlettesRouter(t *testing.T) {
 		body     string
 	}
 	cases := []struct {
-		static       bool
+		server       string
 		method, path string
 		want         want
 	}{
-		{true, "GET", "/mcp/", want{307, "/mcp", ""}},
-		{true, "POST", "/mcp/", want{307, "/mcp", ""}},
-		{true, "GET", "/readyz/", want{307, "/readyz", ""}},
-		{true, "GET", "/api", want{307, "/api/", ""}},
-		{true, "GET", "/elsewhere", want{200, "", shell}},
-		{true, "POST", "/readyz", want{405, "", ""}},
-		{true, "POST", "/elsewhere", want{405, "", ""}},
-		{true, "GET", "/assets", want{200, "", shell}},
-		{false, "GET", "/mcp/", want{307, "/mcp", ""}},
-		{false, "POST", "/mcp/", want{307, "/mcp", ""}},
-		{false, "GET", "/readyz/", want{307, "/readyz", ""}},
-		{false, "GET", "/api", want{307, "/api/", ""}},
-		{false, "POST", "/readyz", want{405, "", ""}},
-		{false, "GET", "/elsewhere", want{404, "", ""}},
+		{"app", "GET", "/mcp/", want{307, "/mcp", ""}},
+		{"app", "POST", "/mcp/", want{307, "/mcp", ""}},
+		{"app", "GET", "/readyz/", want{307, "/readyz", ""}},
+		{"app", "POST", "/readyz", want{405, "", ""}},
+		{"app", "GET", "/api", want{404, "", ""}},
+		{"app", "GET", "/elsewhere", want{404, "", ""}},
+		{"static", "GET", "/api", want{307, "/api/", ""}},
+		{"static", "GET", "/elsewhere", want{200, "", shell}},
+		{"static", "POST", "/elsewhere", want{405, "", ""}},
+		{"static", "GET", "/assets", want{200, "", shell}},
+		{"bare", "GET", "/api", want{307, "/api/", ""}},
+		{"bare", "GET", "/elsewhere", want{404, "", ""}},
 	}
-	bases := map[bool]string{true: withStatic(t)}
+	bases := map[string]string{}
+	bases["app"], bases["static"] = withStatic(t)
 	t.Setenv("KEEPSAKE_STATIC_DIR", "/no/such/dir")
-	bases[false] = served(t)
+	_, bases["bare"] = served(t)
 	for _, c := range cases {
-		resp, body := send(t, c.method, bases[c.static]+c.path, "")
+		resp, body := send(t, c.method, bases[c.server]+c.path, "")
 		if resp.StatusCode != c.want.status || resp.Header.Get("Location") != c.want.location ||
 			(c.want.body != "" && body != c.want.body) {
-			t.Errorf("static=%v %s %s = %d %q %q, want %+v", c.static, c.method, c.path,
+			t.Errorf("%s %s %s = %d %q %q, want %+v", c.server, c.method, c.path,
 				resp.StatusCode, resp.Header.Get("Location"), body, c.want)
 		}
 	}
 }
 
 func TestADirectoryWithAnIndexIsServedAsStarletteServesIt(t *testing.T) {
-	base := withStatic(t)
+	_, base := withStatic(t)
 	sub := filepath.Join(os.Getenv("KEEPSAKE_STATIC_DIR"), "sub")
 	os.Mkdir(sub, 0o755)
 	os.WriteFile(filepath.Join(sub, "index.html"), []byte("sub"), 0o644)
@@ -302,7 +316,7 @@ func TestADirectoryWithAnIndexIsServedAsStarletteServesIt(t *testing.T) {
 // A DNS-rebound page reaches /mcp as same-origin; only its Origin header shows. The
 // refusal comes before the body limit and the method checks, and /mcp/ still redirects.
 func TestMCPRefusesABrowserOrigin(t *testing.T) {
-	base := withStatic(t)
+	base, _ := served(t)
 	for _, c := range []struct {
 		method, path, origin, body string
 		status                     int
@@ -340,7 +354,8 @@ func TestMCPRefusesABrowserOrigin(t *testing.T) {
 }
 
 func TestTheAppServesBundleUploadsButNotToBrowsers(t *testing.T) {
-	url := served(t) + "/bundle?prefix=docs"
+	app, _ := served(t)
+	url := app + "/bundle?prefix=docs"
 	send := func(origin string) int {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, tarball(t, "a.md", "---\ntype: Doc\n---\n\n"))
 		if err != nil {
@@ -366,14 +381,14 @@ func TestTheAppServesBundleUploadsButNotToBrowsers(t *testing.T) {
 
 func TestMetricsAreServedOnlyByTheMetricsHandler(t *testing.T) {
 	t.Setenv("KEEPSAKE_ADMIN_PASSWORD", adminPassword)
-	h, metrics, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
+	h, closeApp, err := BuildApp(ctx, Config{DSN: db.AppDSN, Auth: controllers.FixedTenant(uuid.New()), Schema: "okf"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(closeApp)
 
 	rec := httptest.NewRecorder()
-	metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	h.Metrics.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body, _ := io.ReadAll(rec.Body)
 	for _, want := range []string{`keepsake_tool_calls_total{outcome="ok",tool="read"}`, "keepsake_db_pool_max_connections", "go_goroutines"} {
 		if !strings.Contains(string(body), want) {
@@ -381,9 +396,11 @@ func TestMetricsAreServedOnlyByTheMetricsHandler(t *testing.T) {
 		}
 	}
 
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
-		t.Error("the app handler serves metrics")
+	for _, srv := range []http.Handler{h.App, h.Console} {
+		rec = httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		if strings.Contains(rec.Body.String(), "keepsake_tool_calls_total") {
+			t.Error("the app or console handler serves metrics")
+		}
 	}
 }

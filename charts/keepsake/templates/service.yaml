@@ -15,3 +15,11 @@ spec:
       {{- with .Values.service.nodePort }}
       nodePort: {{ . }}
       {{- end }}
+    {{- if .Values.ui.enabled }}
+    - name: console
+      port: {{ .Values.service.consolePort }}
+      targetPort: console
+      {{- with .Values.service.consoleNodePort }}
+      nodePort: {{ . }}
+      {{- end }}
+    {{- end }}

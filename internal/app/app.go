@@ -25,16 +25,25 @@ type Config struct {
 	Auth func(http.Handler) http.Handler
 }
 
-// BuildApp returns the app, its metrics handler and a closer, or fails when the database does not isolate tenants.
-func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, closeApp func(), err error) {
+// Handlers are what each port serves.
+type Handlers struct {
+	// App serves /mcp, PUT /bundle and /readyz.
+	App http.Handler
+	// Console serves the admin console and its /api, or is nil when the console is off.
+	Console http.Handler
+	Metrics http.Handler
+}
+
+// BuildApp returns the handlers and a closer, or fails when the database does not isolate tenants.
+func BuildApp(ctx context.Context, cfg Config) (Handlers, func(), error) {
 	// Read before the pool opens, so a misconfigured console holds no connections.
 	password, err := controllers.AdminPassword()
 	if err != nil {
-		return nil, nil, nil, err
+		return Handlers{}, nil, err
 	}
 	s, err := repositories.OpenVerified(ctx, cfg.DSN, cfg.Schema)
 	if err != nil {
-		return nil, nil, nil, err
+		return Handlers{}, nil, err
 	}
 
 	cs := repositories.NewConceptRepository(s)
@@ -58,10 +67,13 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 	notFound := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not Found", http.StatusNotFound)
 	})
-	var fallback http.Handler = controllers.SlashRedirect(mux, notFound)
+	mux.Handle("/", controllers.SlashRedirect(mux, notFound))
+	h := Handlers{App: controllers.RefuseBrowsers(mux), Metrics: controllers.MetricsHandler(s.Stat)}
 	closeRoot := func() {}
 	if controllers.UIEnabled() {
-		mux.Handle("/api/", http.StripPrefix("/api", controllers.NewAPI(services.NewConsoleService(cs), controllers.NewAuth(password))))
+		console := http.NewServeMux()
+		console.Handle("/api/", http.StripPrefix("/api", controllers.NewAPI(services.NewConsoleService(cs), controllers.NewAuth(password))))
+		fallback := controllers.SlashRedirect(console, notFound)
 		dir := os.Getenv("KEEPSAKE_STATIC_DIR")
 		if dir == "" {
 			dir = defaultStaticDir
@@ -70,13 +82,14 @@ func BuildApp(ctx context.Context, cfg Config) (app, metrics http.Handler, close
 		if root, err := os.OpenRoot(dir); err == nil {
 			closeRoot = func() { root.Close() }
 			// The fallback after the slash redirect, and unguarded, since the login page is served from it.
-			fallback = controllers.SlashRedirect(mux, controllers.StaticConsole(root.FS()))
+			fallback = controllers.SlashRedirect(console, controllers.StaticConsole(root.FS()))
 		} else {
-			slog.Warn("no console bundle; serving API and MCP only", "dir", dir)
+			slog.Warn("no console bundle; serving the console API only", "dir", dir)
 		}
+		// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
+		console.Handle("/api", fallback)
+		console.Handle("/", fallback)
+		h.Console = console
 	}
-	// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
-	mux.Handle("/api", fallback)
-	mux.Handle("/", fallback)
-	return controllers.RefuseBrowsers(mux), controllers.MetricsHandler(s.Stat), func() { closeRoot(); s.Close() }, nil
+	return h, func() { closeRoot(); s.Close() }, nil
 }

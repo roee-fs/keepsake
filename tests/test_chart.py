@@ -58,6 +58,10 @@ def _container(workload: dict[str, Any]) -> dict[str, Any]:
     return containers[0]
 
 
+def _pod(cronjob: dict[str, Any]) -> dict[str, Any]:
+    return cronjob["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+
+
 def _env(workload: dict[str, Any]) -> dict[str, Any]:
     return {e["name"]: e for e in _container(workload)["env"]}
 
@@ -296,7 +300,17 @@ def test_metrics_are_scraped_from_the_pod_and_not_the_service() -> None:
     assert _env(deployment)["KEEPSAKE_METRICS_PORT"]["value"] == str(ports["metrics"])
     annotations = deployment["spec"]["template"]["metadata"]["annotations"]
     assert annotations["prometheus.io/port"] == str(ports["metrics"])
-    assert [p["targetPort"] for p in _only(docs, "Service")["spec"]["ports"]] == ["http"]
+    assert [p["targetPort"] for p in _only(docs, "Service")["spec"]["ports"]] == ["http", "console"]
+
+
+def test_the_console_has_its_own_port_only_while_the_ui_is_enabled() -> None:
+    for enabled, want in [("true", ["http", "console"]), ("false", ["http"])]:
+        docs = _render(dict(MANAGED, **{"ui.enabled": enabled}))
+        deployment = _only(docs, "Deployment")
+        ports = {p["name"]: p["containerPort"] for p in _container(deployment)["ports"]}
+        assert [p["name"] for p in _only(docs, "Service")["spec"]["ports"]] == want
+        assert ("console" in ports) == (enabled == "true")
+        assert _env(deployment)["KEEPSAKE_CONSOLE_PORT"]["value"] == "8001"
 
 
 def test_no_workload_takes_the_service_link_variables() -> None:
@@ -305,6 +319,7 @@ def test_no_workload_takes_the_service_link_variables() -> None:
     for kind in ("Deployment", "Job"):
         spec = _only(docs, kind)["spec"]["template"]["spec"]
         assert spec["enableServiceLinks"] is False, kind
+    assert _pod(_only(docs, "CronJob"))["enableServiceLinks"] is False
 
 
 def test_the_bootstrap_password_is_escaped_into_the_sql() -> None:
@@ -419,3 +434,29 @@ def test_no_defaulted_value_is_required_by_the_schema() -> None:
             f"{name}: {sorted(clash)} have defaults and are required, which breaks "
             f"--reuse-values on the release that adds them"
         )
+
+
+def test_prune_runs_nightly_as_the_app_role_with_the_retention_values() -> None:
+    values = dict(MANAGED, **{"retention.revisionDays": "365"})
+    cronjob = _only(_render(values), "CronJob")
+    assert cronjob["spec"]["concurrencyPolicy"] == "Forbid"
+    pod = _pod(cronjob)
+    assert pod["securityContext"]["runAsNonRoot"] is True
+    (container,) = pod["containers"]
+    assert container["command"] == ["keepsake", "prune"]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    env = {e["name"]: e for e in container["env"]}
+    assert env["KEEPSAKE_DSN"]["valueFrom"]["secretKeyRef"]["key"] == "app-dsn"
+    assert env["KEEPSAKE_READ_RETENTION_DAYS"]["value"] == "190"
+    assert env["KEEPSAKE_REVISION_RETENTION_DAYS"]["value"] == "365"
+    assert env["KEEPSAKE_REVISION_KEEP"]["value"] == "50"
+
+
+def test_retention_disabled_renders_no_cronjob() -> None:
+    docs = _render(dict(MANAGED, **{"retention.enabled": "false"}))
+    assert not [d for d in docs if d["kind"] == "CronJob"]
+
+
+def test_retention_refuses_a_zero_read_window() -> None:
+    with pytest.raises(subprocess.CalledProcessError):
+        _render(dict(MANAGED, **{"retention.readDays": "0"}))

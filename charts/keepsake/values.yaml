@@ -31,11 +31,13 @@ securityContext:
     drop: ["ALL"]
 
 service:
-  # Carries the authenticated console alongside the MCP endpoint, which is
-  # unauthenticated in auth mode none.
-  # Keep this ClusterIP. Reach it with `kubectl port-forward svc/<release> 8000:8000`.
+  # port carries the MCP endpoint, which is unauthenticated in auth mode none.
+  # consolePort carries the password-protected admin console when ui.enabled.
+  # Keep this ClusterIP. Reach the console with `kubectl port-forward svc/<release> 8001:8001`.
   type: ClusterIP
   port: 8000
+  consolePort: 8001
+  consoleNodePort: null # as nodePort, for the console port
   nodePort: null # only honoured when type is NodePort or LoadBalancer
 
 auth:
@@ -54,9 +56,20 @@ auth:
     existingSecret: ""
 
 ui:
-  # Disabled skips both the static mount and the /api mount. Rendered as
-  # KEEPSAKE_UI; /mcp and /readyz are unaffected either way.
+  # Disabled serves no console port at all. Rendered as KEEPSAKE_UI; /mcp and
+  # /readyz are unaffected either way.
   enabled: true
+
+# A CronJob running `keepsake prune`. Reads only feed the console's chart, so they
+# go after readDays; 190 covers its 26-week view. Revisions are each concept's
+# history, so revisionDays 0 keeps them all. When set, each path still keeps its
+# newest revisionKeep revisions at any age.
+retention:
+  enabled: true
+  schedule: "17 3 * * *"
+  readDays: 190
+  revisionDays: 0
+  revisionKeep: 50
 
 admin:
   # Generated at install and printed by NOTES.txt. Read it with:

@@ -888,48 +888,69 @@ func TestDetailHistoryIsImmuneToOtherPathsCrowdingTheFeed(t *testing.T) {
 	}
 }
 
-func TestDailyWritesGroupsByDayAndZeroFillsGaps(t *testing.T) {
+func TestTimeseriesGroupsByDayAndZeroFillsGaps(t *testing.T) {
 	seed(t)
 	cs, tenant := fixture(t)
-	writes, err := cs.DailyWrites(ctx, &tenant, 7)
+	// Another tenant's read MUST NOT count.
+	for _, id := range []uuid.UUID{tenant, uuid.New()} {
+		if err := cs.LogRead(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	buckets, err := cs.Timeseries(ctx, &tenant, "day", 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(writes) != 7 {
-		t.Fatalf("len(writes) = %d, want 7", len(writes))
+	if len(buckets) != 7 {
+		t.Fatalf("len(buckets) = %d, want 7", len(buckets))
 	}
-	last := writes[len(writes)-1]
+	last := buckets[len(buckets)-1]
 	today := time.Now().UTC().Format("2006-01-02")
-	if last.Date.Format("2006-01-02") != today || last.Count != len(seedData) {
-		t.Fatalf("last write = %+v, want today (%s) with count %d", last, today, len(seedData))
+	if last.Start.UTC().Format("2006-01-02") != today || last.Writes != len(seedData) || last.Reads != 1 {
+		t.Fatalf("last bucket = %+v, want today (%s) with %d writes and 1 read", last, today, len(seedData))
 	}
-	for _, w := range writes[:len(writes)-1] {
-		if w.Count != 0 {
-			t.Fatalf("write = %+v, want count 0", w)
+	for _, b := range buckets[:len(buckets)-1] {
+		if b.Writes != 0 || b.Reads != 0 {
+			t.Fatalf("bucket = %+v, want zero counts", b)
 		}
 	}
 }
 
-// The series' first day starts at midnight: a write then counts, a write just before does not.
-func TestDailyWritesBoundsTheFirstDayAtMidnight(t *testing.T) {
-	cs, tenant := fixture(t)
-	create(t, okf.Concept{Path: "edge/in", Type: "Concept"})
-	create(t, okf.Concept{Path: "edge/out", Type: "Concept"})
-	pgtest.Exec(t, db.AdminDSN,
-		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = current_date - 6 "+
-			"WHERE tenant_id = '%s' AND path = 'edge/in'", tenant),
-		fmt.Sprintf("UPDATE okf.concept_revision SET created_at = (current_date - 6)::timestamptz - interval '1 microsecond' "+
-			"WHERE tenant_id = '%s' AND path = 'edge/out'", tenant))
-	writes, err := cs.DailyWrites(ctx, &tenant, 7)
+// The API reports each start in UTC, so a day MUST be a UTC day whatever the session TimeZone.
+func TestTimeseriesBucketsUTCDaysInAnySessionTimeZone(t *testing.T) {
+	cs, tenant := pgtest.ConceptRepository(t, db.AppDSN+"&options=-c%20TimeZone%3DPacific/Kiritimati"), uuid.New()
+	buckets, err := cs.Timeseries(ctx, &tenant, "day", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	counts := make([]int, len(writes))
-	for i, w := range writes {
-		counts[i] = w.Count
+	if want := time.Now().UTC().Truncate(24 * time.Hour); len(buckets) != 1 || !buckets[0].Start.Equal(want) {
+		t.Fatalf("buckets = %+v, want one starting %s", buckets, want)
 	}
-	if !slices.Equal(counts, []int{1, 0, 0, 0, 0, 0, 0}) {
-		t.Fatalf("counts = %v, want the first day's write alone", counts)
+}
+
+// The series' first bucket starts at its truncated boundary: a write then counts, a write just before does not.
+func TestTimeseriesBoundsTheFirstBucket(t *testing.T) {
+	cs, tenant := fixture(t)
+	create(t, okf.Concept{Path: "edge/in", Type: "Concept"})
+	create(t, okf.Concept{Path: "edge/out", Type: "Concept"})
+	for _, unit := range []string{"hour", "day", "week"} {
+		first := fmt.Sprintf("(date_trunc('%s', now() AT TIME ZONE 'UTC') - interval '6 %s') AT TIME ZONE 'UTC'", unit, unit)
+		pgtest.Exec(t, db.AdminDSN,
+			fmt.Sprintf("UPDATE okf.concept_revision SET created_at = %s "+
+				"WHERE tenant_id = '%s' AND path = 'edge/in'", first, tenant),
+			fmt.Sprintf("UPDATE okf.concept_revision SET created_at = %s - interval '1 microsecond' "+
+				"WHERE tenant_id = '%s' AND path = 'edge/out'", first, tenant))
+		buckets, err := cs.Timeseries(ctx, &tenant, unit, 7)
+		if err != nil {
+			t.Fatal(err)
+		}
+		counts := make([]int, len(buckets))
+		for i, b := range buckets {
+			counts[i] = b.Writes
+		}
+		if !slices.Equal(counts, []int{1, 0, 0, 0, 0, 0, 0}) {
+			t.Fatalf("%s counts = %v, want the first bucket's write alone", unit, counts)
+		}
 	}
 }
 

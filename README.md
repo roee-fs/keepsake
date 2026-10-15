@@ -90,10 +90,10 @@ docker compose up -d
 claude mcp add --transport http keepsake http://localhost:8000/mcp
 ```
 
-The console is at `http://localhost:8000`, password `keepsake`. Load a bundle with
+The console is at `http://localhost:8001`, password `keepsake`. Load a bundle with
 `docker compose run --rm -v "$PWD/demo/bundle:/bundle:ro" keepsake keepsake import /bundle`.
 This setup is for trying keepsake out. It serves one tenant to anything that
-reaches the port.
+reaches port 8000.
 
 ### Kubernetes
 
@@ -184,16 +184,17 @@ skips unchanged concepts, so pushing the same bundle twice changes nothing.
 
 ### The console
 
-The chart serves a read-only admin console from the same pod and port as `/mcp`
-— one image, no second Service, no CORS. Helm generates the password at
+The chart serves a read-only admin console from the same pod as `/mcp`, on its
+own port, 8001. Port 8000 serves only `/mcp`, `/bundle` and `/readyz`, so a
+NetworkPolicy MAY open one without the other. Helm generates the password at
 install, into a `<release>-admin` Secret:
 
 ```bash
 kubectl get secret <release>-admin -o jsonpath='{.data.password}' | base64 -d
-kubectl port-forward svc/<release> 8000:8000
+kubectl port-forward svc/<release> 8001:8001
 ```
 
-Then log in at `http://localhost:8000` with that password.
+Then log in at `http://localhost:8001` with that password.
 
 ![Console overview](https://github.com/roee-fs/keepsake/blob/pr-assets/overview-one-tenant.png?raw=true)
 
@@ -231,7 +232,7 @@ Then log in at `http://localhost:8000` with that password.
 - `jwt` mode verifies HS256 tokens with a shared secret only. OIDC and
   Kubernetes ServiceAccount tokens are not supported yet.
 - Search is lexical (BM25). There is no semantic search yet.
-- Nothing prunes revisions, and there are no per-tenant rate limits.
+- There are no per-tenant rate limits.
 - Keepsake does not deduplicate concepts or resolve contradictions.
 - The chart configures no backups. See [`docs/operations.md`](docs/operations.md#backups).
 
