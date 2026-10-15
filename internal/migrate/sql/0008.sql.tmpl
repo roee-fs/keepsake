@@ -1,10 +1,12 @@
 -- One row per agent read, search, grep or list, for the console's reads chart.
+-- The key leads with what the chart and prune scan, so it is also their index, and gives
+-- prune's DELETE a replica identity under logical replication.
 CREATE TABLE {{.SCHEMA}}.concept_read (
   tenant_id  uuid        NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  id         bigint      GENERATED ALWAYS AS IDENTITY,
+  PRIMARY KEY (tenant_id, created_at, id)
 );
-
-CREATE INDEX concept_read_log_idx ON {{.SCHEMA}}.concept_read (tenant_id, created_at);
 
 ALTER TABLE {{.SCHEMA}}.concept_read ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{.SCHEMA}}.concept_read FORCE ROW LEVEL SECURITY;
