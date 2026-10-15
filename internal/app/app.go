@@ -73,7 +73,7 @@ func BuildApp(ctx context.Context, cfg Config) (Handlers, func(), error) {
 	if controllers.UIEnabled() {
 		console := http.NewServeMux()
 		console.Handle("/api/", http.StripPrefix("/api", controllers.NewAPI(services.NewConsoleService(cs), controllers.NewAuth(password))))
-		fallback := controllers.SlashRedirect(console, notFound)
+		var static http.Handler = notFound
 		dir := os.Getenv("KEEPSAKE_STATIC_DIR")
 		if dir == "" {
 			dir = defaultStaticDir
@@ -81,11 +81,12 @@ func BuildApp(ctx context.Context, cfg Config) (Handlers, func(), error) {
 		// os.Root, not os.DirFS: a symlink out of the bundle is refused, as Starlette refuses it.
 		if root, err := os.OpenRoot(dir); err == nil {
 			closeRoot = func() { root.Close() }
-			// The fallback after the slash redirect, and unguarded, since the login page is served from it.
-			fallback = controllers.SlashRedirect(console, controllers.StaticConsole(root.FS()))
+			// Unguarded, since the login page is served from it.
+			static = controllers.StaticConsole(root.FS())
 		} else {
 			slog.Warn("no console bundle; serving the console API only", "dir", dir)
 		}
+		fallback := controllers.SlashRedirect(console, static)
 		// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
 		console.Handle("/api", fallback)
 		console.Handle("/", fallback)

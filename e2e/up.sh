@@ -29,6 +29,9 @@ nodes:
 EOF
 else
   kind export kubeconfig --name "$CLUSTER" --kubeconfig "$KUBECONFIG"
+  # A cluster created before the console had its own port maps no host port for it.
+  docker port "$CLUSTER-control-plane" "$CONSOLE_NODE_PORT/tcp" >/dev/null 2>&1 ||
+    echo "warning: $CLUSTER maps no host port $CONSOLE_NODE_PORT. Run kind delete cluster --name $CLUSTER to reach the console." >&2
 fi
 # Every command below is destructive against whatever context it lands in.
 context=$(kubectl config current-context)

@@ -73,6 +73,7 @@ The chart configures no backups. You MUST set up one of these:
   forever unless `retention.revisionDays` is set.
 - Every `read`, `search`, `grep` and `list` appends a row to `concept_read`.
   Reads are deleted after `retention.readDays`, 190 by default.
+- The database sees `postgres.poolSize` × `replicaCount` connections.
 
 ## Retention
 
@@ -89,7 +90,6 @@ batches of 10,000 rows.
 Pruned revisions leave a concept's history, `log.md` on export, the Revisions
 tile and the writes chart. Docker Compose runs no scheduler. Run
 `docker compose run --rm keepsake keepsake prune` yourself.
-- The database sees `postgres.poolSize` × `replicaCount` connections.
 
 ## Auth and access
 
