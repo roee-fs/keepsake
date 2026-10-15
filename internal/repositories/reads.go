@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -101,7 +102,7 @@ func readWithBacklinks(ctx context.Context, tx pgx.Tx, path string) (*okf.Concep
 
 // ReadWithBacklinks returns the concept and the paths linking to it. nil means no such path.
 func (cs *ConceptRepository) ReadWithBacklinks(ctx context.Context, tenant uuid.UUID, path string) (c *okf.Concept, backlinks []string, err error) {
-	err = cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
+	err = cs.read(ctx, tenant, func(tx pgx.Tx) error {
 		c, backlinks, err = readWithBacklinks(ctx, tx, path)
 		return err
 	})
@@ -159,7 +160,7 @@ func (cs *ConceptRepository) Revisions(ctx context.Context, tenant uuid.UUID, li
 // List returns (path, type) for every concept under prefix. An empty prefix is all.
 func (cs *ConceptRepository) List(ctx context.Context, tenant uuid.UUID, prefix string) ([]models.PathType, error) {
 	var out []models.PathType
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+	err := cs.read(ctx, tenant, func(tx pgx.Tx) (err error) {
 		out, err = collect[models.PathType](ctx, tx,
 			"SELECT path, type FROM concept WHERE starts_with(path, $1) ORDER BY path", prefix)
 		return err
@@ -265,11 +266,32 @@ func (cs *ConceptRepository) Timeseries(ctx context.Context, tenant *uuid.UUID, 
 	return out, err
 }
 
-// LogRead records one read for the console's reads chart.
-func (cs *ConceptRepository) LogRead(ctx context.Context, tenant uuid.UUID) error {
+// WithReadLog returns a copy whose agent reads each log a row for the console's reads chart.
+func (cs *ConceptRepository) WithReadLog() *ConceptRepository {
+	logged := *cs
+	logged.logReads = true
+	return &logged
+}
+
+// read runs fn in tenant's scope and, from WithReadLog, logs the read in the same transaction.
+// The log goes in one round trip under a savepoint, so a failed insert costs a chart point, not the read.
+// Its commit does not wait for the WAL flush: a crash may lose the last few reads' rows, never a concept.
+func (cs *ConceptRepository) read(ctx context.Context, tenant uuid.UUID, fn func(pgx.Tx) error) error {
 	return cs.s.Scope(ctx, tenant, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, "INSERT INTO concept_read (tenant_id) VALUES ($1)", tenant)
-		return err
+		if err := fn(tx); err != nil || !cs.logReads {
+			return err
+		}
+		b := &pgx.Batch{}
+		b.Queue("SAVEPOINT read_log")
+		b.Queue("SELECT set_config('synchronous_commit', 'off', true)")
+		b.Queue("INSERT INTO concept_read (tenant_id) VALUES ($1)", tenant)
+		b.Queue("RELEASE SAVEPOINT read_log")
+		if err := tx.SendBatch(ctx, b).Close(); err != nil {
+			slog.Warn("read not logged", "tenant", tenant, "err", err)
+			_, err = tx.Exec(ctx, "ROLLBACK TO SAVEPOINT read_log")
+			return err
+		}
+		return nil
 	})
 }
 
@@ -340,7 +362,7 @@ func (cs *ConceptRepository) Search(ctx context.Context, tenant uuid.UUID, query
 		return nil, nil
 	}
 	var out []models.Hit
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+	err := cs.read(ctx, tenant, func(tx pgx.Tx) (err error) {
 		out, err = collect[models.Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
 		return err
 	})
@@ -421,7 +443,7 @@ func (cs *ConceptRepository) Grep(ctx context.Context, tenant uuid.UUID, pattern
 		return nil, nil
 	}
 	var out []models.GrepHit
-	err := cs.s.Scope(ctx, tenant, func(tx pgx.Tx) (err error) {
+	err := cs.read(ctx, tenant, func(tx pgx.Tx) (err error) {
 		// SET LOCAL takes no parameter; the value is an int literal in this file.
 		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d", grepTimeoutMS)); err != nil {
 			return err

@@ -893,7 +893,7 @@ func TestTimeseriesGroupsByDayAndZeroFillsGaps(t *testing.T) {
 	cs, tenant := fixture(t)
 	// Another tenant's read MUST NOT count.
 	for _, id := range []uuid.UUID{tenant, uuid.New()} {
-		if err := cs.LogRead(ctx, id); err != nil {
+		if _, err := cs.WithReadLog().List(ctx, id, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

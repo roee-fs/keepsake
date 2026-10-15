@@ -58,7 +58,8 @@ var updateSQL = func() string {
 
 // ConceptRepository writes concepts and appends their revision log.
 type ConceptRepository struct {
-	s *Store
+	s        *Store
+	logReads bool
 }
 
 func NewConceptRepository(s *Store) *ConceptRepository { return &ConceptRepository{s: s} }
