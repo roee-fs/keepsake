@@ -398,7 +398,8 @@ def test_a_privileged_app_role_crash_loops_the_pod() -> None:
 # A third release in jwt mode. Its own schema, so its tenants cannot meet the others'.
 JWT_RELEASE = "keepsake-jwt"
 JWT_SCHEMA = "okf_jwt"
-JWT_PORT = 30801
+# A host port for kubectl port-forward. Not 30800 or 30801, which kind maps to the good release.
+JWT_PORT = 30802
 
 
 @pytest.fixture(scope="module")
