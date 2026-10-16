@@ -55,13 +55,20 @@ func field(m *Map, k string) any {
 	return v
 }
 
-// trust returns the tier and the latest instant among the events that set it, zero if none parses.
-// It reads a bare mapping as a one-element list, as §5.2 requires.
-func trust(verified any) (string, time.Time) {
-	events, ok := verified.([]any)
-	if !ok {
-		events = []any{verified}
+// Events reads a §5.2 event field as a list, taking a bare mapping as a one-element list.
+func Events(v any) []any {
+	switch v := v.(type) {
+	case nil:
+		return nil
+	case []any:
+		return v
 	}
+	return []any{v}
+}
+
+// trust returns the tier and the latest instant among the events that set it, zero if none parses.
+func trust(verified any) (string, time.Time) {
+	events := Events(verified)
 	tier := Unverified
 	var human, machine time.Time
 	for _, e := range events {

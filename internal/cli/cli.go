@@ -591,8 +591,9 @@ options:
   --ttl TTL        How long the token lives, such as 30m or 720h. Defaults
                    to 1h.
   --scope SCOPE    Space-separated scopes. "bundle" lets the token replace
-                   a prefix through PUT /bundle. MUST NOT be given to an agent.
-                   "read" makes the token read-only: create, update, relate,
-                   verify and PUT /bundle are refused.
+                   a prefix through PUT /bundle. "computations" lets it
+                   author an Attested Computation. An agent's token MUST NOT
+                   carry either. "read" makes the token read-only: create,
+                   update, relate, verify and PUT /bundle are refused.
 `,
 }

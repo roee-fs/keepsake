@@ -194,11 +194,17 @@ func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 		if c.anonymous {
 			by = services.ImportActor
 		}
-		written, deleted, err := svc.Replace(r.Context(), c.tenant, prefix, concepts, by)
+		written, deleted, err := svc.Replace(r.Context(), c.tenant, prefix, concepts, by, c.computations)
 		var te *services.ToolError
+		var refused *services.ComputationsRefused
 		switch {
 		case errors.As(err, &te):
 			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
+			return
+		case errors.As(err, &refused):
+			slog.Warn("refused /bundle request", "reason", "token lacks the "+computationsScope+" scope", "actor", c.actor)
+			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot change an Attested Computation: it needs the " +
+				computationsScope + " scope for " + strings.Join(refused.Paths, ", ")})
 			return
 		case errors.Is(err, models.ErrUnavailable):
 			slog.Warn("database unavailable", "route", r.Pattern, "err", err)

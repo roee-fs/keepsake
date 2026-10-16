@@ -392,6 +392,20 @@ func TestVerifyIsCallableOverTheProtocol(t *testing.T) {
 	}
 }
 
+func TestTheTokensComputationsScopeReachesTheTools(t *testing.T) {
+	srv := httptest.NewServer(issuer.Middleware(NewMCPHandler(services.NewConceptService(conceptStore(t), uuid.Nil, Actor))))
+	t.Cleanup(srv.Close)
+	tenant := uuid.New()
+	create := &mcp.CallToolParams{Name: "create", Arguments: map[string]any{
+		"path": "c/rev", "type": okf.AttestedComputation, "frontmatter": map[string]any{"runtime": "bigquery"}}}
+	for _, scopes := range [][]string{nil, {computationsScope}} {
+		res, err := asTenant(t, srv.URL, tenant, "human:ann", scopes...).CallTool(ctx, create)
+		if err != nil || res.IsError != (scopes == nil) {
+			t.Errorf("scopes %v: %+v, %v", scopes, res, err)
+		}
+	}
+}
+
 func TestTheWireToolListingIsPythons(t *testing.T) {
 	result := postToolsList(t)
 	if keys := slices.Sorted(maps.Keys(result)); !reflect.DeepEqual(keys, []string{"tools"}) {

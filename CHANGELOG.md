@@ -37,6 +37,11 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - `GET /api/stats/timeseries` takes `bucket` and `buckets` in place of `days`.
   Each row is `{start, writes, reads}` in place of `{date, count}`. Buckets are
   UTC, whatever the database's TimeZone.
+- Breaking: only a token with the new `computations` scope MAY create an OKF
+  Attested Computation or change its type, body or contract fields, as OKF
+  §10.3 requires. Mint it with `keepsake token --scope computations`. A
+  `PUT /bundle` that adds, changes or deletes one MUST carry it beside `bundle`,
+  or gets a 403.
 - Breaking: a JWT whose `sub` is not an OKF §7 actor now gets a 401. The README
   already said it MUST be one. Mint `process:<id>` instead of a bare id.
 

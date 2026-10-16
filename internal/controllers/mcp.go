@@ -180,7 +180,7 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 		tools := t
 		c, bound := ctx.Value(callerKey{}).(caller)
 		if bound {
-			tools = t.As(c.tenant, c.actor)
+			tools = t.As(c.tenant, c.actor, c.computations)
 		}
 		start, outcome := time.Now(), "error"
 		defer func() {

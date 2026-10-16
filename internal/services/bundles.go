@@ -103,12 +103,50 @@ func (b *BundleService) Import(ctx context.Context, tenant uuid.UUID, root strin
 }
 
 // Replace makes the tenant's concepts under prefix exactly concepts.
-func (b *BundleService) Replace(ctx context.Context, tenant uuid.UUID, prefix string, concepts []okf.Concept, actor string) (written, deleted int, err error) {
+// Without the computations scope it refuses, with a *ComputationsRefused, to change an Attested Computation.
+func (b *BundleService) Replace(ctx context.Context, tenant uuid.UUID, prefix string, concepts []okf.Concept, actor string, computations bool) (written, deleted int, err error) {
 	// An empty upload is far likelier a packaging mistake than a corpus that emptied.
 	if len(concepts) == 0 {
 		return 0, 0, toolErr("bundle holds no concepts")
 	}
-	return b.r.ReplacePrefix(ctx, tenant, prefix, concepts, actor)
+	var guard func(map[string]okf.Concept) error
+	if !computations {
+		guard = func(stored map[string]okf.Concept) error { return refuseComputationChanges(stored, concepts) }
+	}
+	return b.r.ReplacePrefix(ctx, tenant, prefix, concepts, actor, guard)
+}
+
+// ComputationsRefused names the Attested Computations an upload would change without the computations scope.
+type ComputationsRefused struct{ Paths []string }
+
+func (e *ComputationsRefused) Error() string {
+	return "upload changes Attested Computations: " + strings.Join(e.Paths, ", ")
+}
+
+// refuseComputationChanges compares an upload with the stored Attested Computations it would replace.
+func refuseComputationChanges(stored map[string]okf.Concept, upload []okf.Concept) error {
+	var paths []string
+	uploaded := map[string]bool{}
+	for _, c := range upload {
+		uploaded[c.Path] = true
+		var before *okf.Concept
+		if s, ok := stored[c.Path]; ok {
+			before = &s
+		}
+		if len(computationChanges(before, c)) > 0 {
+			paths = append(paths, c.Path)
+		}
+	}
+	for p, s := range stored {
+		if !uploaded[p] && s.Type == okf.AttestedComputation {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	slices.Sort(paths)
+	return &ComputationsRefused{paths}
 }
 
 // target is a concept's file relative to the bundle root, refused if it would leave the bundle.

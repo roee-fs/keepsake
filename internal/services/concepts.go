@@ -39,9 +39,10 @@ func convert[S, T any](rows []S, f func(S) T) []T {
 }
 
 type ConceptService struct {
-	c     *repositories.ConceptRepository
-	t     uuid.UUID
-	actor string
+	c            *repositories.ConceptRepository
+	t            uuid.UUID
+	actor        string
+	computations bool
 }
 
 func NewConceptService(cs *repositories.ConceptRepository, tenant uuid.UUID, actor string) *ConceptService {
@@ -49,10 +50,10 @@ func NewConceptService(cs *repositories.ConceptRepository, tenant uuid.UUID, act
 	return &ConceptService{c: cs.WithReadLog(), t: tenant, actor: actor}
 }
 
-// As returns a copy acting for tenant as actor.
-func (t *ConceptService) As(tenant uuid.UUID, actor string) *ConceptService {
+// As returns a copy acting for tenant as actor, with or without the computations scope.
+func (t *ConceptService) As(tenant uuid.UUID, actor string, computations bool) *ConceptService {
 	scoped := *t
-	scoped.t, scoped.actor = tenant, actor
+	scoped.t, scoped.actor, scoped.computations = tenant, actor, computations
 	return &scoped
 }
 
@@ -177,7 +178,40 @@ func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[stri
 	if errs := append(okf.Validate(c), familyErrors(existing, c)...); len(errs) > 0 {
 		return okf.Concept{}, toolErr(strings.Join(errs, "; "))
 	}
+	if touched := computationChanges(existing, c); len(touched) > 0 && !t.computations {
+		if existing == nil {
+			return okf.Concept{}, toolErr("only a caller with the computations scope may create an Attested Computation")
+		}
+		return okf.Concept{}, toolErr("only a caller with the computations scope may change an Attested Computation's " +
+			strings.Join(touched, ", ") + "; you may change its title, description, tags, status and sources")
+	}
 	return c, nil
+}
+
+// computationChanges names what a write changes of an Attested Computation's type, body and contract.
+// existing is nil on a create.
+// ponytail: the whole body is guarded, not just its # Computation fence; parse the fence if agents need to edit prose.
+func computationChanges(existing *okf.Concept, c okf.Concept) []string {
+	was := existing != nil && existing.Type == okf.AttestedComputation
+	if !was && c.Type != okf.AttestedComputation {
+		return nil
+	}
+	if existing == nil {
+		return []string{"created"}
+	}
+	var touched []string
+	if existing.Type != c.Type {
+		touched = append(touched, "type")
+	}
+	if existing.Body != c.Body {
+		touched = append(touched, "body")
+	}
+	for _, k := range okf.ContractFields {
+		if changed(existing, c, k) {
+			touched = append(touched, k)
+		}
+	}
+	return touched
 }
 
 // familyErrors returns the OKF §5 and §10 rules broken by the keys a write changes.
@@ -268,8 +302,12 @@ func (t *ConceptService) write(ctx context.Context, existing okf.Concept, path s
 		return nil, err
 	}
 	// The checks and the kept verified hold for the version read, so the write MUST NOT land on any other.
-	if expectedVersion == nil {
+	switch {
+	case expectedVersion == nil:
 		expectedVersion = &existing.Version
+	case *expectedVersion > existing.Version:
+		// Versions only grow, so a stale one can never match, but a later one names content nobody checked.
+		return ConflictResult{true, existing.Version, existing.Body}, nil
 	}
 	return t.save(ctx, c, expectedVersion)
 }
@@ -299,21 +337,17 @@ func (t *ConceptService) Verify(ctx context.Context, path string, expectedVersio
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
 	}
+	// c copies what was read, so it MUST NOT land on any other version.
+	if existing.Version != expectedVersion {
+		return ConflictResult{true, existing.Version, existing.Body}, nil
+	}
 	c := *existing
 	c.Frontmatter = existing.Frontmatter.Clone()
 	stored, _ := c.Frontmatter.Get("verified")
-	var events []any
-	switch v := stored.(type) {
-	case nil:
-	case []any:
-		events = slices.Clone(v)
-	default:
-		events = []any{v}
-	}
 	event := okf.NewMap()
 	event.Set("by", t.actor)
 	event.Set("at", time.Now().UTC().Format(time.RFC3339))
-	c.Frontmatter.Set("verified", append(events, event))
+	c.Frontmatter.Set("verified", append(slices.Clone(okf.Events(stored)), event))
 	return t.save(ctx, c, &expectedVersion)
 }
 

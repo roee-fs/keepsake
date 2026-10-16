@@ -605,6 +605,73 @@ func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
 	wantToolError(t, err, "no concept at a/none")
 }
 
+func revenue() map[string]any {
+	return map[string]any{"type": okf.AttestedComputation, "body": "# Computation\n\n    SELECT 1\n", "frontmatter": obj("runtime", "bigquery")}
+}
+
+// curator is a caller holding the computations scope.
+func curator(cs *repositories.ConceptRepository, tenant uuid.UUID) *ConceptService {
+	t := NewConceptService(cs, tenant, "process:curator")
+	t.computations = true
+	return t
+}
+
+func TestOnlyTheComputationsScopeMayCreateAnAttestedComputation(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	for _, actor := range []string{"support-agent/1.4", "human:ann"} {
+		_, err := NewConceptService(cs, tenant, actor).Create(ctx, "c/rev", revenue())
+		wantToolError(t, err, "computations scope")
+	}
+	if _, err := curator(cs, tenant).Create(ctx, "c/rev", revenue()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWithoutTheScopeAComputationsTypeBodyAndContractAreFixed(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	owner, agent := curator(cs, tenant), NewConceptService(cs, tenant, "support-agent/1.4")
+	seed(t, owner, "c/rev", revenue())
+	seed(t, owner, "c/other", map[string]any{})
+	// Each key is the field the refusal names.
+	for name, kw := range map[string]map[string]any{
+		"type":    {"type": "Metric"},
+		"body":    {"body": "# Computation\n\n    SELECT 2\n"},
+		"runtime": {"frontmatter": obj("runtime", "postgres")},
+	} {
+		_, err := agent.Update(ctx, "c/rev", nil, kw)
+		if msg := toolError(t, err); !strings.Contains(msg, "computations scope") || !strings.Contains(msg, name) {
+			t.Errorf("%s: %q", name, msg)
+		}
+	}
+	_, err := agent.Relate(ctx, "c/rev", "c/other")
+	wantToolError(t, err, "computations scope")
+	if _, err := owner.Update(ctx, "c/rev", nil, map[string]any{"body": "# Computation\n\n    SELECT 2\n"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWithoutTheScopeAComputationsMetadataMayChangeAndItMayBeVerified(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	owner, agent := curator(cs, tenant), NewConceptService(cs, tenant, "support-agent/1.4")
+	seed(t, owner, "c/rev", revenue())
+	kw := map[string]any{"title": "Revenue", "frontmatter": obj("runtime", "bigquery", "status", "deprecated")}
+	if _, err := agent.Update(ctx, "c/rev", nil, kw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.Verify(ctx, "c/rev", read(t, agent, "c/rev").Version); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWithoutTheScopeAConceptCannotBecomeAComputation(t *testing.T) {
+	agent := NewConceptService(conceptStore(t), uuid.New(), "support-agent/1.4")
+	seed(t, agent, "c/rev", map[string]any{"type": "Metric"})
+	kw := revenue()
+	delete(kw, "body")
+	_, err := agent.Update(ctx, "c/rev", nil, kw)
+	wantToolError(t, err, "computations scope")
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here")
 	if err != nil || c != nil {
