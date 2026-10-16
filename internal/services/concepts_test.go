@@ -536,7 +536,7 @@ func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
 
 func TestAnEditAfterVerificationIsDueForReview(t *testing.T) {
 	tools := newTools(t)
-	// A stamp from the past, so the edit's stamp lands strictly after the verification.
+	// The stamp is in the past, so the edit's stamp lands strictly after the verification.
 	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("generated", obj("by", "process:import", "at", "2026-01-01T00:00:00Z"))}
 	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
 		t.Fatal(err)
@@ -584,6 +584,19 @@ func TestAnUpdateWithoutAVersionStillOverwritesAConcurrentEdit(t *testing.T) {
 		t.Fatal(err)
 	} else if _, conflict := res.(ConflictResult); conflict || read(t, tools, "a/b").Body != "second" {
 		t.Fatalf("got %+v", res)
+	}
+}
+
+func TestANoOpUpdateKeepsAStoredNullVerified(t *testing.T) {
+	tools := newTools(t)
+	imported := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("verified", nil)}
+	version, _, err := tools.c.Create(ctx, tools.t, imported, "process:import")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := tools.Update(ctx, "a/b", nil, map[string]any{})
+	if w, ok := res.(WriteResult); err != nil || !ok || w.Version != version {
+		t.Fatalf("got %+v, %v, want version %d unchanged", res, err, version)
 	}
 }
 

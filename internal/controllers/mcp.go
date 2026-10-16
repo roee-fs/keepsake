@@ -254,7 +254,7 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 	}
 }
 
-// NewMCPHandler serves the seven keepsake tools over stateless streamable HTTP with JSON responses.
+// NewMCPHandler serves the eight keepsake tools over stateless streamable HTTP with JSON responses.
 func NewMCPHandler(t *services.ConceptService) http.Handler {
 	// Python advertises tools without list-change notifications, and no logging.
 	server := mcp.NewServer(&mcp.Implementation{Name: "keepsake"}, &mcp.ServerOptions{

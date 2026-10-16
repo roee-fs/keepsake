@@ -1,4 +1,4 @@
-// The seven advertised tools, ported from 2de90d2:src/keepsake/server/tools.py's _TOOLS in wire key order.
+// The eight advertised tools, ported from 2de90d2:src/keepsake/server/tools.py's _TOOLS in wire key order.
 package controllers
 
 import (

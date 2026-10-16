@@ -19,8 +19,8 @@ import (
 	"github.com/roee-fs/keepsake/okf"
 )
 
-// relateAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
-const relateAttempts = 20
+// writeAttempts bounds Relate's and Update's retries past concurrent writers; each round has one winner.
+const writeAttempts = 20
 
 // ToolError is surfaced to the agent. It MUST NOT contain a concept body.
 type ToolError struct{ Msg string }
@@ -165,10 +165,11 @@ func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[stri
 	}
 	// The server owns verified as it owns generated: only `verify` adds to it.
 	var v any
+	var kept bool
 	if existing != nil {
-		v, _ = existing.Frontmatter.Get("verified")
+		v, kept = existing.Frontmatter.Get("verified")
 	}
-	if v != nil {
+	if kept {
 		c.Frontmatter.Set("verified", v)
 	} else {
 		c.Frontmatter.Delete("verified")
@@ -236,7 +237,7 @@ func (t *ConceptService) Create(ctx context.Context, path string, kw map[string]
 
 // Update returns a WriteResult, or a ConflictResult when expectedVersion is stale.
 func (t *ConceptService) Update(ctx context.Context, path string, expectedVersion *int, kw map[string]any) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		existing, err := t.c.Read(ctx, t.t, path)
 		if err != nil {
 			return nil, err
@@ -371,7 +372,7 @@ func (t *ConceptService) Read(ctx context.Context, path string) (*Concept, error
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.
 func (t *ConceptService) Relate(ctx context.Context, fromPath, toPath string) (any, error) {
-	for range relateAttempts {
+	for range writeAttempts {
 		source, err := t.c.Read(ctx, t.t, fromPath)
 		if err != nil {
 			return nil, err

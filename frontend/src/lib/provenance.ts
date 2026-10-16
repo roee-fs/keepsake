@@ -9,7 +9,7 @@ function event(value: unknown): Event | null {
   return { by, at: typeof at === 'string' ? at : '' }
 }
 
-// Who wrote a concept and who confirmed it, read from OKF §5.2 frontmatter.
+// provenance reads who wrote a concept and who confirmed it from OKF §5.2 frontmatter.
 export function provenance(frontmatter: Record<string, unknown>): Provenance {
   const verified = frontmatter.verified
   const events = Array.isArray(verified) ? verified : verified === undefined ? [] : [verified]

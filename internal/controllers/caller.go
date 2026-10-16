@@ -32,7 +32,7 @@ type caller struct {
 	actor  string
 	// upload lets the caller replace a prefix through /bundle, which deletes concepts.
 	upload bool
-	// readOnly refuses every write: create, update, relate and /bundle.
+	// readOnly refuses every write: create, update, relate, verify and /bundle.
 	readOnly bool
 	// anonymous is auth mode none, where actor names this server, not the caller.
 	anonymous bool

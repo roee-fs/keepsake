@@ -37,7 +37,7 @@ function EventRow({ label, event }: { label: string; event: Event }) {
   )
 }
 
-// Who wrote the content and who confirmed it, from frontmatter `generated` and `verified`.
+// ProvenanceList shows who wrote the content and who confirmed it, from frontmatter `generated` and `verified`.
 export function ProvenanceList({ frontmatter }: { frontmatter: Record<string, unknown> }) {
   const { generated, verified } = provenance(frontmatter)
   if (!generated && verified.length === 0) {
