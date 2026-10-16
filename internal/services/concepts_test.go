@@ -444,11 +444,6 @@ func TestAnAddedNullFamilyIsChecked(t *testing.T) {
 	wantToolError(t, err, "status must be draft")
 }
 
-func TestACallerSentVerificationIsChecked(t *testing.T) {
-	_, err := newTools(t).Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": obj("verified", obj("by", "human:ann"))})
-	wantToolError(t, err, "verified[0].at")
-}
-
 func TestRetypingDoesNotRecheckAnUnrelatedStoredField(t *testing.T) {
 	tools := newTools(t)
 	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("stale_after", "2026-09-23")}
@@ -465,6 +460,149 @@ func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	seed(t, tools, "a/b", map[string]any{})
 	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"type": okf.AttestedComputation})
 	wantToolError(t, err, "runtime is required")
+}
+
+func verifiedEvents(t *testing.T, tools *ConceptService, path string) []any {
+	t.Helper()
+	v, _ := read(t, tools, path).Frontmatter.Get("verified")
+	list, _ := v.([]any)
+	return list
+}
+
+func TestAWriteKeepsTheStoredVerifiedWhateverTheCallerSent(t *testing.T) {
+	tools := newTools(t)
+	forged := obj("verified", obj("by", "human:forged", "at", "2026-06-25T09:00:00Z"))
+	seed(t, tools, "a/b", map[string]any{"frontmatter": forged})
+	if c := read(t, tools, "a/b"); c.Trust != okf.Unverified {
+		t.Fatalf("create: %+v", c.Signals)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	for _, fm := range []*okf.Map{forged, obj("status", "draft"), read(t, tools, "a/b").Frontmatter} {
+		if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": fm}); err != nil {
+			t.Fatal(err)
+		}
+		if got := verifiedEvents(t, tools, "a/b"); len(got) != 1 || read(t, tools, "a/b").Trust != okf.MachineConfirmed {
+			t.Fatalf("after %v: %v", fm, got)
+		}
+	}
+}
+
+func TestVerifyAppendsTheCallerAndKeepsAuthorship(t *testing.T) {
+	cs, tenant := conceptStore(t), uuid.New()
+	agent, human := NewConceptService(cs, tenant, "support-agent/1.4"), NewConceptService(cs, tenant, "human:ann")
+	seed(t, agent, "a/b", map[string]any{})
+	by, at := generated(t, agent, "a/b")
+	for _, tools := range []*ConceptService{agent, human} {
+		if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := verifiedEvents(t, human, "a/b"); len(got) != 2 || read(t, human, "a/b").Trust != okf.HumanReviewed {
+		t.Fatalf("verified = %v", got)
+	}
+	if b, a := generated(t, human, "a/b"); b != by || a != at {
+		t.Fatalf("generated changed to %q %q", b, a)
+	}
+}
+
+func TestVerifyTurnsABareMappingIntoAList(t *testing.T) {
+	tools := newTools(t)
+	bare := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("verified", obj("by", "process:nightly", "at", "2026-06-25T09:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, bare, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := verifiedEvents(t, tools, "a/b"); len(got) != 2 {
+		t.Fatalf("verified = %v", got)
+	}
+}
+
+func TestVerifyOfAStaleVersionIsAConflict(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	stale := read(t, tools, "a/b").Version
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := tools.Verify(ctx, "a/b", stale)
+	if _, ok := res.(ConflictResult); err != nil || !ok || read(t, tools, "a/b").Trust != okf.Unverified {
+		t.Fatalf("got %+v, %v", res, err)
+	}
+}
+
+func TestAnEditAfterVerificationIsDueForReview(t *testing.T) {
+	tools := newTools(t)
+	// The stamp is in the past, so the edit's stamp lands strictly after the verification.
+	old := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("generated", obj("by", "process:import", "at", "2026-01-01T00:00:00Z"))}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Verify(ctx, "a/b", read(t, tools, "a/b").Version); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("stale right after verifying")
+	}
+	// Stamps are whole seconds, so the edit waits out the verification's second.
+	time.Sleep(1100 * time.Millisecond)
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "edited"}); err != nil {
+		t.Fatal(err)
+	}
+	if !read(t, tools, "a/b").VerifiedStale {
+		t.Fatal("not stale after an edit")
+	}
+}
+
+// An update read before a verify landed MUST NOT write back the older verified list.
+func TestAnUpdateRacingAVerifyKeepsTheVerification(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	before := *read(t, tools, "a/b")
+	stale := okf.Concept{Path: before.Path, Type: before.Type, Body: before.Body, Frontmatter: before.Frontmatter, Version: before.Version}
+	if _, err := tools.Verify(ctx, "a/b", before.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.write(ctx, stale, "a/b", nil, map[string]any{"body": "edited"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := verifiedEvents(t, tools, "a/b"); len(got) != 1 {
+		t.Fatalf("verified = %v", got)
+	}
+}
+
+func TestAnUpdateWithoutAVersionStillOverwritesAConcurrentEdit(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "second"}); err != nil {
+		t.Fatal(err)
+	} else if _, conflict := res.(ConflictResult); conflict || read(t, tools, "a/b").Body != "second" {
+		t.Fatalf("got %+v", res)
+	}
+}
+
+func TestANoOpUpdateKeepsAStoredNullVerified(t *testing.T) {
+	tools := newTools(t)
+	imported := okf.Concept{Path: "a/b", Type: "Concept", Frontmatter: obj("verified", nil)}
+	version, _, err := tools.c.Create(ctx, tools.t, imported, "process:import")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := tools.Update(ctx, "a/b", nil, map[string]any{})
+	if w, ok := res.(WriteResult); err != nil || !ok || w.Version != version {
+		t.Fatalf("got %+v, %v, want version %d unchanged", res, err, version)
+	}
+}
+
+func TestVerifyOfAMissingPathIsAToolError(t *testing.T) {
+	_, err := newTools(t).Verify(ctx, "a/none", 1)
+	wantToolError(t, err, "no concept at a/none")
 }
 
 func TestReadOfAMissingPathIsNil(t *testing.T) {

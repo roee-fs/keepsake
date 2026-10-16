@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/roee-fs/keepsake/okf"
 )
 
 // minSecret is HS256's key size; a shorter secret is guessable offline from any one token.
@@ -30,7 +32,7 @@ type caller struct {
 	actor  string
 	// upload lets the caller replace a prefix through /bundle, which deletes concepts.
 	upload bool
-	// readOnly refuses every write: create, update, relate and /bundle.
+	// readOnly refuses every write: create, update, relate, verify and /bundle.
 	readOnly bool
 	// anonymous is auth mode none, where actor names this server, not the caller.
 	anonymous bool
@@ -168,8 +170,8 @@ func (j *JWT) verify(token string) (caller, error) {
 		return caller{}, errors.New("expired or no exp")
 	case c.Nbf != nil && now < *c.Nbf-leeway:
 		return caller{}, errors.New("not yet valid")
-	case c.Sub == "":
-		return caller{}, errors.New("no sub")
+	case !okf.IsActor(c.Sub):
+		return caller{}, errors.New("sub is not an OKF actor")
 	}
 	var tctx struct{ Tenant string }
 	if json.Unmarshal(c.Tctx, &tctx) != nil {

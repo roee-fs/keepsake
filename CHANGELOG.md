@@ -20,6 +20,14 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
   nightly as a CronJob. Set `retention.enabled: false` to turn it off.
 - `create` and `update` refuse malformed OKF §5 and §10 frontmatter on the keys
   they change. `keepsake validate` reports it. Import and upload still accept it.
+- A `verify` tool appends `{ by, at }` to OKF `verified` for the caller.
+  `create` and `update` keep the stored `verified` and ignore the caller's, so
+  an agent can no longer claim a human review.
+- `search` cards and `read` results carry `verified_stale`. It is true when the
+  content changed after the verification that sets `trust`. Ranking is unchanged.
+- The console labels concept pages and search results with `status`, `trust`,
+  "review due" and `stale`. A concept page lists who generated it and who
+  verified it. `/api/concepts/{path}` and `/api/search` return the signals.
 
 ### Changed
 
@@ -29,6 +37,8 @@ chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 - `GET /api/stats/timeseries` takes `bucket` and `buckets` in place of `days`.
   Each row is `{start, writes, reads}` in place of `{date, count}`. Buckets are
   UTC, whatever the database's TimeZone.
+- Breaking: a JWT whose `sub` is not an OKF §7 actor now gets a 401. The README
+  already said it MUST be one. Mint `process:<id>` instead of a bare id.
 
 ## 0.6.0 — 2026-10-08
 

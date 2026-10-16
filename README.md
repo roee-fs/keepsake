@@ -36,8 +36,8 @@ agents wrote into it.
 
 What keepsake provides:
 
-- **An MCP server.** Seven bounded tools: `list`, `search`, `grep`,
-  `read`, `create`, `update`, `relate`. Streamable HTTP, so a
+- **An MCP server.** Eight bounded tools: `list`, `search`, `grep`,
+  `read`, `create`, `update`, `relate`, `verify`. Streamable HTTP, so a
   fleet of pods shares one endpoint.
 - **Safe concurrent writes.** One row per concept, keyed `(tenant_id, path)`.
   Optimistic concurrency via an optional `expected_version`, so two agents
@@ -152,9 +152,9 @@ not its hex-decoded bytes:
 keepsake records `sub` as the writer, and stamps it as OKF `generated.by` on every
 concept the token writes through `/mcp`. It MUST be an OKF §7 actor: `<producer>/<version>`
 for an agent, `human:<id>` for a person or `process:<id>` for a process.
-`keepsake token` refuses anything else.
+`keepsake token` and the server refuse anything else.
 A token whose space-separated `scope` claim includes `read`, such as
-`"scope": "read"`, is read-only: `create`, `update`, `relate` and `PUT /bundle`
+`"scope": "read"`, is read-only: `create`, `update`, `relate`, `verify` and `PUT /bundle`
 refuse it. A token without `read` keeps every write. An orchestrator SHOULD
 mint `read` tokens for agents that only consult keepsake.
 The secret MUST NOT be readable by anything an LLM drives.
