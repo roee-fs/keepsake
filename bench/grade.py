@@ -24,7 +24,7 @@ FILE_TOOLS = {"Read": "read", "Grep": "grep", "Glob": "list", "Bash": "bash"}
 MEMORY_DIR = "memory"
 # Where a task's judge_template takes the agent's answer.
 RESPONSE = "<<RESPONSE>>"
-WRITES = {"create", "update", "relate"}
+WRITES = {"create", "update", "relate", "verify"}
 # Export generates these at the bundle root; they are not concepts.
 GENERATED = {"index", "log"}
 

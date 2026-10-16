@@ -166,10 +166,11 @@ func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[stri
 	}
 	// The server owns verified as it owns generated: only `verify` adds to it.
 	var v any
+	var kept bool
 	if existing != nil {
-		v, _ = existing.Frontmatter.Get("verified")
+		v, kept = existing.Frontmatter.Get("verified")
 	}
-	if v != nil {
+	if kept {
 		c.Frontmatter.Set("verified", v)
 	} else {
 		c.Frontmatter.Delete("verified")

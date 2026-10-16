@@ -185,7 +185,7 @@ func isCount(v any) bool {
 // rfc3339 bounds what time.Parse accepts, which includes a one-digit hour and a +24:00 offset.
 var rfc3339 = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$`)
 
-// strictInstant holds a value to §5, unlike Derive, which reads naive and date-only values leniently.
+// strictInstant holds a value to §5, unlike instant, which reads naive and date-only values leniently.
 // RFC 3339 allows a space for the T, and the YAML parser keeps one.
 func strictInstant(v any) (time.Time, bool) {
 	s, _ := v.(string)

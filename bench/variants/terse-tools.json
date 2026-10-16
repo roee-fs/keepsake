@@ -7,6 +7,7 @@
     "read": "Read one concept: body, frontmatter, links and backlinks.",
     "create": "Create a concept at a new path.",
     "update": "Update an existing concept.",
-    "relate": "Add a link from one concept to another."
+    "relate": "Add a link from one concept to another.",
+    "verify": "Record that a concept was checked and holds."
   }
 }

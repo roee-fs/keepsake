@@ -44,7 +44,7 @@ func Derive(fm *Map, now time.Time) Signals {
 		s.GeneratedAt, _ = field(fm, "timestamp").(string)
 	}
 	// Unlike stale_after, an instant without an offset reads as unknown here, so it never claims staleness.
-	if changed, err := time.Parse(time.RFC3339, s.GeneratedAt); err == nil && !reviewed.IsZero() {
+	if changed, ok := strictInstant(s.GeneratedAt); ok && !reviewed.IsZero() {
 		s.VerifiedStale = changed.After(reviewed)
 	}
 	return s
@@ -77,8 +77,7 @@ func trust(verified any) (string, time.Time) {
 			continue
 		}
 		by, _ := field(m, "by").(string)
-		at, _ := field(m, "at").(string)
-		t, _ := time.Parse(time.RFC3339, at)
+		t, _ := strictInstant(field(m, "at"))
 		switch {
 		case strings.HasPrefix(by, "human:"):
 			tier = HumanReviewed

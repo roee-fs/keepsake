@@ -43,6 +43,8 @@ func TestDerive(t *testing.T) {
 			Signals{Status: "stable", Trust: HumanReviewed, VerifiedStale: true, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
 		{"machine confirmed after change", "generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified: {by: process:nightly, at: 2026-06-27T00:00:00Z}",
 			Signals{Status: "stable", Trust: MachineConfirmed, GeneratedAt: "2026-06-26T00:00:00+00:00"}},
+		{"space-separated stamps", "generated: {by: a/1, at: 2026-06-26 00:00:00Z}\nverified: {by: 'human:ann', at: 2026-06-25 00:00:00Z}",
+			Signals{Status: "stable", Trust: HumanReviewed, VerifiedStale: true, GeneratedAt: "2026-06-26 00:00:00+00:00"}},
 		{"naive generated is unknown", "generated: {by: a/1, at: 2026-06-26 00:00:00}\nverified: {by: 'human:ann', at: 2026-06-25T00:00:00Z}",
 			Signals{Status: "stable", Trust: HumanReviewed, GeneratedAt: "2026-06-26 00:00:00"}},
 		{"verified without at is unknown", "generated: {by: a/1, at: 2026-06-26T00:00:00Z}\nverified: {by: 'human:ann'}",
