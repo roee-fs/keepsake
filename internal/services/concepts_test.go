@@ -437,6 +437,13 @@ func TestAFamilyRewrittenInAnotherKeyOrderIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestAnAddedNullFamilyIsChecked(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{})
+	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"frontmatter": obj("status", nil)})
+	wantToolError(t, err, "status must be draft")
+}
+
 func TestACallerSentVerificationIsChecked(t *testing.T) {
 	_, err := newTools(t).Create(ctx, "a/b", map[string]any{"type": "Concept", "frontmatter": obj("verified", obj("by", "human:ann"))})
 	wantToolError(t, err, "verified[0].at")

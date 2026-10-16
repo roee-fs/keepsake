@@ -53,11 +53,12 @@ current version, even when `expected_version` is stale.
 ## OKF frontmatter
 
 `frontmatter` MAY carry the OKF v0.2 families: `status`, `stale_after`,
-`sources`, `usage_window`, and on an `Attested Computation` the contract fields
-`runtime`, `parameters`, `computation`, `executor` and `attester`. A write that
-changes one of these MUST follow OKF §5 and §10, or it is refused. Timestamps
-MUST carry an offset, such as `2026-06-30T14:00:00Z`. A field that was already
-stored is not rechecked, so an imported concept stays editable.
+`verified`, `sources`, `usage_window`, and on an `Attested Computation` the
+contract fields `runtime`, `parameters`, `computation`, `executor` and
+`attester`. A write that changes one of these MUST follow OKF §5 and §10, or it
+is refused. Timestamps MUST carry an offset, such as `2026-06-30T14:00:00Z`. A
+field that was already stored is not rechecked, so an imported concept stays
+editable. A retype to an `Attested Computation` checks its contract fields.
 
 ## Errors
 

@@ -3,6 +3,7 @@ package okf
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -135,17 +136,15 @@ func window(v any, name string) []string {
 		return []string{name + " must be a { from, to } mapping"}
 	}
 	var errs []string
-	for _, k := range []string{"from", "to"} {
-		if !isInstant(field(m, k)) {
+	var at [2]time.Time
+	for i, k := range []string{"from", "to"} {
+		var ok bool
+		if at[i], ok = strictInstant(field(m, k)); !ok {
 			errs = append(errs, name+"."+k+" "+notInstant)
 		}
 	}
-	if len(errs) == 0 {
-		from, _ := time.Parse(time.RFC3339, field(m, "from").(string))
-		to, _ := time.Parse(time.RFC3339, field(m, "to").(string))
-		if to.Before(from) {
-			errs = append(errs, name+".to must not precede its from")
-		}
+	if len(errs) == 0 && at[1].Before(at[0]) {
+		errs = append(errs, name+".to must not precede its from")
 	}
 	return errs
 }
@@ -171,24 +170,33 @@ func nonEmpty(v any) bool {
 	return strings.TrimSpace(s) != ""
 }
 
-// isCount accepts the int the YAML parser yields and the json.Number a tool call yields.
+// isCount accepts an int set from Go and any json.Number spelling of a whole number, such as 5000.0 or 5e3.
 func isCount(v any) bool {
 	switch n := v.(type) {
 	case int:
 		return n >= 0
 	case json.Number:
-		i, err := n.Int64()
-		return err == nil && i >= 0
+		f, err := n.Float64()
+		return err == nil && f >= 0 && f == math.Trunc(f)
 	}
 	return false
 }
 
-// isInstant holds a value to §5, unlike Derive, which reads naive and date-only values leniently.
-func isInstant(v any) bool {
-	s, ok := v.(string)
-	if !ok {
-		return false
+// rfc3339 bounds what time.Parse accepts, which includes a one-digit hour and a +24:00 offset.
+var rfc3339 = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$`)
+
+// strictInstant holds a value to §5, unlike Derive, which reads naive and date-only values leniently.
+// RFC 3339 allows a space for the T, and the YAML parser keeps one.
+func strictInstant(v any) (time.Time, bool) {
+	s, _ := v.(string)
+	if !rfc3339.MatchString(s) {
+		return time.Time{}, false
 	}
-	_, err := time.Parse(time.RFC3339, s)
-	return err == nil
+	t, err := time.Parse(time.RFC3339, strings.Replace(s, " ", "T", 1))
+	return t, err == nil
+}
+
+func isInstant(v any) bool {
+	_, ok := strictInstant(v)
+	return ok
 }

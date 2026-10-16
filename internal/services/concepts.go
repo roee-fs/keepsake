@@ -169,9 +169,6 @@ func (t *ConceptService) concept(existing *okf.Concept, path string, kw map[stri
 	return c, nil
 }
 
-// serverOwned are the frontmatter keys the server writes itself, so no caller's value is checked.
-var serverOwned = []string{"generated"}
-
 // familyErrors returns the OKF §5 and §10 rules broken by the keys a write changes.
 // A stored concept from an older bundle can break a rule on a key nobody touched, and that MUST NOT block the write.
 // A retype into an Attested Computation also checks the contract it now owes.
@@ -181,7 +178,8 @@ func familyErrors(existing *okf.Concept, c okf.Concept) []string {
 	var errs []string
 	for _, k := range slices.Sorted(maps.Keys(problems)) {
 		owed := retyped && slices.Contains(okf.ContractFields, k)
-		if !slices.Contains(serverOwned, k) && (owed || changed(existing, c, k)) {
+		// generated is the server's own stamp, not the caller's.
+		if k != "generated" && (owed || changed(existing, c, k)) {
 			errs = append(errs, problems[k]...)
 		}
 	}
@@ -193,9 +191,12 @@ func changed(existing *okf.Concept, c okf.Concept, key string) bool {
 	if existing == nil {
 		return true
 	}
-	a, errA := asJSON(get(existing.Frontmatter, key))
-	b, errB := asJSON(get(c.Frontmatter, key))
-	return errA != nil || errB != nil || !reflect.DeepEqual(a, b)
+	old, wasSet := existing.Frontmatter.Get(key)
+	v, isSet := c.Frontmatter.Get(key)
+	a, errA := asJSON(old)
+	b, errB := asJSON(v)
+	// An added null marshals like an absent key, so presence is compared too.
+	return wasSet != isSet || errA != nil || errB != nil || !reflect.DeepEqual(a, b)
 }
 
 // asJSON is v as a plain JSON value, since jsonb reorders object keys and respells numbers.
@@ -206,14 +207,6 @@ func asJSON(v any) (any, error) {
 	}
 	var out any
 	return out, json.Unmarshal(b, &out)
-}
-
-func get(m *okf.Map, k string) any {
-	if m == nil {
-		return nil
-	}
-	v, _ := m.Get(k)
-	return v
 }
 
 func (t *ConceptService) Create(ctx context.Context, path string, kw map[string]any) (WriteResult, error) {

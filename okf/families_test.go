@@ -96,6 +96,22 @@ func TestValuesFromAToolCallAreValid(t *testing.T) {
 	}
 }
 
+func TestInstantsAndCountsFollowTheirSpelling(t *testing.T) {
+	for v, want := range map[string]bool{
+		"2026-12-31 00:00:00+00:00": true, "2026-12-31T00:00:00.5Z": true,
+		"2026-12-31T4:00:00Z": false, "2026-12-31T00:00:00+24:00": false, "2026-12-31": false,
+	} {
+		if isInstant(v) != want {
+			t.Errorf("isInstant(%q) = %v", v, !want)
+		}
+	}
+	for n, want := range map[json.Number]bool{"5000": true, "5000.0": true, "5e3": true, "0.5": false, "-1": false} {
+		if isCount(n) != want {
+			t.Errorf("isCount(%q) = %v", n, !want)
+		}
+	}
+}
+
 func TestIsActor(t *testing.T) {
 	for s, want := range map[string]bool{
 		"support-agent/1.4": true, "human:ann": true, "process:import": true,
