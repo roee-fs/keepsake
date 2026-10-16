@@ -606,8 +606,11 @@ func TestTheFrontmatterBudgetCountsTheEscapedText(t *testing.T) {
 	tools := newTools(t)
 	// 2 KB as UTF-8, but 6 KB once the text content escapes each é.
 	seed(t, tools, "a/b", map[string]any{"frontmatter": obj("note", strings.Repeat("é", 1000))})
-	if c := read(t, tools, "a/b"); !c.FrontmatterTruncated {
-		t.Fatalf("kept %v", c.Frontmatter.Keys())
+	seed(t, tools, "a/c", map[string]any{"frontmatter": obj(strings.Repeat("é", 1000), "note")})
+	for _, p := range []string{"a/b", "a/c"} {
+		if c := read(t, tools, p); !c.FrontmatterTruncated {
+			t.Fatalf("%s kept %v", p, c.Frontmatter.Keys())
+		}
 	}
 }
 

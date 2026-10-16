@@ -267,16 +267,18 @@ func (t *ConceptService) Update(ctx context.Context, path string, expectedVersio
 	if existing == nil {
 		return nil, toolErr("no concept at " + path)
 	}
-	// read leaves sources out by default, so a frontmatter without them MUST NOT erase them.
+	// read leaves provenance out by default, so a frontmatter without it MUST NOT erase it.
 	if fm, ok := kw["frontmatter"].(*okf.Map); ok && fm != nil {
-		if _, given := fm.Get("sources"); !given {
-			if sources, stored := existing.Frontmatter.Get("sources"); stored {
-				fm = fm.Clone()
-				fm.Set("sources", sources)
-				kw = maps.Clone(kw)
-				kw["frontmatter"] = fm
+		fm = fm.Clone()
+		for _, k := range ProvenanceKeys {
+			if _, given := fm.Get(k); !given {
+				if v, stored := existing.Frontmatter.Get(k); stored {
+					fm.Set(k, v)
+				}
 			}
 		}
+		kw = maps.Clone(kw)
+		kw["frontmatter"] = fm
 	}
 	return t.write(ctx, *existing, path, expectedVersion, kw, true)
 }
@@ -392,9 +394,10 @@ func boundFrontmatter(fm *okf.Map, include []string) (*okf.Map, bool) {
 			if truncated {
 				continue
 			}
+			key, _ := okf.PyDumps(k)
 			text, _ := okf.PyDumps(v)
-			// Quotes, ": " and ", ", as the text content spells them.
-			size := len(k) + len(text) + 6
+			// ": " and ", ", as the text content spells them.
+			size := len(key) + len(text) + 4
 			if truncated = size > budget; truncated {
 				continue
 			}
