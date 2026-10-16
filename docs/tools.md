@@ -30,7 +30,8 @@ Distinctive keywords find more than a question does. `limit` is required, at mos
 ## Output bounds
 
 No read tool returns more than these bounds. They are constants in
-`internal/server/schemas.go` and are not configurable.
+`internal/controllers/schemas.go` and `internal/services/concepts.go`, and are not
+configurable.
 
 | Bound | Default | Maximum |
 |---|---|---|
