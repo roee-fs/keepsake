@@ -31,6 +31,8 @@ type Hit struct {
 	Score       float64
 	Frontmatter *okf.Map
 	Snippet     string
+	// Match is the byte offset in Snippet of the first matched term.
+	Match int `db:"-"`
 }
 
 // Summary is a concept table row: Hit without the score or frontmatter, plus TenantID for mixed-tenant pages.

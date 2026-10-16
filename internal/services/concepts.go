@@ -317,7 +317,7 @@ func (t *ConceptService) Search(ctx context.Context, query string, limit int, pr
 	}
 	now := time.Now()
 	return convert(hits, func(h models.Hit) Card {
-		return Card{hitOf(h), clip(h.Snippet, SnippetBytes), okf.Derive(h.Frontmatter, now)}
+		return Card{hitOf(h), clip(h.Snippet, h.Match, SnippetBytes), okf.Derive(h.Frontmatter, now)}
 	}), nil
 }
 
@@ -335,7 +335,7 @@ func grep(ctx context.Context, r *repositories.ConceptRepository, tenant uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	return convert(hits, func(h models.GrepHit) GrepHit { return GrepHit{h.Path, clip(h.Snippet, SnippetBytes)} }), nil
+	return convert(hits, func(h models.GrepHit) GrepHit { return GrepHit{h.Path, clip(h.Snippet, 0, SnippetBytes)} }), nil
 }
 
 // List returns the first limit paths under prefix, with counts and a total over all of them.
@@ -408,15 +408,20 @@ func boundFrontmatter(fm *okf.Map, include []string) (*okf.Map, bool) {
 	return out, truncated
 }
 
-// clip cuts s to at most n bytes without splitting a character.
-func clip(s string, n int) string {
+// clip cuts s to at most n bytes around byte offset at, a quarter of them before it, without splitting a character.
+func clip(s string, at, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
+	start := max(0, min(at-n/4, len(s)-n))
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
 	}
-	return s[:n]
+	end := min(start+n, len(s))
+	for end < len(s) && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[start:end]
 }
 
 // Relate appends the edge, retrying past concurrent writers, since appending a link commutes.

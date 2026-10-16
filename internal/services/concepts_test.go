@@ -634,6 +634,18 @@ func TestSnippetsStayWithinTheirCap(t *testing.T) {
 	}
 }
 
+func TestASearchSnippetKeepsAMatchThatFollowsALongRun(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"body": strings.Repeat("QUJD", 200) + " dormant rules here"})
+	cards, err := tools.Search(ctx, "dormant", 5, nil)
+	if err != nil || len(cards) != 1 {
+		t.Fatalf("search = %v, %v", cards, err)
+	}
+	if s := cards[0].Snippet; len(s) > SnippetBytes || !strings.Contains(s, "dormant") || strings.Contains(s, "\x02") {
+		t.Fatalf("snippet of %d bytes: %q", len(s), s)
+	}
+}
+
 func TestRelateRecordsAnEdgeBothWays(t *testing.T) {
 	tools := newTools(t)
 	seed(t, tools, "a/x", map[string]any{"body": "start"})

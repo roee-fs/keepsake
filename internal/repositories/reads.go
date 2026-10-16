@@ -345,8 +345,8 @@ q AS MATERIALIZED (
 cards AS MATERIALIZED (
   SELECT c.path, c.type, c.title, c.description, c.frontmatter,
          CASE WHEN to_tsvector('english', c.body) @@ q.q
-           THEN btrim(regexp_replace(ts_headline('english', c.body, q.q,
-             'MaxFragments=2, MaxWords=25, MinWords=10, FragmentDelimiter=" … ", StartSel="", StopSel=""'), '\s+', ' ', 'g'))
+           THEN btrim(regexp_replace(ts_headline('english', replace(c.body, chr(2), ''), q.q,
+             'MaxFragments=2, MaxWords=25, MinWords=10, FragmentDelimiter=" … ", StartSel="` + matchMark + `", StopSel=""'), '\s+', ' ', 'g'))
            ELSE '' END AS snippet
   FROM concept c, q
   WHERE c.tenant_id = $4 AND c.path = ANY (ARRAY(SELECT path FROM ranked))
@@ -354,6 +354,9 @@ cards AS MATERIALIZED (
 SELECT c.path, c.type, c.title, c.description, r.score, c.frontmatter, c.snippet
 FROM ranked r JOIN cards c ON c.path = r.path
 ORDER BY r.score DESC, c.path`
+
+// matchMark is chr(2), the StartSel searchSQL marks each matched term with after removing it from the body.
+const matchMark = "\x02"
 
 // Search returns ranked cards, never bodies. An empty result beats an invalid query.
 func (cs *ConceptRepository) Search(ctx context.Context, tenant uuid.UUID, query string, limit int, prefix *string) ([]models.Hit, error) {
@@ -366,6 +369,10 @@ func (cs *ConceptRepository) Search(ctx context.Context, tenant uuid.UUID, query
 		out, err = collect[models.Hit](ctx, tx, searchSQL, terms, prefix, limit, tenant)
 		return err
 	})
+	for i, h := range out {
+		out[i].Match = max(strings.Index(h.Snippet, matchMark), 0)
+		out[i].Snippet = strings.ReplaceAll(h.Snippet, matchMark, "")
+	}
 	return out, err
 }
 
