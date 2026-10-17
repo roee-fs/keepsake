@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.6.0
+helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.7.0
 ```
 
 `postgres.mode` picks the database:
@@ -54,7 +54,7 @@ The chart configures no backups. You MUST set up one of these:
 - A per-tenant bundle, which is plain markdown you can commit anywhere. The pod's
   filesystem is read-only, so run the binary on your machine against the
   database. Get the binary with
-  `go install github.com/roee-fs/keepsake/cmd/keepsake@v0.6.0`. In `managed` mode:
+  `go install github.com/roee-fs/keepsake/cmd/keepsake@v0.7.0`. In `managed` mode:
 
   ```bash
   kubectl port-forward svc/<release>-db-rw 5432:5432 &

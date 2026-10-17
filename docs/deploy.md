@@ -62,7 +62,7 @@ postgres:
 ```
 
 ```bash
-helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.6.0 \
+helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.7.0 \
   -f values.yaml --wait
 ```
 

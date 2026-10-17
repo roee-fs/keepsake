@@ -98,7 +98,7 @@ reaches port 8000.
 ### Kubernetes
 
 ```bash
-helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.6.0
+helm install keepsake oci://ghcr.io/roee-fs/charts/keepsake --version 0.7.0
 ```
 
 This also serves one tenant to anything that reaches the Service. For your own
