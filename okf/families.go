@@ -61,18 +61,25 @@ func Families(c Concept) map[string][]string {
 		add("usage_window", window(v, "usage_window")...)
 	}
 	if c.Type == AttestedComputation {
-		contract(fm, add)
+		contract(fm, c.Body, add)
 	}
 	return errs
 }
 
-// contract checks the §10.2 fields. On any other type these keys are producer extensions.
-func contract(fm *Map, add func(string, ...string)) {
+// contract checks the §10.2 fields and the §10.3 computation. On any other type these keys are producer extensions.
+func contract(fm *Map, body string, add func(string, ...string)) {
 	if !nonEmpty(field(fm, "runtime")) {
 		add("runtime", "runtime is required for an Attested Computation")
 	}
-	if v, ok := fm.Get("computation"); ok && !nonEmpty(v) {
-		add("computation", "computation must be a path")
+	blocks := computationBlocks(body)
+	if v, ok := fm.Get("computation"); ok {
+		if !nonEmpty(v) {
+			add("computation", "computation must be a path")
+		} else if blocks > 0 {
+			add("computation", "computation names a file, so the body must not also hold a code block under # Computation")
+		}
+	} else if blocks != 1 {
+		add("computation", fmt.Sprintf("the body must hold exactly one code block under # Computation, or computation must name a file: found %d", blocks))
 	}
 	if v, ok := fm.Get("parameters"); ok {
 		params, isList := v.([]any)
@@ -99,6 +106,52 @@ func contract(fm *Map, add func(string, ...string)) {
 			}
 		}
 	}
+}
+
+var computationHeading = regexp.MustCompile(`^#[ \t]+Computation[ \t]*#*[ \t]*$`)
+
+// computationBlocks counts the fenced and indented code blocks under the body's top-level # Computation headings.
+// ponytail: line-based, not CommonMark; a list item indented four spaces reads as code.
+func computationBlocks(body string) int {
+	n, in, fence, indented, blank := 0, false, "", false, true
+	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		lead := len(line) - len(trimmed)
+		if fence != "" {
+			if lead < 4 && strings.HasPrefix(trimmed, fence) {
+				fence, blank = "", true
+			}
+			continue
+		}
+		switch {
+		case strings.TrimSpace(line) == "":
+			blank = true
+			continue
+		case lead < 4 && (strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")):
+			fence = strings.Repeat(trimmed[:1], len(trimmed)-len(strings.TrimLeft(trimmed, trimmed[:1])))
+			if in {
+				n++
+			}
+			indented = false
+		case lead >= 4 || strings.HasPrefix(line, "\t"):
+			// An indented line right after a paragraph continues it; after a blank line it starts code.
+			if !indented && blank {
+				indented = true
+				if in {
+					n++
+				}
+			}
+		case line == "#" || strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "#\t"):
+			in = computationHeading.MatchString(line)
+			// Code MAY follow a heading without a blank line between.
+			indented, blank = false, true
+			continue
+		default:
+			indented = false
+		}
+		blank = false
+	}
+	return n
 }
 
 func sources(v any) []string {

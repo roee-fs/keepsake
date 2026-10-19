@@ -469,6 +469,25 @@ func TestRetypingToAnAttestedComputationChecksItsContract(t *testing.T) {
 	wantToolError(t, err, "runtime is required")
 }
 
+func TestABodyEditMustKeepTheComputation(t *testing.T) {
+	tools := newTools(t)
+	seed(t, tools, "a/b", map[string]any{"type": okf.AttestedComputation, "frontmatter": obj("runtime", "bigquery"),
+		"body": "# Computation\n\n```sql\nSELECT 1\n```\n"})
+	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": "# Computation\n\nGone.\n"})
+	wantToolError(t, err, "exactly one code block under # Computation")
+}
+
+func TestAStoredConceptWithoutAComputationTakesOtherEdits(t *testing.T) {
+	tools := newTools(t)
+	old := okf.Concept{Path: "a/b", Type: okf.AttestedComputation, Frontmatter: obj("runtime", "bigquery")}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"title": "Revenue"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadOfAMissingPathIsNil(t *testing.T) {
 	c, err := newTools(t).Read(ctx, "nothing/here", ReadOptions{})
 	if err != nil || c != nil {

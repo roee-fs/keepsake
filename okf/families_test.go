@@ -37,6 +37,16 @@ sources:
     last_modified: 2026-06-18T00:00:00Z
 usage_window: { from: 2026-06-01T00:00:00Z, to: 2026-06-30T00:00:00Z }
 ---
+
+# Computation
+
+    SELECT SUM(amount) AS revenue
+    FROM finance.recognized_revenue
+    WHERE fiscal_year = @year
+
+Recognized revenue per the recognition policy.[^rev-policy]
+
+[^rev-policy]: Revenue recognition policy
 `
 
 func TestTheSpecsOwnExampleBreaksNoFamilyRule(t *testing.T) {
@@ -74,6 +84,24 @@ func TestAnAttestedComputationNeedsARuntimeAndWellFormedContract(t *testing.T) {
 	for _, k := range []string{"runtime", "parameters", "executor"} {
 		if len(got[k]) == 0 {
 			t.Errorf("%s not reported: %q", k, got)
+		}
+	}
+}
+
+func TestAnAttestedComputationHoldsExactlyOneComputation(t *testing.T) {
+	const head = "---\ntype: Attested Computation\nruntime: bigquery\n"
+	fenced := "\n# Computation\n\n```sql\nSELECT 1\n# not a heading\n```\n"
+	for doc, ok := range map[string]bool{
+		head + "---" + fenced:                       true,
+		head + "---\n# Computation\n    SELECT 1\n": true,
+		head + "computation: lib/revenue.sql\n---\n# Computation\nSee the file.\n": true,
+		head + "---\n# Intro\n\n    SELECT 1\n":                                    false,
+		head + "---\n# Computation\nSELECT 1\n    AND x\n":                         false,
+		head + "---" + fenced + "\n    SELECT 2\n":                                 false,
+		head + "computation: lib/revenue.sql\n---" + fenced:                        false,
+	} {
+		if got := families(t, doc)["computation"]; (len(got) == 0) != ok {
+			t.Errorf("%q: got %q", doc, got)
 		}
 	}
 }

@@ -212,6 +212,8 @@ func familyErrors(existing *okf.Concept, c okf.Concept) []string {
 	var errs []string
 	for _, k := range slices.Sorted(maps.Keys(problems)) {
 		owed := retyped && slices.Contains(okf.ContractFields, k)
+		// The §10.3 computation lives in the key or the body, so a body edit owes it too.
+		owed = owed || k == "computation" && existing != nil && existing.Body != c.Body
 		// generated is the server's own stamp, not the caller's.
 		if k != "generated" && (owed || changed(existing, c, k)) {
 			errs = append(errs, problems[k]...)
