@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -167,7 +168,7 @@ func TestExportGeneratesIndexAndLog(t *testing.T) {
 
 	index := readFile(t, filepath.Join(out, "index.md"))
 	// A concept at the root has no first segment to be grouped under.
-	for _, want := range []string{"## architecture", "[architecture/layers](architecture/layers.md) - How the layers stack.", "## (top level)", "[glossary](glossary.md)"} {
+	for _, want := range []string{"---\nokf_version: \"0.2\"\n---\n# Index\n", "## architecture", "[architecture/layers](architecture/layers.md) - How the layers stack.", "## (top level)", "[glossary](glossary.md)"} {
 		if !strings.Contains(index, want) {
 			t.Errorf("index lacks %q:\n%s", want, index)
 		}
@@ -286,7 +287,7 @@ func TestAnInvalidDocumentIsNamedAndRefusesTheWholeImport(t *testing.T) {
 func TestValidateReportsAMalformedDocumentByName(t *testing.T) {
 	src := bundle(t, t.TempDir(), doc, "layers.md")
 	writeFile(t, src, "architecture/broken.md", "---\ntype: [unclosed\n---\nx\n")
-	if _, err := services.ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
+	if _, _, err := services.ValidateBundle(src); err == nil || !strings.Contains(err.Error(), "broken.md") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -325,22 +326,22 @@ func TestAnUnquotedYAMLDateComesBackAsAString(t *testing.T) {
 func TestValidateAcceptsABundleWhoseLinksResolve(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [see](./other.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/other.md", "---\ntype: Concept\n---\nOther.\n")
-	if errs, err := services.ValidateBundle(src); err != nil || len(errs) != 0 {
-		t.Fatal(errs, err)
+	if errs, warnings, err := services.ValidateBundle(src); err != nil || len(errs)+len(warnings) != 0 {
+		t.Fatal(errs, warnings, err)
 	}
 }
 
-func TestValidateReportsADanglingLinkAndAMissingType(t *testing.T) {
+// OKF §6.1 says a broken link is not malformed, so it is a warning, not an error.
+func TestValidateWarnsOfADanglingLinkAndRefusesAMissingType(t *testing.T) {
 	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [gone](./gone.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	errs, err := services.ValidateBundle(src)
+	errs, warnings, err := services.ValidateBundle(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := strings.Join(errs, "\n")
-	if !strings.Contains(all, "architecture/layers: link to unknown concept architecture/gone") ||
-		!strings.Contains(all, "architecture/typeless: type is required") {
-		t.Fatal(all)
+	if !slices.Equal(errs, []string{"architecture/typeless: type is required"}) ||
+		!slices.Equal(warnings, []string{"architecture/layers: link to unknown concept architecture/gone"}) {
+		t.Fatal(errs, warnings)
 	}
 }
 
@@ -606,7 +607,7 @@ func TestImportRefusesNaNAndWritesNothing(t *testing.T) {
 func TestValidateAcceptsNaN(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "b.md", "---\ntype: Concept\nv: [1, .nan]\n---\nx\n")
-	if errs, err := services.ValidateBundle(dir); err != nil || len(errs) != 0 {
+	if errs, _, err := services.ValidateBundle(dir); err != nil || len(errs) != 0 {
 		t.Fatal(errs, err)
 	}
 }
@@ -622,7 +623,7 @@ func TestImportAndValidateFollowASymlinkedRoot(t *testing.T) {
 		t.Fatalf("imported %d", n)
 	}
 	writeFile(t, real, "architecture/typeless.md", "---\ntitle: No type\n---\nx\n")
-	if errs, err := services.ValidateBundle(link); err != nil || len(errs) != 1 {
+	if errs, _, err := services.ValidateBundle(link); err != nil || len(errs) != 1 {
 		t.Fatal(errs, err)
 	}
 	// Files are named by the path the operator typed, not the one it resolves to.
@@ -681,8 +682,8 @@ func TestTheLogIsDatedInTheSessionTimeZone(t *testing.T) {
 // The demo's first diff is empty only while this holds.
 func TestTheDemoBundleRoundTripsAndLinksOnlyToItself(t *testing.T) {
 	src := filepath.Join("..", "..", "demo", "bundle")
-	if errs, err := services.ValidateBundle(src); err != nil || len(errs) > 0 {
-		t.Fatal(err, errs)
+	if errs, warnings, err := services.ValidateBundle(src); err != nil || len(errs)+len(warnings) > 0 {
+		t.Fatal(err, errs, warnings)
 	}
 	cs, tenant, out := conceptStore(t), uuid.New(), t.TempDir()
 	mustImport(t, cs, tenant, src)
@@ -739,7 +740,7 @@ func TestImportRecordsTheOKFImportActor(t *testing.T) {
 func TestValidateReportsAMalformedTrustField(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, src, "a/stale.md", "---\ntype: Concept\nstale_after: 2026-09-23\n---\nx\n")
-	errs, err := services.ValidateBundle(src)
+	errs, _, err := services.ValidateBundle(src)
 	if err != nil || len(errs) != 1 || !strings.HasPrefix(errs[0], "a/stale: stale_after must be an ISO 8601 datetime") {
 		t.Fatal(errs, err)
 	}

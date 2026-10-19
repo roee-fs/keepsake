@@ -176,17 +176,16 @@ func (b *BundleService) Export(ctx context.Context, tenant uuid.UUID, root strin
 	return len(concepts), nil
 }
 
-// ValidateBundle returns every rule the bundle breaks: per-concept errors plus links to nothing.
-func ValidateBundle(root string) ([]string, error) {
+// ValidateBundle returns every rule the bundle breaks, and its broken links as warnings, since OKF §6.1 allows them.
+func ValidateBundle(root string) (errs, warnings []string, err error) {
 	concepts, err := documents(root, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	known := map[string]bool{}
 	for _, c := range concepts {
 		known[c.Path] = true
 	}
-	var errs []string
 	for _, c := range concepts {
 		for _, e := range okf.Validate(c) {
 			errs = append(errs, c.Path+": "+e)
@@ -199,11 +198,11 @@ func ValidateBundle(root string) ([]string, error) {
 		}
 		for _, l := range c.Links {
 			if !known[l] {
-				errs = append(errs, c.Path+": link to unknown concept "+l)
+				warnings = append(warnings, c.Path+": link to unknown concept "+l)
 			}
 		}
 	}
-	return errs, nil
+	return errs, warnings, nil
 }
 
 // renderIndex groups the corpus by its first path segment.
@@ -216,7 +215,7 @@ func renderIndex(concepts []okf.Concept) string {
 		}
 		groups[first] = append(groups[first], c)
 	}
-	lines := []string{"# Index", ""}
+	lines := []string{"---", `okf_version: "0.2"`, "---", "# Index", ""}
 	for _, g := range slices.Sorted(maps.Keys(groups)) {
 		lines = append(lines, "## "+g, "")
 		for _, c := range groups[g] {

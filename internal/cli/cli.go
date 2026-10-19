@@ -301,12 +301,15 @@ func runBundle(fn func(*services.BundleService, context.Context, uuid.UUID, stri
 }
 
 func runValidate(_ context.Context, o *options, _, stderr io.Writer) (int, error) {
-	errs, err := services.ValidateBundle(o.directory)
+	errs, warnings, err := services.ValidateBundle(o.directory)
 	if err != nil {
 		return 0, err
 	}
 	for _, e := range errs {
 		fmt.Fprintln(stderr, e)
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(stderr, "warning: "+w)
 	}
 	if len(errs) > 0 {
 		return 1, nil
