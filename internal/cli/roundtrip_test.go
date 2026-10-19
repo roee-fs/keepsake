@@ -189,6 +189,26 @@ func TestGeneratedFilesAreNotStoredAsConcepts(t *testing.T) {
 	}
 }
 
+func TestValidateChecksIndexAndLogFiles(t *testing.T) {
+	cs, tenant, tmp := conceptStore(t), uuid.New(), t.TempDir()
+	mustImport(t, cs, tenant, bundle(t, tmp, doc, "layers.md"))
+	out := filepath.Join(tmp, "out")
+	mustExport(t, cs, tenant, out)
+	if errs, _, err := services.ValidateBundle(out); err != nil || len(errs) != 0 {
+		t.Fatal("an exported bundle MUST validate:", errs, err)
+	}
+	writeFile(t, out, "architecture/index.md", "---\nokf_version: \"0.2\"\n---\n# Architecture\n")
+	writeFile(t, out, "architecture/log.md", "# Log\n\n## yesterday\n")
+	errs, _, err := services.ValidateBundle(out)
+	want := []string{
+		"architecture/index.md: frontmatter must hold only okf_version, and only in the bundle-root index: found 'okf_version'",
+		"architecture/log.md: heading 'yesterday' must be a YYYY-MM-DD date",
+	}
+	if err != nil || !slices.Equal(errs, want) {
+		t.Fatal(errs, err)
+	}
+}
+
 func TestImportSkipsAnIndexInASubdirectory(t *testing.T) {
 	cs, tenant := conceptStore(t), uuid.New()
 	src := bundle(t, t.TempDir(), doc, "layers.md")

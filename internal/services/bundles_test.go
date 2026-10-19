@@ -85,7 +85,7 @@ func TestFilesAreReadInPythonsPathOrder(t *testing.T) {
 	for _, f := range []string{"a-b/x.md", "a/x.md", "a.md", "b.md"} {
 		writeFile(t, dir, f, "---\ntype: Concept\n---\n")
 	}
-	cs, err := documents(dir, true)
+	cs, _, err := documents(dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}

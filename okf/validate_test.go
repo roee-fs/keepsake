@@ -43,6 +43,36 @@ func TestFrontmatterMustNotShadowAPromotedField(t *testing.T) {
 	}
 }
 
+func TestOnlyTheRootIndexMayDeclareTheVersion(t *testing.T) {
+	versioned := "---\nokf_version: \"0.2\"\n---\n# Index\n"
+	if errs := ValidateIndex(versioned, true); len(errs) != 0 {
+		t.Fatalf("got %q", errs)
+	}
+	if errs := ValidateIndex(versioned, false); len(errs) != 1 || !strings.Contains(errs[0], "'okf_version'") {
+		t.Fatalf("got %q", errs)
+	}
+	if errs := ValidateIndex("---\ntype: Index\n---\n# Index\n", true); len(errs) != 1 || !strings.Contains(errs[0], "'type'") {
+		t.Fatalf("got %q", errs)
+	}
+	if errs := ValidateIndex("# Index\n\n* [a](a.md) - A.\n", false); len(errs) != 0 {
+		t.Fatalf("got %q", errs)
+	}
+}
+
+func TestLogDatesAreISOAndNewestFirst(t *testing.T) {
+	if errs := ValidateLog("# Log\n\n## 2026-05-22\n* x\n\n## 2026-05-15\n* y\n"); len(errs) != 0 {
+		t.Fatalf("got %q", errs)
+	}
+	want := []string{
+		"heading 'May 22' must be a YYYY-MM-DD date",
+		"heading '2026-5-1' must be a YYYY-MM-DD date",
+		"date 2026-05-22 must not follow the older 2026-05-15: the log lists newest first",
+	}
+	if got := ValidateLog("## May 22\n## 2026-5-1\n## 2026-05-15\n## 2026-05-22\n"); !slices.Equal(got, want) {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestValidConceptHasNoErrors(t *testing.T) {
 	if got := Validate(Concept{Path: "a/b", Type: "Concept"}); len(got) != 0 {
 		t.Fatalf("got %q", got)

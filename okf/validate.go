@@ -3,8 +3,10 @@ package okf
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Reserved reports whether path names index.md or log.md, which OKF reserves in every directory.
@@ -141,4 +143,39 @@ func Storable(c Concept) error {
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// ValidateIndex returns the OKF §8 rules an index.md breaks. Only the bundle root's MAY hold frontmatter, and only okf_version.
+func ValidateIndex(text string, root bool) []string {
+	fm, _, err := split(text)
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var errs []string
+	for _, k := range fm.keys {
+		if !root || k != "okf_version" {
+			errs = append(errs, fmt.Sprintf("frontmatter must hold only okf_version, and only in the bundle-root index: found '%s'", k))
+		}
+	}
+	return errs
+}
+
+var logHeading = regexp.MustCompile(`(?m)^## +(.*?)\s*$`)
+
+// ValidateLog returns the OKF §9 rules a log.md breaks: each date heading is YYYY-MM-DD, newest first.
+func ValidateLog(text string) []string {
+	var errs []string
+	prev := ""
+	for _, m := range logHeading.FindAllStringSubmatch(text, -1) {
+		day := m[1]
+		if _, err := time.Parse(time.DateOnly, day); err != nil {
+			errs = append(errs, fmt.Sprintf("heading '%s' must be a YYYY-MM-DD date", day))
+			continue
+		}
+		if prev != "" && day > prev {
+			errs = append(errs, fmt.Sprintf("date %s must not follow the older %s: the log lists newest first", day, prev))
+		}
+		prev = day
+	}
+	return errs
 }

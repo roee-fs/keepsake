@@ -27,15 +27,16 @@ const logLimit = 1000
 const topLevel = "(top level)"
 
 // documents parses the whole bundle before returning, so a bad file refuses the command; strict=false keeps invalid concepts for validate.
-func documents(root string, strict bool) ([]okf.Concept, error) {
+// reserved lists the index.md and log.md files it skips, relative to root.
+func documents(root string, strict bool) (concepts []okf.Concept, reserved []string, err error) {
 	// WalkDir does not follow a symlinked root, as rglob does; files keep the root the operator typed.
 	resolved, err := filepath.EvalSymlinks(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		// pathlib's rglob finds nothing in a directory that does not exist.
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// pathlib orders paths by their parts, not by their full string.
 	var rels [][]string
@@ -51,36 +52,36 @@ func documents(root string, strict bool) ([]okf.Concept, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	slices.SortFunc(rels, slices.Compare)
 
-	var concepts []okf.Concept
 	for _, parts := range rels {
 		rel := strings.Join(parts, "/")
 		path := strings.TrimSuffix(rel, ".md")
 		if okf.Reserved(path) {
+			reserved = append(reserved, rel)
 			continue
 		}
 		file := filepath.Join(root, rel)
 		text, err := os.ReadFile(file)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		concept, err := okf.Parse(string(text), path)
 		if err != nil {
 			// The parser names the frontmatter it was handed, never the file it came from.
-			return nil, fmt.Errorf("%s: %v", file, err)
+			return nil, nil, fmt.Errorf("%s: %v", file, err)
 		}
 		if strict {
 			// A stored invalid concept would fail a later update on a field nobody touched.
 			if err := okf.Storable(concept); err != nil {
-				return nil, fmt.Errorf("%s: %v", file, err)
+				return nil, nil, fmt.Errorf("%s: %v", file, err)
 			}
 		}
 		concepts = append(concepts, concept)
 	}
-	return concepts, nil
+	return concepts, reserved, nil
 }
 
 // BundleService moves bundles of markdown files in and out of a tenant's concepts.
@@ -92,7 +93,7 @@ func NewBundleService(r *repositories.ConceptRepository) *BundleService { return
 
 // Import stores the whole bundle in one transaction, all or nothing.
 func (b *BundleService) Import(ctx context.Context, tenant uuid.UUID, root string) (int, error) {
-	concepts, err := documents(root, true)
+	concepts, _, err := documents(root, true)
 	if err != nil {
 		return 0, err
 	}
@@ -178,9 +179,22 @@ func (b *BundleService) Export(ctx context.Context, tenant uuid.UUID, root strin
 
 // ValidateBundle returns every rule the bundle breaks, and its broken links as warnings, since OKF §6.1 allows them.
 func ValidateBundle(root string) (errs, warnings []string, err error) {
-	concepts, err := documents(root, false)
+	concepts, reserved, err := documents(root, false)
 	if err != nil {
 		return nil, nil, err
+	}
+	for _, rel := range reserved {
+		text, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			return nil, nil, err
+		}
+		problems := okf.ValidateLog(string(text))
+		if strings.HasSuffix(rel, "index.md") {
+			problems = okf.ValidateIndex(string(text), rel == "index.md")
+		}
+		for _, e := range problems {
+			errs = append(errs, rel+": "+e)
+		}
 	}
 	known := map[string]bool{}
 	for _, c := range concepts {
