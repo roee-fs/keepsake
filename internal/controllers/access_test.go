@@ -23,6 +23,24 @@ func TestARejectedMCPRequestLeavesAnAccessLine(t *testing.T) {
 	logLine(t, logs, "request", map[string]any{"level": "WARN", "method": "POST", "route": "/mcp", "status": float64(w.Code)})
 }
 
+// A flush sends 200 when no status was set, so a later WriteHeader reaches no client.
+func TestAFlushBeforeAStatusLogsTheStatusSent(t *testing.T) {
+	logs := captureLogs(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /stream", func(w http.ResponseWriter, r *http.Request) {
+		w.(http.Flusher).Flush()
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	w := httptest.NewRecorder()
+	AccessLog(mux).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/stream", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("the client got %d", w.Code)
+	}
+	if strings.Contains(logs.String(), `"status":500`) {
+		t.Fatalf("logged a status the client never got:\n%s", logs)
+	}
+}
+
 func TestASuccessfulRequestLogsAtDebugWithoutItsPath(t *testing.T) {
 	var buf bytes.Buffer
 	orig := slog.Default()

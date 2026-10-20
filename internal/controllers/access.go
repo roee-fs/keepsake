@@ -28,6 +28,10 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 
 func (w *statusWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		// A flush sends 200 when no status was set, and a later WriteHeader is then ignored.
+		if w.status == 0 {
+			w.status = http.StatusOK
+		}
 		f.Flush()
 	}
 }
