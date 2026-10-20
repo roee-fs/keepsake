@@ -158,14 +158,19 @@ tenant. The Go runtime and process metrics are included as well.
 `keepsake serve` and `keepsake prune` write JSON lines to stderr, including the
 `exiting` line that explains a failed start. A usage error is still plain text.
 `logLevel` in the chart, or `KEEPSAKE_LOG_LEVEL`, sets the level: `debug`,
-`info` (the default), `warn` or `error`. Nothing logs at `debug` yet. The other
-commands print plain text.
+`info` (the default), `warn` or `error`. The other commands print plain text.
 
-Every line logged during a tool call carries `tool`, `tenant` and `actor`. Every `/bundle` line after token verification carries
-`tenant` and `actor`, except `api`.
+Every line logged during a tool call carries `tool`, `tenant` and `actor`.
+Every `/bundle` line after token verification carries `tenant` and `actor`,
+except `api`.
+
+The app and console ports log one `request` line per request. A response below
+400 logs at `debug`, so readiness probes stay out of an `info` log. From 400 up
+it logs at `warn`, which covers a request refused before any tool runs.
 
 | Message | Level | Fields |
 | --- | --- | --- |
+| `request` | debug / warn | `method`, `route`, `status`, `duration_ms` |
 | `tool call` | info | `outcome`, `duration_ms` |
 | `tool call failed` | error | `err` |
 | `tool call panicked` | error | `panic`, `stack` |
@@ -184,6 +189,8 @@ A failed or panicking tool call answers its client `internal error` and leaves t
 detail to the log.
 
 No line carries a tool's arguments, a concept body, a token or a password.
+`route` is the matched pattern, such as `GET /concepts/{path...}`, never the
+path, since a path names a concept.
 `remote_addr` is the TCP peer, so behind a proxy it names the proxy. At `warn`,
 the per-call lines are dropped.
 

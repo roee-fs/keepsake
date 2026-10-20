@@ -68,7 +68,7 @@ func BuildApp(ctx context.Context, cfg Config) (Handlers, func(), error) {
 		http.Error(w, "Not Found", http.StatusNotFound)
 	})
 	mux.Handle("/", controllers.SlashRedirect(mux, notFound))
-	h := Handlers{App: controllers.RefuseBrowsers(mux), Metrics: controllers.MetricsHandler(s.Stat)}
+	h := Handlers{App: controllers.AccessLog(controllers.RefuseBrowsers(mux)), Metrics: controllers.MetricsHandler(s.Stat)}
 	closeRoot := func() {}
 	if controllers.UIEnabled() {
 		console := http.NewServeMux()
@@ -90,7 +90,7 @@ func BuildApp(ctx context.Context, cfg Config) (Handlers, func(), error) {
 		// ServeMux would otherwise 301 /api to /api/ where Starlette serves the fallback.
 		console.Handle("/api", fallback)
 		console.Handle("/", fallback)
-		h.Console = console
+		h.Console = controllers.AccessLog(console)
 	}
 	return h, func() { closeRoot(); s.Close() }, nil
 }
