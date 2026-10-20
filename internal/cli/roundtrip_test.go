@@ -516,7 +516,7 @@ func TestServeAndPruneReportAFatalErrorAsJSON(t *testing.T) {
 		if err := json.Unmarshal([]byte(stderr), &line); code != 1 || err != nil {
 			t.Fatalf("%s: exit %d: %s", args[0], code, stderr)
 		}
-		if line["level"] != "ERROR" || line["msg"] != "exiting" || !strings.Contains(line["err"].(string), "KEEPSAKE_LOG_LEVEL") {
+		if msg, _ := line["err"].(string); line["level"] != "ERROR" || line["msg"] != "exiting" || !strings.Contains(msg, "KEEPSAKE_LOG_LEVEL") {
 			t.Errorf("%s: %v", args[0], line)
 		}
 	}

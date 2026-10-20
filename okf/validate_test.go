@@ -68,7 +68,7 @@ func TestLogDatesAreISOAndNewestFirst(t *testing.T) {
 		"heading '2026-5-1' must be a YYYY-MM-DD date",
 		"date 2026-05-22 must not follow the older 2026-05-15: the log lists newest first",
 	}
-	if got := ValidateLog("## May 22\n## 2026-5-1\n## 2026-05-15\n## 2026-05-22\n"); !slices.Equal(got, want) {
+	if got := ValidateLog("\ufeff## May 22\n## 2026-5-1\n## 2026-05-15\n## 2026-05-22\n"); !slices.Equal(got, want) {
 		t.Fatalf("got %q", got)
 	}
 }

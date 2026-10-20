@@ -100,6 +100,7 @@ func TestAnAttestedComputationHoldsExactlyOneComputation(t *testing.T) {
 		head + "---\n  # Computation\n\n```sql\nSELECT 1\n```\n":                       true,
 		head + "---\n# Computation {#calc}\n\n```sql\nSELECT 1\n```\n":                 true,
 		head + "---\n# Computation\n\n```sql\nSELECT 1\n```\n# Notes\n\n```\nx\n```\n": true,
+		head + "---\n# Computation\n\n  \tSELECT 1\n":                                  true,
 		head + "---\n# Intro\n\n    SELECT 1\n":                                        false,
 		head + "---\n# Computation\nSELECT 1\n    AND x\n":                             false,
 		head + "---" + fenced + "\n    SELECT 2\n":                                     false,

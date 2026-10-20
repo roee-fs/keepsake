@@ -200,18 +200,16 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 		l := slog.With("tool", name, "tenant", tools.Tenant(), "actor", tools.Actor())
 		start, outcome := time.Now(), "error"
 		defer func() {
+			// The SDK runs handlers on its own goroutines, where net/http's recovery does not reach.
+			if p := recover(); p != nil {
+				l.Error("tool call panicked", "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+				outcome, res, err = "error", nil, errInternal
+			}
 			elapsed := time.Since(start)
 			toolCalls.WithLabelValues(name, outcome).Inc()
 			toolDuration.WithLabelValues(name).Observe(elapsed.Seconds())
 			// The arguments MUST NOT be logged: they carry concept bodies.
 			l.Info("tool call", "outcome", outcome, "duration_ms", elapsed.Milliseconds())
-		}()
-		// The SDK runs handlers on its own goroutines, where net/http's recovery does not reach.
-		defer func() {
-			if p := recover(); p != nil {
-				l.Error("tool call panicked", "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
-				outcome, res, err = "error", nil, errInternal
-			}
 		}()
 		// Before the arguments are even parsed: nothing a read-only caller sends can write.
 		if bound && c.readOnly && writes[name] {

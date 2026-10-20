@@ -46,4 +46,6 @@ spec:
                   value: {{ .Values.retention.revisionDays | quote }}
                 - name: KEEPSAKE_REVISION_KEEP
                   value: {{ .Values.retention.revisionKeep | quote }}
+                - name: KEEPSAKE_LOG_LEVEL
+                  value: {{ .Values.logLevel | quote }}
 {{- end }}

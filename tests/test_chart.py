@@ -450,6 +450,7 @@ def test_prune_runs_nightly_as_the_app_role_with_the_retention_values() -> None:
     assert env["KEEPSAKE_READ_RETENTION_DAYS"]["value"] == "190"
     assert env["KEEPSAKE_REVISION_RETENTION_DAYS"]["value"] == "365"
     assert env["KEEPSAKE_REVISION_KEEP"]["value"] == "50"
+    assert env["KEEPSAKE_LOG_LEVEL"]["value"] == "info"
 
 
 def test_retention_disabled_renders_no_cronjob() -> None:

@@ -109,7 +109,8 @@ func (m *Map) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if t != json.Delim('{') {
-		return fmt.Errorf("okf: frontmatter JSON is %v, not an object", t)
+		// The token is not quoted back: as tool arguments it can be a whole concept body.
+		return fmt.Errorf("okf: frontmatter JSON is a %T, not an object", t)
 	}
 	*m = Map{}
 	return decodeObject(d, m)

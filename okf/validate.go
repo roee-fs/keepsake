@@ -166,7 +166,7 @@ var logHeading = regexp.MustCompile(`(?m)^## +(.*?)\s*$`)
 func ValidateLog(text string) []string {
 	var errs []string
 	prev := ""
-	for _, m := range logHeading.FindAllStringSubmatch(text, -1) {
+	for _, m := range logHeading.FindAllStringSubmatch(strings.TrimPrefix(text, "\ufeff"), -1) {
 		day := m[1]
 		if _, err := time.Parse(time.DateOnly, day); err != nil {
 			errs = append(errs, fmt.Sprintf("heading '%s' must be a YYYY-MM-DD date", day))

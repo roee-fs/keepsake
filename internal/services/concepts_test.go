@@ -477,6 +477,17 @@ func TestABodyEditMustKeepTheComputation(t *testing.T) {
 	wantToolError(t, err, "exactly one code block under # Computation")
 }
 
+func TestABodyEditBesideAComputationFileIsChecked(t *testing.T) {
+	tools := newTools(t)
+	fm := obj("runtime", "bigquery", "computation", "lib/x.sql")
+	old := okf.Concept{Path: "a/b", Type: okf.AttestedComputation, Body: "# Computation\n\n```sql\nSELECT 1\n```\n", Frontmatter: fm}
+	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := tools.Update(ctx, "a/b", nil, map[string]any{"body": old.Body + "\n```sql\nSELECT 2\n```\n"})
+	wantToolError(t, err, "computation names a file")
+}
+
 // A CRLF body predates write normalization, so it MUST NOT read as a body edit.
 func TestAStoredConceptWithoutAComputationTakesOtherEdits(t *testing.T) {
 	tools := newTools(t)

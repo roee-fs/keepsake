@@ -156,13 +156,13 @@ tenant. The Go runtime and process metrics are included as well.
 ## Logs
 
 `keepsake serve` and `keepsake prune` write JSON lines to stderr, including the
-`exiting` line that explains a failed start. `logLevel` in the chart, or
-`KEEPSAKE_LOG_LEVEL`, sets the level: `debug`, `info` (the default), `warn` or
-`error`. Nothing logs at `debug` yet. The other commands print plain text.
+`exiting` line that explains a failed start. A usage error is still plain text.
+`logLevel` in the chart, or `KEEPSAKE_LOG_LEVEL`, sets the level: `debug`,
+`info` (the default), `warn` or `error`. Nothing logs at `debug` yet. The other
+commands print plain text.
 
-Every line about a tool call carries `tool`, `tenant` and `actor`. Every line
-about a `/bundle` upload that got past token verification carries `tenant` and
-`actor`.
+Every line logged during a tool call carries `tool`, `tenant` and `actor`. Every `/bundle` line after token verification carries
+`tenant` and `actor`, except `api`.
 
 | Message | Level | Fields |
 | --- | --- | --- |
@@ -173,7 +173,8 @@ about a `/bundle` upload that got past token verification carries `tenant` and
 | `tool call arguments unreadable` | warn | `err` |
 | `database unavailable` | warn | `err`, and `route` on `/bundle` |
 | `bundle replaced` | info | `written`, `deleted` |
-| `refused /mcp request` / `refused /bundle request` | warn | `reason`; a token refused for its scope adds `tenant` and `actor` |
+| `refused /mcp request` / `refused /bundle request` | warn | `reason`; on `/bundle`, a token refused for its scope adds `tenant` and `actor` |
+| `read not logged` | warn | `tenant`, `err` |
 | `console login` / `console login refused` | info / warn | `remote_addr` |
 | `api` | error | `method`, `route`, `err` |
 | `pruned` | info | `tenant`, `reads`, `revisions` |

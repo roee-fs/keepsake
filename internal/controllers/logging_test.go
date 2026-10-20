@@ -109,6 +109,18 @@ func TestACallWithoutATenantIsLogged(t *testing.T) {
 	logLine(t, logs, "tool call without a tenant", map[string]any{"level": "ERROR", "tool": "list"})
 }
 
+func TestUnreadableArgumentsStayOutOfTheLog(t *testing.T) {
+	logs := captureLogs(t)
+	h := toolHandler(newTools(t), "list", compile(map[string]any{"type": "object"}), nil, make(chan struct{}, 1))
+	if _, err := h(ctx, &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Arguments: json.RawMessage(`"` + secret + `"`)}}); err == nil {
+		t.Fatal("a string was read as arguments")
+	}
+	logLine(t, logs, "tool call arguments unreadable", map[string]any{"level": "WARN"})
+	if strings.Contains(logs.String(), secret) {
+		t.Errorf("the arguments reached the logs:\n%s", logs)
+	}
+}
+
 func TestAnUnavailableDatabaseIsLogged(t *testing.T) {
 	logs := captureLogs(t)
 	session := connect(t, newTools(t))

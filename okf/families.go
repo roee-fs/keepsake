@@ -73,7 +73,7 @@ func contract(fm *Map, body string, add func(string, ...string)) {
 		if !nonEmpty(v) {
 			add("computation", "computation must be a path")
 		} else if blocks > 0 {
-			add("computation", "computation names a file, so the body must not also hold a code block under # Computation")
+			add("computation", fmt.Sprintf("computation names a file, so the body must not also hold a code block under # Computation: found %d", blocks))
 		}
 	} else if blocks != 1 {
 		add("computation", fmt.Sprintf("the body must hold exactly one code block under # Computation, or computation must name a file: found %d", blocks))
@@ -111,7 +111,7 @@ var (
 )
 
 // computationBlocks counts the fenced and indented code blocks under the body's top-level # Computation headings.
-// ponytail: line-based, not CommonMark; a list item or footnote continued four spaces in reads as code.
+// ponytail: line-based, not CommonMark; a list item or footnote continued four spaces in reads as code, and a setext heading is not seen.
 func computationBlocks(body string) int {
 	n, in, openFence, indented, blank := 0, false, "", false, true
 	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
@@ -134,7 +134,8 @@ func computationBlocks(body string) int {
 				n++
 			}
 			indented = false
-		case lead >= 4 || strings.HasPrefix(line, "\t"):
+		// A tab after up to three spaces reaches column four.
+		case lead >= 4 || strings.HasPrefix(trimmed, "\t"):
 			// An indented line right after a paragraph continues it; after a blank line it starts code.
 			if !indented && blank {
 				indented = true
