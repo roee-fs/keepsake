@@ -7,7 +7,7 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
-## Unreleased
+## 0.8.0 — 2026-10-20
 
 ### Added
 
