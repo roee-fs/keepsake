@@ -183,20 +183,23 @@ func ValidateBundle(root string) (errs, warnings []string, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	known := map[string]bool{}
 	for _, rel := range reserved {
+		known[strings.TrimSuffix(rel, ".md")] = true
 		text, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			return nil, nil, err
 		}
-		problems := okf.ValidateLog(string(text))
+		var problems []string
 		if strings.HasSuffix(rel, "index.md") {
 			problems = okf.ValidateIndex(string(text), rel == "index.md")
+		} else {
+			problems = okf.ValidateLog(string(text))
 		}
 		for _, e := range problems {
 			errs = append(errs, rel+": "+e)
 		}
 	}
-	known := map[string]bool{}
 	for _, c := range concepts {
 		known[c.Path] = true
 	}

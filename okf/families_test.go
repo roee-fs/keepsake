@@ -94,11 +94,16 @@ func TestAnAttestedComputationHoldsExactlyOneComputation(t *testing.T) {
 	for doc, ok := range map[string]bool{
 		head + "---" + fenced:                       true,
 		head + "---\n# Computation\n    SELECT 1\n": true,
-		head + "computation: lib/revenue.sql\n---\n# Computation\nSee the file.\n": true,
-		head + "---\n# Intro\n\n    SELECT 1\n":                                    false,
-		head + "---\n# Computation\nSELECT 1\n    AND x\n":                         false,
-		head + "---" + fenced + "\n    SELECT 2\n":                                 false,
-		head + "computation: lib/revenue.sql\n---" + fenced:                        false,
+		head + "computation: lib/revenue.sql\n---\n# Computation\nSee the file.\n":     true,
+		head + "---\n# Computation\n\n```sql\nSELECT 1\n```sql\nmore\n```\n":           true,
+		head + "---\n# Computation\n## SQL\n    SELECT 1\n":                            true,
+		head + "---\n  # Computation\n\n```sql\nSELECT 1\n```\n":                       true,
+		head + "---\n# Computation {#calc}\n\n```sql\nSELECT 1\n```\n":                 true,
+		head + "---\n# Computation\n\n```sql\nSELECT 1\n```\n# Notes\n\n```\nx\n```\n": true,
+		head + "---\n# Intro\n\n    SELECT 1\n":                                        false,
+		head + "---\n# Computation\nSELECT 1\n    AND x\n":                             false,
+		head + "---" + fenced + "\n    SELECT 2\n":                                     false,
+		head + "computation: lib/revenue.sql\n---" + fenced:                            false,
 	} {
 		if got := families(t, doc)["computation"]; (len(got) == 0) != ok {
 			t.Errorf("%q: got %q", doc, got)

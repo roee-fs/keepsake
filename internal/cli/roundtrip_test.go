@@ -344,8 +344,9 @@ func TestAnUnquotedYAMLDateComesBackAsAString(t *testing.T) {
 }
 
 func TestValidateAcceptsABundleWhoseLinksResolve(t *testing.T) {
-	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [see](./other.md)", 1), "layers.md")
+	src := bundle(t, t.TempDir(), strings.Replace(doc, "convention.", "convention. [see](./other.md) [all](./index.md)", 1), "layers.md")
 	writeFile(t, src, "architecture/other.md", "---\ntype: Concept\n---\nOther.\n")
+	writeFile(t, src, "architecture/index.md", "# Architecture\n")
 	if errs, warnings, err := services.ValidateBundle(src); err != nil || len(errs)+len(warnings) != 0 {
 		t.Fatal(errs, warnings, err)
 	}

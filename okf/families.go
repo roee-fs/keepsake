@@ -12,9 +12,6 @@ import (
 // AttestedComputation is the OKF §10 type whose contract Families checks.
 const AttestedComputation = "Attested Computation"
 
-// ContractFields are the frontmatter keys of an Attested Computation's §10.2 contract.
-var ContractFields = []string{"computation", "runtime", "parameters", "executor", "attester"}
-
 var actor = regexp.MustCompile(`^([^\s/:]+/[^\s/]+|(human|process):\S+)$`)
 
 // IsActor reports whether s is an OKF §7 actor: <producer>/<version>, human:<id> or process:<id>.
@@ -108,27 +105,31 @@ func contract(fm *Map, body string, add func(string, ...string)) {
 	}
 }
 
-var computationHeading = regexp.MustCompile(`^#[ \t]+Computation[ \t]*#*[ \t]*$`)
+var (
+	heading            = regexp.MustCompile(`^(#{1,6})(?:[ \t]|$)`)
+	computationHeading = regexp.MustCompile(`^#[ \t]+Computation(?:[ \t]+#*)?[ \t]*(?:\{[^}]*\})?[ \t]*$`)
+)
 
 // computationBlocks counts the fenced and indented code blocks under the body's top-level # Computation headings.
-// ponytail: line-based, not CommonMark; a list item indented four spaces reads as code.
+// ponytail: line-based, not CommonMark; a list item or footnote continued four spaces in reads as code.
 func computationBlocks(body string) int {
-	n, in, fence, indented, blank := 0, false, "", false, true
+	n, in, openFence, indented, blank := 0, false, "", false, true
 	for _, line := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimLeft(line, " ")
 		lead := len(line) - len(trimmed)
-		if fence != "" {
-			if lead < 4 && strings.HasPrefix(trimmed, fence) {
-				fence, blank = "", true
+		if openFence != "" {
+			// Only a bare fence at least as long as the opening one closes it.
+			if rest := strings.TrimLeft(trimmed, openFence[:1]); lead < 4 && len(trimmed)-len(rest) >= len(openFence) && strings.TrimSpace(rest) == "" {
+				openFence, blank = "", true
 			}
 			continue
 		}
-		switch {
+		switch h := heading.FindStringSubmatch(trimmed); {
 		case strings.TrimSpace(line) == "":
 			blank = true
 			continue
 		case lead < 4 && (strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")):
-			fence = strings.Repeat(trimmed[:1], len(trimmed)-len(strings.TrimLeft(trimmed, trimmed[:1])))
+			openFence = strings.Repeat(trimmed[:1], len(trimmed)-len(strings.TrimLeft(trimmed, trimmed[:1])))
 			if in {
 				n++
 			}
@@ -141,8 +142,11 @@ func computationBlocks(body string) int {
 					n++
 				}
 			}
-		case line == "#" || strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "#\t"):
-			in = computationHeading.MatchString(line)
+		case h != nil:
+			// A subheading stays inside the section; the next top-level heading ends it.
+			if len(h[1]) == 1 {
+				in = computationHeading.MatchString(trimmed)
+			}
 			// Code MAY follow a heading without a blank line between.
 			indented, blank = false, true
 			continue

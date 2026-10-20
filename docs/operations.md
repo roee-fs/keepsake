@@ -130,7 +130,9 @@ curl -X PUT --data-binary @bundle.tgz \
 - The server runs one upload at a time. Another upload meanwhile gets a 503 with
   `Retry-After: 5`.
 - Links to concepts outside the bundle are not checked. Operators SHOULD run
-  `keepsake validate` on the directory first to catch them.
+  `keepsake validate` on the directory first and read its `warning:` lines.
+  It exits 0 when links are broken but nothing else is wrong, since OKF allows
+  broken links. A gate on its exit code alone does not catch them.
 - The archive MUST end with tar's end-of-archive marker. A stream cut between
   entries gets a 400, so it cannot delete the files it lost.
 

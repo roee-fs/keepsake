@@ -477,13 +477,18 @@ func TestABodyEditMustKeepTheComputation(t *testing.T) {
 	wantToolError(t, err, "exactly one code block under # Computation")
 }
 
+// A CRLF body predates write normalization, so it MUST NOT read as a body edit.
 func TestAStoredConceptWithoutAComputationTakesOtherEdits(t *testing.T) {
 	tools := newTools(t)
-	old := okf.Concept{Path: "a/b", Type: okf.AttestedComputation, Frontmatter: obj("runtime", "bigquery")}
+	old := okf.Concept{Path: "a/b", Type: okf.AttestedComputation, Body: "Revenue.\r\nMore.\r\n", Frontmatter: obj("runtime", "bigquery")}
 	if _, _, err := tools.c.Create(ctx, tools.t, old, "process:import"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tools.Update(ctx, "a/b", nil, map[string]any{"title": "Revenue"}); err != nil {
+		t.Fatal(err)
+	}
+	seed(t, tools, "a/c", map[string]any{})
+	if _, err := tools.Relate(ctx, "a/b", "a/c"); err != nil {
 		t.Fatal(err)
 	}
 }
