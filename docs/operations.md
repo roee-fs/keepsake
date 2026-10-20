@@ -166,9 +166,15 @@ tenant. The Go runtime and process metrics are included as well.
 | `console login` / `console login refused` | info / warn | `remote_addr` |
 | `api` | error | `method`, `route`, `err` |
 | `tool call failed` | error | `tool`, `err` |
+| `tool call panicked` | error | `tool`, `panic`, `stack` |
+| `tool call without a tenant` | error | `tool`, `actor` |
+| `tool call arguments unreadable` | warn | `tool`, `err` |
 | `bundle replaced` | info | `tenant`, `actor`, `written`, `deleted` |
 | `refused /mcp request` | warn | `reason` |
 | `refused /bundle request` | warn | `reason`, and `actor` once the token verifies |
+
+A failed or panicking tool call answers its client `internal error` and leaves the
+detail to the log.
 
 No line carries a tool's arguments, a concept body, a token or a password.
 `remote_addr` is the TCP peer, so behind a proxy it names the proxy. At `warn`,

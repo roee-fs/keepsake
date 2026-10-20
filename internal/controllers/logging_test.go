@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -10,7 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/roee-fs/keepsake/internal/services"
 )
 
 func captureLogs(t *testing.T) *bytes.Buffer {
@@ -60,6 +64,47 @@ func TestEachToolCallIsLoggedWithoutItsArguments(t *testing.T) {
 	if strings.Contains(logs.String(), secret) {
 		t.Errorf("a concept body reached the logs:\n%s", logs)
 	}
+}
+
+func callDirect(t *testing.T, tools *services.ConceptService, call handler) (*mcp.CallToolResult, error) {
+	t.Helper()
+	h := toolHandler(tools, "list", compile(map[string]any{"type": "object"}), call, make(chan struct{}, 1))
+	return h(ctx, &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Arguments: json.RawMessage(`{}`)}})
+}
+
+func TestADefectIsLoggedAndHiddenFromTheClient(t *testing.T) {
+	logs := captureLogs(t)
+	_, err := callDirect(t, newTools(t), func(context.Context, *services.ConceptService, map[string]any) (any, error) {
+		return nil, errors.New("role keepsake_app on db-7")
+	})
+	if !errors.Is(err, errInternal) {
+		t.Fatalf("err = %v", err)
+	}
+	logLine(t, logs, "tool call failed", map[string]any{"level": "ERROR", "tool": "list", "err": "role keepsake_app on db-7"})
+}
+
+func TestAPanickingToolIsRecoveredAndLogged(t *testing.T) {
+	logs := captureLogs(t)
+	_, err := callDirect(t, newTools(t), func(context.Context, *services.ConceptService, map[string]any) (any, error) {
+		panic("boom")
+	})
+	if !errors.Is(err, errInternal) {
+		t.Fatalf("err = %v", err)
+	}
+	line := logLine(t, logs, "tool call panicked", map[string]any{"level": "ERROR", "tool": "list", "panic": "boom"})
+	if s, _ := line["stack"].(string); !strings.Contains(s, "runtime/debug.Stack") {
+		t.Errorf("no stack in %v", line)
+	}
+	logLine(t, logs, "tool call", map[string]any{"outcome": "error"})
+}
+
+func TestACallWithoutATenantIsLogged(t *testing.T) {
+	logs := captureLogs(t)
+	tools := services.NewConceptService(conceptStore(t), uuid.Nil, "mcp")
+	if _, err := callDirect(t, tools, nil); err == nil {
+		t.Fatal("a nil tenant was served")
+	}
+	logLine(t, logs, "tool call without a tenant", map[string]any{"level": "ERROR", "tool": "list"})
 }
 
 func TestAnUnavailableDatabaseIsLogged(t *testing.T) {
