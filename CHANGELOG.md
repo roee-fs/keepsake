@@ -7,6 +7,43 @@ version is where breaking changes land.
 `scripts/release.sh X.Y.Z` opens a release PR. Merging it publishes the image, the
 chart and an SBOM, and tags `vX.Y.Z`. See CONTRIBUTING.md.
 
+## Unreleased
+
+### Added
+
+- `keepsake validate` checks `index.md` and `log.md` against OKF §8 and §9. An
+  index MUST NOT hold frontmatter, except `okf_version` in the bundle-root one.
+  Log date headings MUST be `YYYY-MM-DD`, newest first. Import still skips both.
+- The exported root `index.md` declares `okf_version: "0.2"` in frontmatter, per
+  OKF §12.
+- The app and console ports log one `request` line per request, with `method`,
+  `route`, `status` and `duration_ms`. It is at `debug` below 400 and at `warn`
+  from 400 up, so a request refused before any tool runs is no longer silent.
+- A panic in a tool is recovered, logged as `tool call panicked` with its stack,
+  and answered `internal error`, instead of killing the server.
+- A tool call with no tenant is logged at error, and one with unreadable
+  arguments at warn.
+
+### Changed
+
+- **Breaking.** `create`, `update` and `keepsake validate` hold an `Attested
+  Computation` to OKF §10.3. A `computation` path and a code block under
+  `# Computation` MUST NOT both be present, and without the path the body MUST
+  hold exactly one code block there, fenced or indented. A body edit that
+  changes how many code blocks are there is checked too. A stored concept that
+  already breaks the rule still takes other edits and `relate`.
+- **Breaking.** `keepsake validate` prints a link to an unknown concept as a
+  `warning:` line and no longer exits 1 for it alone, since OKF §6.1 says a
+  broken link is not malformed. A gate on its exit code no longer catches one.
+- A tool call that fails on a defect answers `internal error` instead of the
+  underlying error, which could name database roles and hosts. The log keeps the
+  detail.
+- `keepsake prune` honours `KEEPSAKE_LOG_LEVEL`, and the chart passes it
+  `logLevel`. A fatal error from `serve` or `prune` is a JSON `exiting` line
+  instead of plain text.
+- Every log line about a tool call carries `tool`, `tenant` and `actor`. The
+  `/bundle` lines carry `tenant` and `actor` once the token verifies.
+
 ## 0.7.0 — 2026-10-17
 
 ### Added
