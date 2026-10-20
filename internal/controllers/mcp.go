@@ -197,19 +197,19 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 		if bound {
 			tools = t.As(c.tenant, c.actor)
 		}
+		l := slog.With("tool", name, "tenant", tools.Tenant(), "actor", tools.Actor())
 		start, outcome := time.Now(), "error"
 		defer func() {
 			elapsed := time.Since(start)
 			toolCalls.WithLabelValues(name, outcome).Inc()
 			toolDuration.WithLabelValues(name).Observe(elapsed.Seconds())
 			// The arguments MUST NOT be logged: they carry concept bodies.
-			slog.Info("tool call", "tool", name, "outcome", outcome, "duration_ms", elapsed.Milliseconds(),
-				"tenant", tools.Tenant(), "actor", tools.Actor())
+			l.Info("tool call", "outcome", outcome, "duration_ms", elapsed.Milliseconds())
 		}()
 		// The SDK runs handlers on its own goroutines, where net/http's recovery does not reach.
 		defer func() {
 			if p := recover(); p != nil {
-				slog.Error("tool call panicked", "tool", name, "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+				l.Error("tool call panicked", "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
 				outcome, res, err = "error", nil, errInternal
 			}
 		}()
@@ -225,7 +225,7 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 		// An okf.Map keeps frontmatter key order and exact numbers.
 		m := okf.NewMap()
 		if err := json.Unmarshal(raw, m); err != nil {
-			slog.Warn("tool call arguments unreadable", "tool", name, "err", err)
+			l.Warn("tool call arguments unreadable", "err", err)
 			return nil, err
 		}
 		// Enforced before dispatch, so a wrong shape is something the agent can correct.
@@ -239,7 +239,7 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 		}
 		// Fail closed: the nil tenant is never a caller's, and writing as it would pool every stray write.
 		if tools.Tenant() == uuid.Nil {
-			slog.Error("tool call without a tenant", "tool", name, "actor", tools.Actor())
+			l.Error("tool call without a tenant")
 			return nil, errors.New("no tenant bound to this request")
 		}
 		release, ok := acquire(ctx, slot)
@@ -255,16 +255,16 @@ func toolHandler(t *services.ConceptService, name string, schema *jsonschema.Sch
 			return failed(te.Msg), nil
 		case errors.Is(err, models.ErrUnavailable):
 			outcome = "unavailable"
-			slog.Warn("database unavailable", "tool", name, "err", err)
+			l.Warn("database unavailable", "err", err)
 			return failed(unavailable), nil
 		case err != nil:
 			// A defect here, not the agent's mistake: it stays a protocol error, without the detail.
-			slog.Error("tool call failed", "tool", name, "err", err)
+			l.Error("tool call failed", "err", err)
 			return nil, errInternal
 		}
 		text, err := okf.PyDumps(result)
 		if err != nil {
-			slog.Error("tool call failed", "tool", name, "err", err)
+			l.Error("tool call failed", "err", err)
 			return nil, errInternal
 		}
 		outcome = "ok"

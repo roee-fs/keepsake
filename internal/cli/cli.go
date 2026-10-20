@@ -104,7 +104,9 @@ type options struct {
 
 type command struct {
 	dsn, tenant, directory bool
-	run                    func(ctx context.Context, o *options, stdout, stderr io.Writer) (int, error)
+	// logs marks a command that runs unattended, so its log lines and fatal error are JSON on stderr.
+	logs bool
+	run  func(ctx context.Context, o *options, stdout, stderr io.Writer) (int, error)
 }
 
 var commands = map[string]command{
@@ -112,8 +114,8 @@ var commands = map[string]command{
 	"export":   {dsn: true, tenant: true, directory: true, run: runBundle((*services.BundleService).Export, "exported")},
 	"validate": {directory: true, run: runValidate},
 	"migrate":  {dsn: true, run: runMigrate},
-	"prune":    {dsn: true, run: runPrune},
-	"serve":    {dsn: true, tenant: true, run: runServe},
+	"prune":    {dsn: true, logs: true, run: runPrune},
+	"serve":    {dsn: true, tenant: true, logs: true, run: runServe},
 	"token":    {tenant: true, run: runToken},
 }
 
@@ -225,9 +227,20 @@ func Main(args []string, stdout, stderr io.Writer) int {
 		return usageError(stderr, "", "unrecognized arguments: "+strings.Join(extra, " "))
 	}
 
-	code, err := cmd.run(context.Background(), o, stdout, stderr)
+	var err error
+	if cmd.logs {
+		err = jsonLogs(stderr)
+	}
+	code := 0
+	if err == nil {
+		code, err = cmd.run(context.Background(), o, stdout, stderr)
+	}
 	if err != nil {
-		fmt.Fprintf(stderr, "keepsake: %v\n", err)
+		if cmd.logs {
+			slog.Error("exiting", "err", err)
+		} else {
+			fmt.Fprintf(stderr, "keepsake: %v\n", err)
+		}
 		return 1
 	}
 	return code
@@ -332,7 +345,6 @@ func runMigrate(ctx context.Context, o *options, _, _ io.Writer) (int, error) {
 
 // runPrune deletes reads and revisions past their retention. It runs as the app role.
 func runPrune(ctx context.Context, o *options, stdout, stderr io.Writer) (int, error) {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(stderr, nil)))
 	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
 	if err != nil {
 		return 0, err
@@ -371,14 +383,18 @@ func runPrune(ctx context.Context, o *options, stdout, stderr io.Writer) (int, e
 	return 0, nil
 }
 
-func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
+// jsonLogs points slog at stderr as JSON at KEEPSAKE_LOG_LEVEL. A bad level still installs it, so the refusal is JSON too.
+func jsonLogs(stderr io.Writer) error {
 	var level slog.Level
-	if v := os.Getenv("KEEPSAKE_LOG_LEVEL"); v != "" {
-		if err := level.UnmarshalText([]byte(v)); err != nil {
-			return 0, fmt.Errorf("KEEPSAKE_LOG_LEVEL must be debug, info, warn or error, not %s", okf.PyReprString(v))
-		}
+	var err error
+	if v := os.Getenv("KEEPSAKE_LOG_LEVEL"); v != "" && level.UnmarshalText([]byte(v)) != nil {
+		level, err = slog.LevelInfo, fmt.Errorf("KEEPSAKE_LOG_LEVEL must be debug, info, warn or error, not %s", okf.PyReprString(v))
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(stderr, &slog.HandlerOptions{Level: level})))
+	return err
+}
+
+func runServe(ctx context.Context, o *options, _, stderr io.Writer) (int, error) {
 	dsn, err := required(o.dsn, "--dsn", "KEEPSAKE_DSN")
 	if err != nil {
 		return 0, err
@@ -555,6 +571,7 @@ Delete reads and revisions past their retention, one tenant at a time.
 Reads go after $KEEPSAKE_READ_RETENTION_DAYS, then 190. Revisions go after
 $KEEPSAKE_REVISION_RETENTION_DAYS, then 0, which keeps them all. Each path
 keeps its newest $KEEPSAKE_REVISION_KEEP revisions, then 50, at any age.
+Logs are JSON lines on stderr at $KEEPSAKE_LOG_LEVEL, then info.
 
 options:
   -h, --help  show this help message and exit

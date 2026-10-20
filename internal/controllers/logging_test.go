@@ -74,13 +74,15 @@ func callDirect(t *testing.T, tools *services.ConceptService, call handler) (*mc
 
 func TestADefectIsLoggedAndHiddenFromTheClient(t *testing.T) {
 	logs := captureLogs(t)
-	_, err := callDirect(t, newTools(t), func(context.Context, *services.ConceptService, map[string]any) (any, error) {
+	tools := newTools(t)
+	_, err := callDirect(t, tools, func(context.Context, *services.ConceptService, map[string]any) (any, error) {
 		return nil, errors.New("role keepsake_app on db-7")
 	})
 	if !errors.Is(err, errInternal) {
 		t.Fatalf("err = %v", err)
 	}
-	logLine(t, logs, "tool call failed", map[string]any{"level": "ERROR", "tool": "list", "err": "role keepsake_app on db-7"})
+	logLine(t, logs, "tool call failed", map[string]any{"level": "ERROR", "tool": "list", "err": "role keepsake_app on db-7",
+		"tenant": tools.Tenant().String(), "actor": "mcp"})
 }
 
 func TestAPanickingToolIsRecoveredAndLogged(t *testing.T) {

@@ -148,13 +148,14 @@ func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 			internalError(w, r, errors.New("no caller bound to /bundle"))
 			return
 		}
+		l := slog.With("tenant", c.tenant, "actor", c.actor)
 		if c.readOnly {
-			slog.Warn("refused /bundle request", "reason", "token carries the "+readScope+" scope", "actor", c.actor)
+			l.Warn("refused /bundle request", "reason", "token carries the "+readScope+" scope")
 			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: the " + readScope + " scope refuses it, even with the " + uploadScope + " scope"})
 			return
 		}
 		if !c.upload {
-			slog.Warn("refused /bundle request", "reason", "token lacks the "+uploadScope+" scope", "actor", c.actor)
+			l.Warn("refused /bundle request", "reason", "token lacks the "+uploadScope+" scope")
 			WriteJSON(w, r, http.StatusForbidden, detail{"this token cannot upload: it needs the " + uploadScope + " scope"})
 			return
 		}
@@ -201,7 +202,7 @@ func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 			WriteJSON(w, r, http.StatusUnprocessableEntity, detail{te.Msg})
 			return
 		case errors.Is(err, models.ErrUnavailable):
-			slog.Warn("database unavailable", "route", r.Pattern, "err", err)
+			l.Warn("database unavailable", "route", r.Pattern, "err", err)
 			w.Header().Set("Retry-After", "5")
 			WriteJSON(w, r, http.StatusServiceUnavailable, detail{unavailable})
 			return
@@ -210,7 +211,7 @@ func ReplaceBundle(svc *services.BundleService) http.HandlerFunc {
 			return
 		}
 		// The prefix is not logged, since a path names a concept.
-		slog.Info("bundle replaced", "tenant", c.tenant.String(), "actor", c.actor, "written", written, "deleted", deleted)
+		l.Info("bundle replaced", "written", written, "deleted", deleted)
 		WriteJSON(w, r, http.StatusOK, map[string]int{"written": written, "deleted": deleted})
 	}
 }

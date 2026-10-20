@@ -155,23 +155,29 @@ tenant. The Go runtime and process metrics are included as well.
 
 ## Logs
 
-`keepsake serve` writes JSON lines to stderr. `logLevel` in the chart, or
+`keepsake serve` and `keepsake prune` write JSON lines to stderr, including the
+`exiting` line that explains a failed start. `logLevel` in the chart, or
 `KEEPSAKE_LOG_LEVEL`, sets the level: `debug`, `info` (the default), `warn` or
-`error`.
+`error`. Nothing logs at `debug` yet. The other commands print plain text.
+
+Every line about a tool call carries `tool`, `tenant` and `actor`. Every line
+about a `/bundle` upload that got past token verification carries `tenant` and
+`actor`.
 
 | Message | Level | Fields |
 | --- | --- | --- |
-| `tool call` | info | `tool`, `outcome`, `duration_ms`, `tenant`, `actor` |
-| `database unavailable` | warn | `tool` or `route`, `err` |
+| `tool call` | info | `outcome`, `duration_ms` |
+| `tool call failed` | error | `err` |
+| `tool call panicked` | error | `panic`, `stack` |
+| `tool call without a tenant` | error | none |
+| `tool call arguments unreadable` | warn | `err` |
+| `database unavailable` | warn | `err`, and `route` on `/bundle` |
+| `bundle replaced` | info | `written`, `deleted` |
+| `refused /mcp request` / `refused /bundle request` | warn | `reason`; a token refused for its scope adds `tenant` and `actor` |
 | `console login` / `console login refused` | info / warn | `remote_addr` |
 | `api` | error | `method`, `route`, `err` |
-| `tool call failed` | error | `tool`, `err` |
-| `tool call panicked` | error | `tool`, `panic`, `stack` |
-| `tool call without a tenant` | error | `tool`, `actor` |
-| `tool call arguments unreadable` | warn | `tool`, `err` |
-| `bundle replaced` | info | `tenant`, `actor`, `written`, `deleted` |
-| `refused /mcp request` | warn | `reason` |
-| `refused /bundle request` | warn | `reason`, and `actor` once the token verifies |
+| `pruned` | info | `tenant`, `reads`, `revisions` |
+| `exiting` | error | `err` |
 
 A failed or panicking tool call answers its client `internal error` and leaves the
 detail to the log.

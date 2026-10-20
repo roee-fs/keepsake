@@ -35,6 +35,25 @@ func TestPruneDeletesReadsPastTheirRetentionAsTheAppRole(t *testing.T) {
 	}
 }
 
+func TestPruneHonoursTheLogLevel(t *testing.T) {
+	t.Setenv("KEEPSAKE_READ_RETENTION_DAYS", "30")
+	admin, err := pgx.Connect(ctx, db.AdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close(ctx)
+	for level, logged := range map[string]bool{"info": true, "error": false} {
+		if _, err := admin.Exec(ctx, "INSERT INTO okf.concept_read (tenant_id, created_at) VALUES ($1, now() - interval '31 days')", uuid.New()); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("KEEPSAKE_LOG_LEVEL", level)
+		code, _, stderr := run(t, "prune", "--dsn", db.AppDSN)
+		if code != 0 || strings.Contains(stderr, `"msg":"pruned"`) != logged {
+			t.Errorf("%s: exit %d: %q", level, code, stderr)
+		}
+	}
+}
+
 func TestPruneRefusesABadRetention(t *testing.T) {
 	for name, value := range map[string]string{
 		"KEEPSAKE_READ_RETENTION_DAYS":     "0",

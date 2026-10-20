@@ -503,12 +503,22 @@ func TestServeHonoursTheLogLevel(t *testing.T) {
 	}
 }
 
-func TestServeRefusesAnUnknownLogLevel(t *testing.T) {
+// A log pipeline parses every line, so the line that explains an exit MUST be JSON too.
+func TestServeAndPruneReportAFatalErrorAsJSON(t *testing.T) {
 	t.Setenv("KEEPSAKE_LOG_LEVEL", "loud")
 	fakeListen(t)
-	code, _, stderr := run(t, "serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString())
-	if code != 1 || !strings.Contains(stderr, "KEEPSAKE_LOG_LEVEL") {
-		t.Fatalf("exit %d: %s", code, stderr)
+	for _, args := range [][]string{
+		{"serve", "--dsn", db.AppDSN, "--tenant", uuid.NewString()},
+		{"prune", "--dsn", db.AppDSN},
+	} {
+		code, _, stderr := run(t, args...)
+		var line map[string]any
+		if err := json.Unmarshal([]byte(stderr), &line); code != 1 || err != nil {
+			t.Fatalf("%s: exit %d: %s", args[0], code, stderr)
+		}
+		if line["level"] != "ERROR" || line["msg"] != "exiting" || !strings.Contains(line["err"].(string), "KEEPSAKE_LOG_LEVEL") {
+			t.Errorf("%s: %v", args[0], line)
+		}
 	}
 }
 
